@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@sardeenz/types": ["./packages/types/src"],
+      "@sardeenz/utils": ["./packages/utils/src"],
+      "@sardeenz/types/*": ["./packages/types/src/*"],
+      "@sardeenz/utils/*": ["./packages/utils/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "build"]
+}

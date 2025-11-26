@@ -1,0 +1,90 @@
+# =============================================================================
+# Multi-stage Dockerfile for Sardeenz
+# Based on vLLM CUDA image (UBI/RHEL) with Node.js 22 and KVCached
+# =============================================================================
+
+# =============================================================================
+# Stage 1: Builder
+# =============================================================================
+FROM quay.io/vllm/vllm-cuda:0.11.0 AS builder
+
+# Install Python development headers for C++ extension compilation (UBI/RHEL uses dnf)
+RUN dnf install -y python3-devel && dnf clean all
+
+# Install Node.js 22 using nvm
+ENV NVM_DIR=/root/.nvm
+ENV NODE_VERSION=22.11.0
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash && \
+    . "$NVM_DIR/nvm.sh" && \
+    nvm install ${NODE_VERSION} && \
+    nvm use ${NODE_VERSION} && \
+    nvm alias default ${NODE_VERSION}
+
+ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
+
+# Build KVCached (requires python3-devel for C++ extension compilation)
+RUN pip install kvcached==0.1.2 --no-build-isolation
+
+# Build Node.js application
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY apps ./apps
+COPY tsconfig.base.json ./
+
+RUN npm ci
+RUN npm run build -w packages/types && \
+    npm run build -w packages/utils
+RUN npm run build -w apps/backend
+RUN npm run build -w apps/frontend
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM quay.io/vllm/vllm-cuda:0.11.0 AS runtime
+
+# Install Node.js (copy from builder)
+ENV NVM_DIR=/root/.nvm
+ENV NODE_VERSION=22.11.0
+COPY --from=builder $NVM_DIR $NVM_DIR
+ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
+
+# Copy kvcached installation (Python 3.12, site-packages)
+# Includes: kvcached/ directory, vmm_ops.cpython-312-x86_64-linux-gnu.so, kvcached_autopatch.pth
+COPY --from=builder /usr/local/lib/python3.12/site-packages/kvcached /usr/local/lib/python3.12/site-packages/kvcached
+COPY --from=builder /usr/local/lib/python3.12/site-packages/kvcached_autopatch.pth /usr/local/lib/python3.12/site-packages/
+
+# Install nginx (UBI/RHEL uses dnf)
+RUN dnf install -y nginx && dnf clean all
+
+# Copy application
+WORKDIR /app
+COPY --from=builder /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder /app/apps/backend/package.json ./apps/backend/
+COPY --from=builder /app/apps/frontend/dist ./apps/frontend/dist
+
+# Copy nginx configuration (RHEL/UBI uses conf.d instead of sites-available)
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+RUN cp -r apps/frontend/dist /var/www/html
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOST=0.0.0.0
+ENV LOG_LEVEL=info
+ENV ENABLE_KVCACHED=true
+ENV KVCACHED_AUTOPATCH=1
+
+EXPOSE 3000 80
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

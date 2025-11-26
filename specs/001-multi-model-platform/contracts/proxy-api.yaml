@@ -1,0 +1,439 @@
+openapi: 3.1.0
+info:
+  title: Sardeenz - Unified Proxy API
+  version: 0.1.0
+  description: |
+    Unified Proxy API for routing inference requests to vLLM model instances.
+
+    This API provides OpenAI-compatible endpoints that:
+    - Route requests to the appropriate model instance based on `model` parameter
+    - Support both streaming and non-streaming completions
+    - Provide transparent passthrough to vLLM with minimal overhead (<50ms)
+
+    **Authentication**: NOT required (assumes trusted network or external gateway handles auth).
+    If authentication is needed, it should be enforced at gateway/ingress level.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://sardeenz.example.com
+    description: Production server
+
+tags:
+  - name: Completions
+    description: Text completion endpoints (OpenAI-compatible)
+  - name: Chat
+    description: Chat completion endpoints (OpenAI-compatible)
+
+paths:
+  /v1/completions:
+    post:
+      tags:
+        - Completions
+      summary: Create completion
+      description: |
+        Generate text completion using the specified model.
+        This endpoint routes the request to the appropriate vLLM instance based on the `model` parameter.
+
+        Supports both streaming and non-streaming responses.
+
+        **Performance Requirement**: Routing overhead MUST be <50ms (per constitution).
+      operationId: createCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - model
+                - prompt
+              properties:
+                model:
+                  type: string
+                  description: Model identifier (must match a loaded model)
+                  example: meta-llama/Llama-3.2-1B
+                prompt:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Input prompt(s) for completion
+                  example: "Once upon a time"
+                max_tokens:
+                  type: integer
+                  description: Maximum tokens to generate
+                  default: 16
+                  example: 100
+                temperature:
+                  type: number
+                  description: Sampling temperature (0.0-2.0)
+                  default: 1.0
+                  minimum: 0.0
+                  maximum: 2.0
+                  example: 0.7
+                top_p:
+                  type: number
+                  description: Nucleus sampling parameter
+                  default: 1.0
+                  minimum: 0.0
+                  maximum: 1.0
+                  example: 0.95
+                n:
+                  type: integer
+                  description: Number of completions to generate
+                  default: 1
+                  example: 1
+                stream:
+                  type: boolean
+                  description: Whether to stream results via Server-Sent Events
+                  default: false
+                  example: false
+                stop:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Stop sequences
+                frequency_penalty:
+                  type: number
+                  default: 0.0
+                  minimum: -2.0
+                  maximum: 2.0
+                presence_penalty:
+                  type: number
+                  default: 0.0
+                  minimum: -2.0
+                  maximum: 2.0
+      responses:
+        '200':
+          description: Completion generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletionResponse'
+            text/event-stream:
+              schema:
+                description: Server-sent events stream (when stream=true)
+                type: string
+                example: |
+                  data: {"id":"cmpl-123","object":"text_completion","created":1699000000,"model":"meta-llama/Llama-3.2-1B","choices":[{"text":" there","index":0,"logprobs":null,"finish_reason":null}]}
+
+                  data: {"id":"cmpl-123","object":"text_completion","created":1699000000,"model":"meta-llama/Llama-3.2-1B","choices":[{"text":" was","index":0,"logprobs":null,"finish_reason":null}]}
+
+                  data: [DONE]
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Model not loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Model meta-llama/Llama-3.2-1B not loaded. Available models: []"
+        '500':
+          description: Internal server error (model unreachable or failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Bad gateway (vLLM instance returned invalid response)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/chat/completions:
+    post:
+      tags:
+        - Chat
+      summary: Create chat completion
+      description: |
+        Generate chat completion using the specified model.
+        This endpoint routes the request to the appropriate vLLM instance based on the `model` parameter.
+
+        Supports both streaming and non-streaming responses.
+
+        **Performance Requirement**: Routing overhead MUST be <50ms (per constitution).
+      operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - model
+                - messages
+              properties:
+                model:
+                  type: string
+                  description: Model identifier (must match a loaded model)
+                  example: meta-llama/Llama-3.2-1B
+                messages:
+                  type: array
+                  description: Chat message history
+                  items:
+                    type: object
+                    required:
+                      - role
+                      - content
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user, assistant]
+                        example: user
+                      content:
+                        type: string
+                        example: "What is the capital of France?"
+                  example:
+                    - role: system
+                      content: "You are a helpful assistant."
+                    - role: user
+                      content: "What is the capital of France?"
+                max_tokens:
+                  type: integer
+                  description: Maximum tokens to generate
+                  example: 100
+                temperature:
+                  type: number
+                  description: Sampling temperature (0.0-2.0)
+                  default: 1.0
+                  minimum: 0.0
+                  maximum: 2.0
+                  example: 0.7
+                top_p:
+                  type: number
+                  description: Nucleus sampling parameter
+                  default: 1.0
+                  minimum: 0.0
+                  maximum: 1.0
+                stream:
+                  type: boolean
+                  description: Whether to stream results via Server-Sent Events
+                  default: false
+                  example: false
+                stop:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Stop sequences
+                frequency_penalty:
+                  type: number
+                  default: 0.0
+                  minimum: -2.0
+                  maximum: 2.0
+                presence_penalty:
+                  type: number
+                  default: 0.0
+                  minimum: -2.0
+                  maximum: 2.0
+      responses:
+        '200':
+          description: Chat completion generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+            text/event-stream:
+              schema:
+                description: Server-sent events stream (when stream=true)
+                type: string
+                example: |
+                  data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1699000000,"model":"meta-llama/Llama-3.2-1B","choices":[{"index":0,"delta":{"role":"assistant","content":"The"},"finish_reason":null}]}
+
+                  data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1699000000,"model":"meta-llama/Llama-3.2-1B","choices":[{"index":0,"delta":{"content":" capital"},"finish_reason":null}]}
+
+                  data: [DONE]
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Model not loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Bad gateway (vLLM instance error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    CompletionResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          description: Unique completion identifier
+          example: cmpl-7qyuw8fbchxDNkH8Q9l6Y7WY6vQqW
+        object:
+          type: string
+          enum: [text_completion]
+          example: text_completion
+        created:
+          type: integer
+          description: Unix timestamp (seconds)
+          example: 1699000000
+        model:
+          type: string
+          description: Model used for generation
+          example: meta-llama/Llama-3.2-1B
+        choices:
+          type: array
+          items:
+            type: object
+            required:
+              - text
+              - index
+              - finish_reason
+            properties:
+              text:
+                type: string
+                description: Generated text
+                example: " there was a young wizard named Harry"
+              index:
+                type: integer
+                description: Choice index
+                example: 0
+              logprobs:
+                type: object
+                nullable: true
+                description: Log probabilities (if requested)
+              finish_reason:
+                type: string
+                enum: [stop, length, null]
+                description: Reason completion finished
+                example: stop
+        usage:
+          type: object
+          required:
+            - prompt_tokens
+            - completion_tokens
+            - total_tokens
+          properties:
+            prompt_tokens:
+              type: integer
+              example: 5
+            completion_tokens:
+              type: integer
+              example: 10
+            total_tokens:
+              type: integer
+              example: 15
+
+    ChatCompletionResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          description: Unique completion identifier
+          example: chatcmpl-7qyuw8fbchxDNkH8Q9l6Y7WY6vQqW
+        object:
+          type: string
+          enum: [chat.completion]
+          example: chat.completion
+        created:
+          type: integer
+          description: Unix timestamp (seconds)
+          example: 1699000000
+        model:
+          type: string
+          description: Model used for generation
+          example: meta-llama/Llama-3.2-1B
+        choices:
+          type: array
+          items:
+            type: object
+            required:
+              - index
+              - message
+              - finish_reason
+            properties:
+              index:
+                type: integer
+                description: Choice index
+                example: 0
+              message:
+                type: object
+                required:
+                  - role
+                  - content
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                    example: assistant
+                  content:
+                    type: string
+                    description: Generated response
+                    example: "The capital of France is Paris."
+              finish_reason:
+                type: string
+                enum: [stop, length, null]
+                description: Reason completion finished
+                example: stop
+        usage:
+          type: object
+          required:
+            - prompt_tokens
+            - completion_tokens
+            - total_tokens
+          properties:
+            prompt_tokens:
+              type: integer
+              example: 20
+            completion_tokens:
+              type: integer
+              example: 8
+            total_tokens:
+              type: integer
+              example: 28
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Model not loaded
+        code:
+          type: string
+          description: Machine-readable error code
+          example: MODEL_NOT_LOADED

@@ -1,0 +1,544 @@
+openapi: 3.1.0
+info:
+  title: Sardeenz - Controller API
+  version: 0.1.0
+  description: |
+    Controller API for managing vLLM model lifecycle operations.
+
+    This API provides endpoints to:
+    - Load and unload models dynamically
+    - Query model status and resource usage
+    - Monitor model health and performance
+
+    **Authentication**: OAuth 2.0 / OIDC required for all endpoints.
+    **Roles**:
+    - `admin`: Full access (load, unload, configure)
+    - `admin-readonly`: Read-only access (list, status, metrics)
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+  - url: https://sardeenz.example.com/api
+    description: Production server
+
+security:
+  - OAuth2: []
+
+tags:
+  - name: Models
+    description: Model lifecycle management operations
+  - name: Memory
+    description: GPU memory management and monitoring
+
+paths:
+  /models/load:
+    post:
+      tags:
+        - Models
+      summary: Load a new model
+      description: |
+        Launch a new vLLM instance for the specified model. This operation:
+        1. Spawns a vLLM subprocess with KVCached enabled
+        2. Waits for health endpoint to become available (timeout: 3 minutes)
+        3. Returns instance details including port and status
+
+        **Authorization**: Requires `admin` role.
+
+        **Success Criteria**: Model loads within 60 seconds (per spec).
+      operationId: loadModel
+      security:
+        - OAuth2: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - model_path
+              properties:
+                model_path:
+                  type: string
+                  description: Hugging Face model identifier or path
+                  pattern: '^[\w\-\.]+/[\w\-\.]+$'
+                  example: meta-llama/Llama-3.2-1B
+                max_tokens:
+                  type: integer
+                  description: Maximum sequence length for this model
+                  minimum: 512
+                  maximum: 32768
+                  default: 4096
+                  example: 4096
+                gpu_memory_utilization:
+                  type: number
+                  description: GPU memory utilization (0.0-1.0)
+                  minimum: 0.1
+                  maximum: 0.95
+                  default: 0.9
+                  example: 0.9
+      responses:
+        '200':
+          description: Model loaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - model
+                  - port
+                  - loaded_at
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  model:
+                    type: string
+                    example: meta-llama/Llama-3.2-1B
+                  port:
+                    type: integer
+                    example: 12346
+                  loaded_at:
+                    type: string
+                    format: date-time
+                    example: '2025-11-08T10:30:00Z'
+        '400':
+          description: Invalid request (e.g., malformed model_path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (missing or invalid token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (insufficient permissions, requires admin role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (model already loaded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Model meta-llama/Llama-3.2-1B is already loaded
+        '500':
+          description: Internal server error (model failed to start)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /models/{model_path}:
+    parameters:
+      - name: model_path
+        in: path
+        required: true
+        description: URL-encoded model identifier (e.g., meta-llama%2FLlama-3.2-1B)
+        schema:
+          type: string
+        example: meta-llama%2FLlama-3.2-1B
+
+    get:
+      tags:
+        - Models
+      summary: Get model details
+      description: Retrieve detailed information about a specific loaded model.
+      operationId: getModel
+      security:
+        - OAuth2: [admin-readonly]
+      responses:
+        '200':
+          description: Model details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInstance'
+        '404':
+          description: Model not found (not loaded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Models
+      summary: Unload a model
+      description: |
+        Stop a running vLLM instance. This operation:
+        1. Sends SIGTERM to the vLLM process
+        2. Waits up to 30 seconds for graceful shutdown
+        3. Sends SIGKILL if process hasn't exited
+        4. Cleans up KVCached IPC segment via kvctl
+
+        **Authorization**: Requires `admin` role.
+
+        **Success Criteria**: Model unloads within 30 seconds (per spec).
+      operationId: unloadModel
+      security:
+        - OAuth2: [admin]
+      responses:
+        '200':
+          description: Model unloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - model
+                  - unloaded_at
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  model:
+                    type: string
+                    example: meta-llama/Llama-3.2-1B
+                  unloaded_at:
+                    type: string
+                    format: date-time
+                    example: '2025-11-08T10:35:00Z'
+        '404':
+          description: Model not found (not loaded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error (failed to stop process)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /models:
+    get:
+      tags:
+        - Models
+      summary: List all loaded models
+      description: Retrieve a list of all currently loaded model instances with their status.
+      operationId: listModels
+      security:
+        - OAuth2: [admin-readonly]
+      responses:
+        '200':
+          description: List of loaded models
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - models
+                  - total
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelInstance'
+                  total:
+                    type: integer
+                    description: Total number of loaded models
+                    example: 2
+
+  /models/{model_path}/health:
+    parameters:
+      - name: model_path
+        in: path
+        required: true
+        description: URL-encoded model identifier
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Models
+      summary: Check model health
+      description: |
+        Check if a model instance is healthy by querying its /health endpoint.
+        Returns health status and response time.
+      operationId: getModelHealth
+      security:
+        - OAuth2: [admin-readonly]
+      responses:
+        '200':
+          description: Health check completed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, unhealthy, unreachable, not_loaded]
+                  response_code:
+                    type: integer
+                    example: 200
+                  response_time_ms:
+                    type: number
+                    example: 15.3
+                  error:
+                    type: string
+                    description: Error message if status is unhealthy or unreachable
+
+  /memory/usage:
+    get:
+      tags:
+        - Memory
+      summary: Get GPU memory usage
+      description: |
+        Retrieve GPU memory usage for all loaded models.
+        Data is collected from kvctl and backend metrics.
+      operationId: getMemoryUsage
+      security:
+        - OAuth2: [admin-readonly]
+      responses:
+        '200':
+          description: Memory usage retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - gpu_total_gb
+                  - gpu_used_gb
+                  - gpu_free_gb
+                  - models
+                properties:
+                  gpu_total_gb:
+                    type: number
+                    description: Total GPU memory (GB)
+                    example: 24.0
+                  gpu_used_gb:
+                    type: number
+                    description: Total GPU memory used across all models (GB)
+                    example: 15.2
+                  gpu_free_gb:
+                    type: number
+                    description: Available GPU memory (GB)
+                    example: 8.8
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResourceMetrics'
+
+  /memory/limits:
+    post:
+      tags:
+        - Memory
+      summary: Set memory limits
+      description: |
+        Set GPU memory limits for one or more models using kvctl.
+        Helps prevent OOM errors and ensure fair memory sharing.
+      operationId: setMemoryLimits
+      security:
+        - OAuth2: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - limits
+              properties:
+                limits:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - model_path
+                      - limit_gb
+                    properties:
+                      model_path:
+                        type: string
+                        example: meta-llama/Llama-3.2-1B
+                      limit_gb:
+                        type: number
+                        minimum: 0.1
+                        example: 10.0
+      responses:
+        '200':
+          description: Limits set successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - updated
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  updated:
+                    type: integer
+                    description: Number of models updated
+                    example: 2
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: OAuth 2.0 / OIDC authentication with role-based access control
+      flows:
+        authorizationCode:
+          authorizationUrl: https://keycloak.example.com/realms/vllm/protocol/openid-connect/auth
+          tokenUrl: https://keycloak.example.com/realms/vllm/protocol/openid-connect/token
+          scopes:
+            admin: Full administrative access (load, unload, configure)
+            admin-readonly: Read-only access (view models, metrics)
+
+  schemas:
+    ModelInstance:
+      type: object
+      required:
+        - id
+        - model_path
+        - status
+        - port
+        - process_id
+        - max_tokens
+        - gpu_memory_utilization
+        - loaded_at
+        - ipc_segment_name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique instance identifier
+          example: 550e8400-e29b-41d4-a716-446655440000
+        model_path:
+          type: string
+          description: Model identifier
+          example: meta-llama/Llama-3.2-1B
+        status:
+          type: string
+          enum: [starting, active, stopping, failed]
+          description: Current lifecycle status
+          example: active
+        port:
+          type: integer
+          description: TCP port where vLLM is listening
+          example: 12346
+        process_id:
+          type: integer
+          description: OS process ID (PID)
+          example: 12345
+        max_tokens:
+          type: integer
+          description: Maximum sequence length
+          example: 4096
+        gpu_memory_utilization:
+          type: number
+          description: GPU memory utilization setting
+          example: 0.9
+        loaded_at:
+          type: string
+          format: date-time
+          description: Timestamp when model started loading
+          example: '2025-11-08T10:30:00Z'
+        ready_at:
+          type: string
+          format: date-time
+          description: Timestamp when model became ready
+          example: '2025-11-08T10:30:45Z'
+        error_message:
+          type: string
+          description: Error message if status is failed
+        ipc_segment_name:
+          type: string
+          description: KVCached IPC segment name
+          example: VLLM_META_LLAMA_LLAMA_3_2_1B
+
+    ResourceMetrics:
+      type: object
+      required:
+        - model_path
+        - gpu_memory_used_gb
+        - gpu_memory_limit_gb
+        - gpu_memory_usage_percent
+        - active_connections
+        - total_requests
+        - successful_requests
+        - failed_requests
+        - last_updated
+      properties:
+        model_path:
+          type: string
+          example: meta-llama/Llama-3.2-1B
+        gpu_memory_used_gb:
+          type: number
+          description: Current GPU memory used (GB)
+          example: 8.0
+        gpu_memory_limit_gb:
+          type: number
+          description: GPU memory limit (GB)
+          example: 10.0
+        gpu_memory_usage_percent:
+          type: number
+          description: Percentage of limit used
+          example: 80.0
+        cpu_percent:
+          type: number
+          description: CPU usage percentage
+          example: 45.2
+        system_memory_used_mb:
+          type: number
+          description: System RAM used (MB)
+          example: 512.0
+        active_connections:
+          type: integer
+          description: Active HTTP connections
+          example: 3
+        total_requests:
+          type: integer
+          description: Total requests served
+          example: 1523
+        successful_requests:
+          type: integer
+          description: Successful requests (2xx)
+          example: 1498
+        failed_requests:
+          type: integer
+          description: Failed requests (4xx, 5xx)
+          example: 25
+        avg_response_time_ms:
+          type: number
+          description: Average response time (ms)
+          example: 234.5
+        p95_response_time_ms:
+          type: number
+          description: 95th percentile response time (ms)
+          example: 512.3
+        last_updated:
+          type: string
+          format: date-time
+          example: '2025-11-08T10:35:00Z'
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Model not found
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+        code:
+          type: string
+          description: Machine-readable error code
+          example: MODEL_NOT_FOUND

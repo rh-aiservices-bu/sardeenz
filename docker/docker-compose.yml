@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  sardeenz:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.unified
+    container_name: sardeenz
+    ports:
+      - "3000:3000"  # Backend API
+      - "80:80"      # Frontend UI
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - ENABLE_KVCACHED=true
+      - KVCACHED_AUTOPATCH=1
+      - VLLM_BASE_PORT=12346
+      - VLLM_MAX_INSTANCES=10
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface  # Model cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

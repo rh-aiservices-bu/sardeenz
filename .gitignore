@@ -1,0 +1,64 @@
+# Project-specific
+.claude
+.specify/scripts
+.specify/templates
+
+# Python virtual environment (for vLLM/KVCached)
+.venv/
+__pycache__/
+*.py[cod]
+
+# Node.js / JavaScript / TypeScript
+node_modules/
+dist/
+build/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# TypeScript
+*.tsbuildinfo
+.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Build artifacts
+tmp/
+temp/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db

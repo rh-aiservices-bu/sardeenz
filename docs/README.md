@@ -1,0 +1,284 @@
+# Sardeenz Documentation
+
+Welcome to the Sardeenz documentation! This directory contains comprehensive guides for understanding, developing, deploying, and using the platform.
+
+## Quick Navigation
+
+### 📚 Core Documentation
+
+| Document | Description |
+|----------|-------------|
+| [**Architecture**](./architecture.md) | System architecture, design decisions, and technical details |
+| [**API Guide**](./api-guide.md) | API reference with code examples for Controller and Proxy APIs |
+| [**Deployment Guide**](./deployment.md) | Container building and OpenShift/Kubernetes deployment |
+
+### 🔧 Technical Resources
+
+| Resource | Description |
+|----------|-------------|
+| [**KVCached**](./kvcached/) | GPU memory sharing documentation and setup guides |
+| [**Specifications**](../specs/001-multi-model-platform/) | Design specifications, planning documents, and data models |
+
+### 🚀 Getting Started
+
+**New to Sardeenz?** Start here:
+
+1. **Understand the Project**
+   - Read the [project overview](../CLAUDE.md#project-overview) in CLAUDE.md
+   - Review [architecture.md](./architecture.md) for system design
+
+2. **Set Up Development Environment**
+   - Follow [quick start](../CLAUDE.md#quick-start) in CLAUDE.md
+   - Review [common commands](../CLAUDE.md#common-commands)
+
+3. **Deploy to Production**
+   - Read [deployment.md](./deployment.md) for container and OpenShift setup
+   - Configure authentication and monitoring
+
+4. **Use the APIs**
+   - Explore [api-guide.md](./api-guide.md) for API examples
+   - Test with provided code snippets (Python, JavaScript, curl)
+
+## Documentation by Role
+
+### 🧑‍💻 Developers
+
+**Building features and fixing bugs?**
+
+- [Architecture](./architecture.md) - Understand system components and data flow
+- [API Guide](./api-guide.md#code-examples) - Integration code examples
+- [CLAUDE.md](../CLAUDE.md#common-commands) - Development workflow commands
+- [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
+
+**Key Files:**
+- `apps/backend/` - Fastify backend source code
+- `apps/frontend/` - React + PatternFly dashboard
+- `packages/types/` - Shared TypeScript types
+
+### 🏗️ DevOps Engineers
+
+**Deploying and managing the platform?**
+
+- [Deployment Guide](./deployment.md) - Container build and OpenShift deployment
+- [Deployment Guide: Configuration](./deployment.md#configuration) - Environment variables
+- [Deployment Guide: Monitoring](./deployment.md#monitoring) - Prometheus metrics setup
+- [Deployment Guide: Troubleshooting](./deployment.md#troubleshooting) - Common issues
+
+**Key Resources:**
+- GPU-enabled OpenShift cluster setup
+- Model storage (PVC or S3)
+- OAuth/OIDC integration
+
+### 📊 Data Scientists / ML Engineers
+
+**Loading and using models?**
+
+- [API Guide: Controller API](./api-guide.md#controller-api) - Load/unload models
+- [API Guide: Proxy API](./api-guide.md#proxy-api) - Inference requests (OpenAI-compatible)
+- [KVCached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
+- [Architecture: Memory Management](./architecture.md#memory-management) - GPU allocation strategy
+
+**Supported Models:**
+- Any model compatible with vLLM (Llama, Mistral, Qwen, etc.)
+- HuggingFace format or local paths
+
+### 🎨 Frontend Developers
+
+**Working on the dashboard?**
+
+- [Architecture: Admin Dashboard](./architecture.md#3-admin-dashboard) - Dashboard component overview
+- [CLAUDE.md](../CLAUDE.md#common-commands) - Frontend development commands
+- [PatternFly 6 Documentation](https://www.patternfly.org/v6/) - UI component library
+
+**Key Files:**
+- `apps/frontend/src/components/` - Reusable UI components
+- `apps/frontend/src/pages/` - Page-level components
+- `apps/frontend/src/hooks/` - Custom React hooks
+
+## Document Index
+
+### Architecture & Design
+
+| Document | Topics Covered |
+|----------|----------------|
+| [architecture.md](./architecture.md) | System overview, technology stack, component architecture, data model, process management, memory management, security, performance |
+| [specs/spec.md](../specs/001-multi-model-platform/spec.md) | Feature requirements, priorities, user stories |
+| [specs/plan.md](../specs/001-multi-model-platform/plan.md) | Implementation plan, milestones, timeline |
+| [specs/data-model.md](../specs/001-multi-model-platform/data-model.md) | Entity schemas, relationships, validation rules |
+
+### API & Integration
+
+| Document | Topics Covered |
+|----------|----------------|
+| [api-guide.md](./api-guide.md) | Controller API (load/unload models), Proxy API (inference), authentication, error handling, code examples (Python, JavaScript, curl) |
+| [specs/contracts/](../specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available) |
+
+### Deployment & Operations
+
+| Document | Topics Covered |
+|----------|----------------|
+| [deployment.md](./deployment.md) | Container build, Docker Compose, OpenShift deployment, configuration, health checks, monitoring, troubleshooting |
+| [kvcached/](./kvcached/) | KVCached installation, configuration, memory segment management |
+
+### Development Workflow
+
+| Document | Topics Covered |
+|----------|----------------|
+| [CLAUDE.md](../CLAUDE.md) | Project overview, quick start, common commands, active technologies |
+| [specs/quickstart.md](../specs/001-multi-model-platform/quickstart.md) | Developer quickstart guide |
+
+## Key Concepts
+
+### Controller API
+
+The **Controller API** manages the lifecycle of model instances:
+- **Load models** dynamically without downtime
+- **Unload models** to free GPU memory
+- **Query status** of all running models
+- **Monitor metrics** (GPU usage, request counts)
+
+**Base URL:** `http://localhost:3000/api/v1/`
+
+**Authentication:** OAuth 2.0 / OIDC with RBAC
+
+### Proxy API
+
+The **Proxy API** provides a unified inference endpoint:
+- **OpenAI-compatible** format (drop-in replacement)
+- **Routes requests** to the correct model instance
+- **Streaming support** via Server-Sent Events (SSE)
+- **<50ms routing overhead** (performance target)
+
+**Base URL:** `http://localhost:8000/v1/`
+
+**Compatible with:** OpenAI Python SDK, OpenAI JavaScript SDK, curl
+
+### KVCached
+
+**KVCached** is a GPU memory sharing tool that enables multiple vLLM instances to coexist on a single GPU:
+- **IPC segments** for shared KV cache
+- **Memory limits** enforced per model
+- **Dynamic allocation** based on demand
+
+See [kvcached/README.md](./kvcached/README.md) for detailed setup instructions.
+
+### Model Instance Lifecycle
+
+```
+┌─────────────┐
+│   STARTING  │  ← Model loading, process spawning
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   ACTIVE    │  ← Serving requests, healthy
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   STOPPING  │  ← Graceful shutdown
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   STOPPED   │  ← Process terminated, memory freed
+└─────────────┘
+
+       ┌─────────────┐
+       │   FAILED    │  ← Error during startup or runtime
+       └─────────────┘
+```
+
+## Performance Targets
+
+| Metric | Target | Status |
+|--------|--------|--------|
+| **Proxy Routing Overhead** | <50ms (p95) | 🔴 CRITICAL |
+| **Model Load Time** | <60s (1-3B params) | 🟡 Target |
+| **Model Unload Time** | <30s | 🟡 Target |
+| **Concurrent Models** | 3-5 (24GB GPU) | 🟡 Target |
+| **Request Throughput** | vLLM native + <5% overhead | 🟡 Target |
+
+## FAQ
+
+<details>
+<summary><strong>Can I use this with non-NVIDIA GPUs?</strong></summary>
+
+No, vLLM and KVCached require NVIDIA GPUs with CUDA support. AMD GPUs (ROCm) are not currently supported.
+</details>
+
+<details>
+<summary><strong>Is this compatible with the OpenAI Python SDK?</strong></summary>
+
+Yes! The Proxy API is OpenAI-compatible. Just point your OpenAI client to the proxy URL:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="not-needed")
+```
+</details>
+
+<details>
+<summary><strong>How many models can I run simultaneously?</strong></summary>
+
+It depends on your GPU memory. Example on a 24GB GPU:
+- 3-5 small models (1-3B params)
+- 2-3 medium models (7B params)
+- 1 large model (13B+ params) + 1-2 small models
+
+Use KVCached to optimize memory sharing.
+</details>
+
+<details>
+<summary><strong>Can I deploy this on CPU-only machines?</strong></summary>
+
+No, vLLM requires GPU acceleration. CPU-only inference is not supported.
+</details>
+
+<details>
+<summary><strong>Is persistent storage required?</strong></summary>
+
+For the PoC phase, no database is required (in-memory storage). Model files can be stored on PVC, NFS, or object storage (S3).
+</details>
+
+<details>
+<summary><strong>How do I enable authentication?</strong></summary>
+
+Set OAuth environment variables:
+- `OAUTH_ENABLED=true`
+- `OAUTH_ISSUER_URL=<your-keycloak-url>`
+- `OAUTH_CLIENT_ID=<client-id>`
+- `OAUTH_CLIENT_SECRET=<client-secret>`
+
+See [deployment.md](./deployment.md#configuration) for details.
+</details>
+
+## Contributing
+
+This project follows the principles defined in [`.specify/memory/constitution.md`](../specs/001-multi-model-platform/):
+
+- **Type Safety**: TypeScript strict mode
+- **Performance-First**: <50ms routing overhead
+- **API-First Design**: OpenAPI 3.1 specifications
+- **Security by Design**: OAuth/OIDC + RBAC
+- **Observability**: Prometheus metrics, structured logging
+
+Before contributing, read:
+1. [Architecture](./architecture.md) - System design
+2. [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
+3. [CLAUDE.md](../CLAUDE.md) - Development setup
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/rh-aiservices-bu/sardeenz/issues) (if public repo)
+- **Specifications**: See [specs/001-multi-model-platform/](../specs/001-multi-model-platform/)
+- **Documentation**: This directory
+
+## License
+
+*To be determined*
+
+---
+
+**Last Updated:** 2025-11-11
+**Project Status:** Early Development (001-multi-model-platform)

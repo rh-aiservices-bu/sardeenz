@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sardeenz
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: ml-platform
+    app.kubernetes.io/part-of: sardeenz
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sardeenz
+  strategy:
+    type: Recreate  # Required for GPU workloads - cannot run multiple replicas on same GPU
+  template:
+    metadata:
+      labels:
+        app: sardeenz
+        app.kubernetes.io/name: sardeenz
+        app.kubernetes.io/component: ml-platform
+    spec:
+      # GPU node selector - target nodes with NVIDIA GPUs
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+
+      # Toleration for GPU nodes (if they are tainted)
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      containers:
+        - name: sardeenz
+          image: quay.io/sardeenz/sardeenz:latest
+          imagePullPolicy: Always
+
+          ports:
+            - name: backend
+              containerPort: 3000
+              protocol: TCP
+            - name: frontend
+              containerPort: 80
+              protocol: TCP
+
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: PORT
+            - name: HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: HOST
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: LOG_LEVEL
+            - name: ENABLE_KVCACHED
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: ENABLE_KVCACHED
+            - name: KVCACHED_AUTOPATCH
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: KVCACHED_AUTOPATCH
+            - name: VLLM_BASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: VLLM_BASE_PORT
+            - name: VLLM_MAX_INSTANCES
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: VLLM_MAX_INSTANCES
+            # OAuth credentials from Secret
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-oauth
+                  key: client-id
+                  optional: true
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-oauth
+                  key: client-secret
+                  optional: true
+            - name: OAUTH_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-oauth
+                  key: issuer-url
+                  optional: true
+
+          # Resource requests and limits
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: 1
+            limits:
+              cpu: "8"
+              memory: "32Gi"
+              nvidia.com/gpu: 1
+
+          # Liveness probe - checks if container is healthy
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: backend
+              scheme: HTTP
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+
+          # Readiness probe - checks if container is ready to serve traffic
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: backend
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+
+          # Startup probe - gives container time to start before liveness/readiness kicks in
+          startupProbe:
+            httpGet:
+              path: /health
+              port: backend
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 12  # 2 minutes (12 * 10s) to start
+
+          volumeMounts:
+            - name: huggingface-cache
+              mountPath: /root/.cache/huggingface
+
+      volumes:
+        - name: huggingface-cache
+          persistentVolumeClaim:
+            claimName: sardeenz-model-cache
+
+      # Security context
+      securityContext:
+        fsGroup: 0
+        runAsNonRoot: false  # vLLM requires root for GPU access in some environments
