@@ -31,6 +31,8 @@ export default tseslint.config(
         ...globals.es2022,
       },
       parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
         ecmaFeatures: {
           jsx: true,
         },

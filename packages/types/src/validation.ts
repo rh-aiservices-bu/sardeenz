@@ -51,6 +51,7 @@ export const ResourceMetricsSchema = Type.Object({
 export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
   max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  extra_args: Type.Optional(Type.Array(Type.String())),
 })
 
 export const LoadModelResponseSchema = Type.Object({
@@ -67,9 +68,18 @@ export const UnloadModelResponseSchema = Type.Object({
   unloaded_at: Type.String({ format: 'date-time' }),
 })
 
+export const ModelMemoryMetricsDTOSchema = Type.Object({
+  weights_memory_gib: Type.Number(),
+  cuda_graph_memory_gib: Type.Number(),
+  kv_cache_available_gib: Type.Number(),
+  kv_cache_per_request_mib: Type.Number(),
+  max_model_len: Type.Integer(),
+})
+
 export const ModelInstanceDTOSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   model_path: Type.String(),
+  model_name: Type.String(),
   status: ModelStatusSchema,
   port: Type.Integer(),
   process_id: Type.Integer(),
@@ -78,6 +88,9 @@ export const ModelInstanceDTOSchema = Type.Object({
   loaded_at: Type.String({ format: 'date-time' }),
   ready_at: Type.Optional(Type.String({ format: 'date-time' })),
   error_message: Type.Optional(Type.String()),
+  memory_metrics: Type.Optional(ModelMemoryMetricsDTOSchema),
+  has_chat_template: Type.Optional(Type.Boolean()),
+  launch_command: Type.Optional(Type.String()),
 })
 
 export const ListModelsResponseSchema = Type.Object({

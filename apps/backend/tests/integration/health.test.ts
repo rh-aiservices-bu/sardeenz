@@ -15,11 +15,11 @@ describe('Health Routes', () => {
     await app.close()
   })
 
-  describe('GET /health', () => {
+  describe('GET /api/health', () => {
     it('should return healthy status', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/health',
+        url: '/api/health',
       })
 
       expect(response.statusCode).toBe(200)
@@ -34,7 +34,7 @@ describe('Health Routes', () => {
     it('should return valid ISO timestamp', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/health',
+        url: '/api/health',
       })
 
       const body = JSON.parse(response.payload)
@@ -43,11 +43,11 @@ describe('Health Routes', () => {
     })
   })
 
-  describe('GET /health/ready', () => {
+  describe('GET /api/health/ready', () => {
     it('should return ready status', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/health/ready',
+        url: '/api/health/ready',
       })
 
       expect(response.statusCode).toBe(200)
@@ -58,11 +58,11 @@ describe('Health Routes', () => {
     })
   })
 
-  describe('GET /health/live', () => {
+  describe('GET /api/health/live', () => {
     it('should return alive status', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/health/live',
+        url: '/api/health/live',
       })
 
       expect(response.statusCode).toBe(200)

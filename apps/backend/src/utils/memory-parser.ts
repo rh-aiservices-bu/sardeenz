@@ -3,6 +3,7 @@
  */
 
 import type { LogEntry } from '../services/process-log-buffer.js'
+import type { ModelMemoryMetrics } from '@sardeenz/types'
 
 /**
  * Memory information extracted from vLLM logs
@@ -33,6 +34,23 @@ const MEMORY_PATTERNS = {
 
   // "Free memory on device (6.53/7.62 GiB)" - from kvcached warning
   gpuTotal: /Free memory on device \([\d.]+\/([\d.]+) GiB\)/,
+
+  // "GPU KV cache size: 284,928 tokens"
+  kvCacheTotalTokens: /GPU KV cache size: ([\d,]+) tokens/,
+
+  // "Using max model len 4096"
+  maxModelLen: /Using max model len (\d+)/,
+}
+
+/**
+ * Regex patterns for extracting process IDs from vLLM logs
+ */
+const PID_PATTERNS = {
+  // "EngineCore_DP0 pid=76355" - the process that allocates GPU VRAM
+  engineCore: /EngineCore_DP\d+ pid=(\d+)/,
+
+  // "APIServer pid=76195" - the main API server process (for reference)
+  apiServer: /APIServer pid=(\d+)/,
 }
 
 /**
@@ -131,4 +149,120 @@ export function calculateGpuUtilization(
 
   // Clamp to 0.0 - 1.0 range
   return Math.min(1.0, Math.max(0.0, usedGB / gpuTotalGB))
+}
+
+/**
+ * Parse memory metrics from vLLM process logs into ModelMemoryMetrics format
+ *
+ * @param logs - Array of log entries from the process buffer
+ * @param fallbackMaxTokens - Fallback max tokens value if not found in logs
+ * @returns Parsed memory metrics or null if insufficient data
+ */
+export function parseMemoryMetrics(
+  logs: LogEntry[],
+  fallbackMaxTokens: number
+): ModelMemoryMetrics | null {
+  let weightsMemoryGiB: number | undefined
+  let cudaGraphMemoryGiB: number | undefined
+  let kvCacheAvailableGiB: number | undefined
+  let kvCacheTotalTokens: number | undefined
+  let maxModelLen: number | undefined
+
+  // Process all log lines to find metrics
+  for (const entry of logs) {
+    const content = entry.content
+
+    // Model weights
+    if (weightsMemoryGiB === undefined) {
+      const match = content.match(MEMORY_PATTERNS.modelLoading)
+      if (match) {
+        weightsMemoryGiB = parseFloat(match[1])
+      }
+    }
+
+    // CUDA graphs
+    if (cudaGraphMemoryGiB === undefined) {
+      const match = content.match(MEMORY_PATTERNS.cudaGraphs)
+      if (match) {
+        cudaGraphMemoryGiB = parseFloat(match[1])
+      }
+    }
+
+    // KV cache available
+    if (kvCacheAvailableGiB === undefined) {
+      const match = content.match(MEMORY_PATTERNS.kvCacheAvailable)
+      if (match) {
+        kvCacheAvailableGiB = parseFloat(match[1])
+      }
+    }
+
+    // KV cache total tokens
+    if (kvCacheTotalTokens === undefined) {
+      const match = content.match(MEMORY_PATTERNS.kvCacheTotalTokens)
+      if (match) {
+        kvCacheTotalTokens = parseInt(match[1].replace(/,/g, ''), 10)
+      }
+    }
+
+    // Max model len
+    if (maxModelLen === undefined) {
+      const match = content.match(MEMORY_PATTERNS.maxModelLen)
+      if (match) {
+        maxModelLen = parseInt(match[1], 10)
+      }
+    }
+  }
+
+  // Check if we have the minimum required metrics
+  if (
+    weightsMemoryGiB === undefined ||
+    cudaGraphMemoryGiB === undefined ||
+    kvCacheAvailableGiB === undefined
+  ) {
+    // Missing critical metrics
+    return null
+  }
+
+  // Use fallback for maxModelLen if not found in logs
+  const finalMaxModelLen = maxModelLen ?? fallbackMaxTokens
+
+  // Calculate KV cache per request
+  // Formula: (kvCacheAvailableGiB * 1024) / kvCacheTotalTokens * maxModelLen
+  let kvCachePerRequestMiB = 0
+
+  if (kvCacheTotalTokens && kvCacheTotalTokens > 0) {
+    const kvCacheAvailableMiB = kvCacheAvailableGiB * 1024
+    const perTokenMiB = kvCacheAvailableMiB / kvCacheTotalTokens
+    kvCachePerRequestMiB = perTokenMiB * finalMaxModelLen
+  }
+
+  return {
+    weightsMemoryGiB,
+    cudaGraphMemoryGiB,
+    kvCacheAvailableGiB,
+    kvCachePerRequestMiB: Math.round(kvCachePerRequestMiB * 100) / 100, // Round to 2 decimals
+    maxModelLen: finalMaxModelLen,
+  }
+}
+
+/**
+ * Extract EngineCore process ID from vLLM logs
+ *
+ * vLLM logs the EngineCore PID during startup with format: "EngineCore_DP0 pid=76355"
+ * The EngineCore process is the one that actually allocates GPU VRAM, not the API server.
+ *
+ * @param logs - Array of log entries from ProcessLogBuffer
+ * @returns EngineCore PID if found, null otherwise
+ */
+export function extractEngineCorePid(logs: LogEntry[]): number | null {
+  for (const entry of logs) {
+    const match = entry.content.match(PID_PATTERNS.engineCore)
+    if (match) {
+      const pid = parseInt(match[1], 10)
+      if (!isNaN(pid)) {
+        return pid
+      }
+    }
+  }
+  return null
 }

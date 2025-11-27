@@ -10,6 +10,8 @@ import {
   Spinner,
   CodeBlock,
   CodeBlockCode,
+  CodeBlockAction,
+  ClipboardCopyButton,
   Flex,
   FlexItem,
 } from '@patternfly/react-core'
@@ -40,6 +42,7 @@ export function ViewLogsDialog({
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<string>('')
   const [lineCount, setLineCount] = useState(0)
+  const [copied, setCopied] = useState(false)
 
   // Fetch logs when dialog opens
   useEffect(() => {
@@ -67,7 +70,15 @@ export function ViewLogsDialog({
     setLogs('')
     setLineCount(0)
     setError(null)
+    setCopied(false)
     onClose()
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(logs)
+    setCopied(true)
+    // Reset after 2 seconds
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -107,8 +118,24 @@ export function ViewLogsDialog({
                 overflow: 'auto',
               }}
             >
-              <CodeBlock>
-                <CodeBlockCode>{logs || 'No logs available'}</CodeBlockCode>
+              <CodeBlock
+                actions={
+                  logs ? (
+                    <CodeBlockAction>
+                      <ClipboardCopyButton
+                        id="copy-logs-button"
+                        textId="logs-code"
+                        aria-label="Copy logs to clipboard"
+                        onClick={handleCopy}
+                        variant="plain"
+                      >
+                        {copied ? 'Copied!' : 'Copy'}
+                      </ClipboardCopyButton>
+                    </CodeBlockAction>
+                  ) : undefined
+                }
+              >
+                <CodeBlockCode id="logs-code">{logs || 'No logs available'}</CodeBlockCode>
               </CodeBlock>
             </div>
           </>

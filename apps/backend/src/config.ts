@@ -26,6 +26,7 @@ export interface Config {
 
   // Logging
   logLevel: string
+  logAllRequests: boolean
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -85,4 +86,5 @@ export const config: Config = {
 
   // Logging
   logLevel: getEnv('LOG_LEVEL', 'info'),
+  logAllRequests: getEnvBool('LOG_ALL_REQUESTS', false),
 }

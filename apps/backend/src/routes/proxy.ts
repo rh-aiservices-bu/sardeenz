@@ -38,24 +38,46 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
 
       try {
         if (isStreaming) {
-          // Handle streaming response
-          reply.raw.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          })
+          // Handle streaming response - defer headers until first chunk
+          // so we can still send error response if vLLM returns an error
+          let headersSent = false
 
-          await proxyRouter.routeRequest({
+          const result = await proxyRouter.routeRequest({
             modelPath: model,
             endpoint: '/v1/completions',
             method: 'POST',
             body: request.body as unknown as Record<string, unknown>,
             streaming: true,
             onChunk: (chunk) => {
+              if (!headersSent) {
+                reply.raw.writeHead(200, {
+                  'Content-Type': 'text/event-stream',
+                  'Cache-Control': 'no-cache',
+                  Connection: 'keep-alive',
+                })
+                headersSent = true
+              }
               reply.raw.write(chunk)
             },
           })
 
+          // Check if vLLM returned an error (no chunks were sent)
+          if (result.statusCode >= 400) {
+            routingTimer({ model, endpoint: '/v1/completions' })
+            fastify.sardeenzMetrics.inferenceRequests.inc({
+              model,
+              status: 'error',
+              streaming: 'true',
+            })
+            return reply.code(result.statusCode).send(result.response)
+          }
+
+          routingTimer({ model, endpoint: '/v1/completions' })
+          fastify.sardeenzMetrics.inferenceRequests.inc({
+            model,
+            status: 'success',
+            streaming: 'true',
+          })
           reply.raw.end()
           return
         }
@@ -133,24 +155,46 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
 
       try {
         if (isStreaming) {
-          // Handle streaming response
-          reply.raw.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          })
+          // Handle streaming response - defer headers until first chunk
+          // so we can still send error response if vLLM returns an error
+          let headersSent = false
 
-          await proxyRouter.routeRequest({
+          const result = await proxyRouter.routeRequest({
             modelPath: model,
             endpoint: '/v1/chat/completions',
             method: 'POST',
             body: request.body as unknown as Record<string, unknown>,
             streaming: true,
             onChunk: (chunk) => {
+              if (!headersSent) {
+                reply.raw.writeHead(200, {
+                  'Content-Type': 'text/event-stream',
+                  'Cache-Control': 'no-cache',
+                  Connection: 'keep-alive',
+                })
+                headersSent = true
+              }
               reply.raw.write(chunk)
             },
           })
 
+          // Check if vLLM returned an error (no chunks were sent)
+          if (result.statusCode >= 400) {
+            routingTimer({ model, endpoint: '/v1/chat/completions' })
+            fastify.sardeenzMetrics.inferenceRequests.inc({
+              model,
+              status: 'error',
+              streaming: 'true',
+            })
+            return reply.code(result.statusCode).send(result.response)
+          }
+
+          routingTimer({ model, endpoint: '/v1/chat/completions' })
+          fastify.sardeenzMetrics.inferenceRequests.inc({
+            model,
+            status: 'success',
+            streaming: 'true',
+          })
           reply.raw.end()
           return
         }

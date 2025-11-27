@@ -16,11 +16,15 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
+  ClipboardCopy,
+  ClipboardCopyVariant,
+  ExpandableSection,
 } from '@patternfly/react-core'
 import { TrashIcon, FileIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
 import { ViewLogsDialog } from './ViewLogsDialog'
+import { MemoryDetailsModal } from './MemoryDetailsModal'
 import { useNotifications } from '../contexts/NotificationContext'
 
 interface ModelCardProps {
@@ -38,6 +42,7 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
   const previousErrorRef = useRef<string | null>(null)
   const [logsModalOpen, setLogsModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false)
 
   const isFailed = model.status === 'failed'
 
@@ -72,7 +77,7 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
   }
 
   return (
-    <Card>
+    <Card isCompact>
       <CardTitle>
         <Flex
           justifyContent={{ default: 'justifyContentSpaceBetween' }}
@@ -87,6 +92,10 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
       <CardBody>
         <DescriptionList isHorizontal isCompact>
           <DescriptionListGroup>
+            <DescriptionListTerm>Served model name</DescriptionListTerm>
+            <DescriptionListDescription>{model.model_name}</DescriptionListDescription>
+          </DescriptionListGroup>
+          <DescriptionListGroup>
             <DescriptionListTerm>Port</DescriptionListTerm>
             <DescriptionListDescription>{model.port}</DescriptionListDescription>
           </DescriptionListGroup>
@@ -97,18 +106,31 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
           <DescriptionListGroup>
             <DescriptionListTerm>GPU Memory</DescriptionListTerm>
             <DescriptionListDescription>
-              {formatMemoryUtilization(model.gpu_memory_utilization)}
+              <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+                <FlexItem>{formatMemoryUtilization(model.gpu_memory_utilization)}</FlexItem>
+                {model.status === 'running' && (
+                  <FlexItem>
+                    <Button
+                      variant="link"
+                      isInline
+                      onClick={() => setMemoryModalOpen(true)}
+                    >
+                      Details
+                    </Button>
+                  </FlexItem>
+                )}
+              </Flex>
             </DescriptionListDescription>
           </DescriptionListGroup>
           <DescriptionListGroup>
-            <DescriptionListTerm>Loaded</DescriptionListTerm>
+            <DescriptionListTerm>Started at</DescriptionListTerm>
             <DescriptionListDescription>
               <Flex
                 alignItems={{ default: 'alignItemsCenter' }}
                 gap={{ default: 'gapSm' }}
               >
                 <FlexItem>{formatDate(model.loaded_at)}</FlexItem>
-                {(model.status === 'active' || model.status === 'failed') && (
+                {(model.status === 'running' || model.status === 'failed') && (
                   <FlexItem>
                     <Button
                       variant="link"
@@ -125,7 +147,7 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
           </DescriptionListGroup>
           {model.ready_at && (
             <DescriptionListGroup>
-              <DescriptionListTerm>Ready</DescriptionListTerm>
+              <DescriptionListTerm>Ready at</DescriptionListTerm>
               <DescriptionListDescription>
                 {formatDate(model.ready_at)}
               </DescriptionListDescription>
@@ -142,6 +164,23 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
             </DescriptionListGroup>
           )}
         </DescriptionList>
+
+        {model.launch_command && (
+          <ExpandableSection
+            toggleText="Launch Command"
+            style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
+          >
+            <ClipboardCopy
+              isReadOnly
+              hoverTip="Copy"
+              clickTip="Copied"
+              variant={ClipboardCopyVariant.expansion}
+              isCode
+            >
+              {model.launch_command}
+            </ClipboardCopy>
+          </ExpandableSection>
+        )}
       </CardBody>
       <CardFooter>
         <Button
@@ -187,6 +226,14 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
           </Button>
         </ModalFooter>
       </Modal>
+
+      <MemoryDetailsModal
+        isOpen={memoryModalOpen}
+        onClose={() => setMemoryModalOpen(false)}
+        modelPath={model.model_path}
+        memoryMetrics={model.memory_metrics ?? null}
+        gpuMemoryUtilization={model.gpu_memory_utilization}
+      />
     </Card>
   )
 }

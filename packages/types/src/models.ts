@@ -2,7 +2,8 @@
 
 export enum ModelStatus {
   Starting = 'starting',
-  Active = 'active',
+  Running = 'running',
+  Sleeping = 'sleeping',
   Stopping = 'stopping',
   Failed = 'failed',
 }
@@ -26,6 +27,22 @@ export enum OperationType {
   Restart = 'restart',
 }
 
+// Memory metrics parsed from vLLM logs
+
+/** Memory metrics parsed from vLLM logs after model loading */
+export interface ModelMemoryMetrics {
+  /** Model weights memory in GiB */
+  weightsMemoryGiB: number
+  /** CUDA graph capture memory in GiB */
+  cudaGraphMemoryGiB: number
+  /** Total available KV cache memory in GiB */
+  kvCacheAvailableGiB: number
+  /** KV cache memory per max-size request in MiB */
+  kvCachePerRequestMiB: number
+  /** Max model context length used for calculation */
+  maxModelLen: number
+}
+
 // Entity interfaces
 
 export interface ModelConfiguration {
@@ -40,15 +57,26 @@ export interface ModelConfiguration {
 export interface ModelInstance {
   id: string
   modelPath: string
+  /** Model name used by vLLM for inference (from --served-model-name or defaults to modelPath) */
+  modelName: string
   status: ModelStatus
   port: number
+  /** Main vLLM API Server process ID */
   processId: number
+  /** vLLM EngineCore process ID (consumes GPU VRAM, extracted from logs) */
+  engineCorePid?: number
   maxTokens: number
   gpuMemoryUtilization: number
   loadedAt: Date
   readyAt?: Date
   errorMessage?: string
   ipcSegmentName: string
+  /** Parsed memory metrics (populated after model becomes active) */
+  memoryMetrics?: ModelMemoryMetrics
+  /** Whether model supports chat templates (true) or needs manual wrapping (false) */
+  hasChatTemplate?: boolean
+  /** Full vLLM launch command for debugging/reproduction */
+  launchCommand?: string
 }
 
 export interface InferenceRequest {

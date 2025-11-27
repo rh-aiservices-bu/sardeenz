@@ -104,6 +104,21 @@ Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI devel
 
 ## Recent Changes
 
+- 001-multi-model-platform: Fixed GPU memory visualization for duplicate model instances
+  - Added `instance_id` field to `/api/memory/usage` response for unique identification
+  - Display names now include suffix for duplicates: "SmolLM2-135M", "SmolLM2-135M (2)", etc.
+  - Colors are now derived from instance ID (not model path) for distinct per-instance colors
+  - Fixed chart animation/flickering caused by key collisions when same model loaded multiple times
+- 001-multi-model-platform: Fixed GPU memory tracking by extracting vLLM EngineCore PID from logs
+  - vLLM spawns API Server (no GPU) and EngineCore (allocates VRAM) as separate processes
+  - New `engineCorePid` field in `ModelInstance` stores the GPU-using process PID
+  - Memory monitor now uses EngineCore PID for accurate per-model GPU breakdown
+- 001-multi-model-platform: Added GPU/KVCache memory visualization panel on Model Management page using Nivo charts
+  - Two stacked horizontal bars: KVCache (shared pool) and GPU (per-model breakdown)
+  - Configurable refresh interval (None, 5s, 15s, 30s, 1m)
+  - Color-coded per-model memory segments with tooltips
+- 001-multi-model-platform: Enhanced `/api/memory/usage` endpoint with KVCache metrics and per-model GPU breakdown
+- 001-multi-model-platform: Added memory metrics parsing from vLLM logs (weights, CUDA graphs, KV cache) with frontend modal display
 - 001-multi-model-platform: Implemented async model loading with SSE event streaming, process log buffer, and intelligent error parsing
 - 001-multi-model-platform: Added TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target
 - 001-multi-model-platform: Added in-memory storage for PoC phase (Map data structures)

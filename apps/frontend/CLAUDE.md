@@ -233,38 +233,88 @@ frontend/
 ## 🌐 Routing
 
 - **React Router v7** for navigation
-- Routes defined in `src/App.tsx`
+- **Routes defined in `src/routes.tsx`** - Centralized route configuration
+- Auto-generated navigation from route metadata
 - **Main routes**:
-  - `/` - Dashboard (model overview, GPU metrics summary)
-  - `/models` - Model management page (list, load, unload)
-  - `/models/:id` - Model details page (config, logs, metrics)
-  - `/metrics` - System metrics page (GPU memory, request rates)
-- **Protected routes**: All routes require OAuth/OIDC authentication
-- **Role-based access**: Admin actions (load/unload) require `admin` role
+  - `/` - Model Management (model list, load, unload, memory visualization)
+  - `/gpu` - GPU Info (GPU metrics and monitoring)
+  - `/benchmark` - Model Benchmark (performance testing)
+  - `/settings` - Settings (application configuration)
 
-### Routing Example
+### Route Configuration
+
+Routes are centrally defined in `src/routes.tsx` with metadata for navigation:
 
 ```tsx
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Dashboard, ModelManagement, ModelDetails, Metrics } from './pages';
-import { AppLayout } from './components/Layout';
-import { ProtectedRoute } from './components/Auth';
+// src/routes.tsx
+import ModelManagement from './pages/ModelManagement'
+import GpuInfo from './pages/GpuInfo'
+import ModelBenchmark from './pages/ModelBenchmark'
+import Settings from './pages/Settings'
+
+export interface RouteConfig {
+  path: string
+  element: JSX.Element
+  label: string
+  itemId: string
+}
+
+export const routes: RouteConfig[] = [
+  { path: '/', element: <ModelManagement />, label: 'Model Management', itemId: 'model-management' },
+  { path: '/gpu', element: <GpuInfo />, label: 'GPU Info', itemId: 'gpu-info' },
+  { path: '/benchmark', element: <ModelBenchmark />, label: 'Model Benchmark', itemId: 'model-benchmark' },
+  { path: '/settings', element: <Settings />, label: 'Settings', itemId: 'settings' },
+]
+```
+
+### App Integration
+
+App.tsx imports routes and auto-generates both routing and navigation:
+
+```tsx
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { routes } from './routes'
 
 function App() {
+  const location = useLocation()
+
+  // Auto-generated navigation sidebar
+  const sidebar = (
+    <PageSidebar isSidebarOpen={isSidebarOpen}>
+      <PageSidebarBody>
+        <Nav>
+          <NavList>
+            {routes.map((route) => (
+              <NavItem key={route.itemId} itemId={route.itemId} isActive={location.pathname === route.path}>
+                <Link to={route.path}>{route.label}</Link>
+              </NavItem>
+            ))}
+          </NavList>
+        </Nav>
+      </PageSidebarBody>
+    </PageSidebar>
+  )
+
+  // Auto-generated routes
   return (
-    <BrowserRouter>
+    <Page sidebar={sidebar}>
       <Routes>
-        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/models" element={<ModelManagement />} />
-          <Route path="/models/:id" element={<ModelDetails />} />
-          <Route path="/metrics" element={<Metrics />} />
-        </Route>
+        {routes.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
       </Routes>
-    </BrowserRouter>
-  );
+    </Page>
+  )
 }
 ```
+
+### Adding New Routes
+
+To add a new route:
+
+1. Add entry to routes array in `src/routes.tsx`
+2. Navigation and routing automatically update
+3. No changes needed in App.tsx
 
 ## 🧪 Testing Guidelines
 

@@ -321,29 +321,40 @@ For completeness, here's what the Controller provides that we're giving up:
    DELETE /api/models/meta-llama%2FLlama-3.2-1B
    ```
 
-2. **Backend stops vLLM process**
+2. **Backend kills all vLLM processes with SIGKILL**
    ```python
    model_info = self.running_models["meta-llama/Llama-3.2-1B"]
    process = model_info["process"]
 
-   # Graceful shutdown
-   process.terminate()
+   # Get all descendant PIDs (includes EngineCore which uses GPU)
+   descendants = get_descendant_pids(process.pid)
 
-   # Wait up to 30 seconds
-   try:
-       process.wait(timeout=30)
-   except subprocess.TimeoutExpired:
-       # Force kill if needed
-       process.kill()
+   # Kill descendants first (EngineCore must be killed to free GPU memory)
+   for pid in descendants:
+       try:
+           os.kill(pid, signal.SIGKILL)
+       except ProcessLookupError:
+           pass  # Already exited
+
+   # Then kill the parent process
+   process.kill()  # SIGKILL
+   process.wait()
    ```
 
-3. **Backend cleans up IPC segment**
-   ```python
-   # Get IPC segment name (usually VLLM_MODEL_NAME)
-   ipc_segment = f"VLLM_LLAMA_3_2_1B"
+   > **Important:** We use SIGKILL instead of SIGTERM because KVCached registers
+   > Python signal handlers that delete the shared IPC segment (`kvcached_mem_info`)
+   > on SIGTERM. Using SIGKILL bypasses these handlers, allowing other models to
+   > continue using the shared memory.
+   >
+   > **Note:** SIGKILL doesn't propagate to child processes. vLLM spawns an EngineCore
+   > process that allocates GPU VRAM, so we must explicitly kill all descendants
+   > before killing the parent to ensure GPU memory is freed.
 
-   # Delete via kvctl
-   subprocess.run(["kvctl", "delete", ipc_segment])
+3. **Do NOT delete IPC segment**
+   ```python
+   # DO NOT call kvctl delete here!
+   # All models share the same IPC segment (kvcached_mem_info)
+   # Deleting it would break other running models
    ```
 
 4. **Backend removes from registry**
@@ -359,6 +370,21 @@ For completeness, here's what the Controller provides that we're giving up:
      "unloaded_at": "2025-11-08T10:35:00Z"
    }
    ```
+
+**IPC Cleanup (Server Shutdown Only):**
+
+The shared IPC segment is only deleted when the server shuts down and all models are unloaded:
+
+```python
+def shutdown_all(self):
+    """Shutdown all models and clean up shared resources."""
+    # Unload all models first
+    for model_path in list(self.running_models.keys()):
+        self.unload_model(model_path)
+
+    # Now delete the shared IPC segment
+    subprocess.run(["kvctl", "delete", "kvcached_mem_info"])
+```
 
 ### Request Routing
 
@@ -544,26 +570,25 @@ class ModelManager:
         model_info = self.running_models[model_path]
         process = model_info["process"]
 
-        # Graceful shutdown
-        process.terminate()
+        # Get all descendant PIDs (includes EngineCore which uses GPU)
+        descendants = self._get_descendant_pids(process.pid)
 
-        try:
-            process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            # Force kill
-            process.kill()
-            process.wait()
+        # Kill descendants first with SIGKILL (frees GPU memory)
+        # SIGKILL doesn't propagate to children, so we must kill them explicitly
+        for pid in descendants:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Already exited
 
-        # Clean up IPC segment
-        ipc_segment = self._get_ipc_segment_name(model_path)
-        try:
-            subprocess.run(
-                ["kvctl", "delete", ipc_segment],
-                capture_output=True,
-                timeout=5
-            )
-        except:
-            pass  # Non-critical
+        # Kill parent process with SIGKILL (bypasses Python signal handlers
+        # that would delete the shared IPC segment)
+        process.kill()
+        process.wait()
+
+        # NOTE: Do NOT delete IPC segment here!
+        # All models share 'kvcached_mem_info' - deleting it breaks other models
+        # IPC is only deleted on server shutdown (see shutdown_all)
 
         # Remove from registry
         del self.running_models[model_path]
@@ -574,11 +599,23 @@ class ModelManager:
             "unloaded_at": datetime.now().isoformat()
         }
 
-    def _get_ipc_segment_name(self, model_path: str) -> str:
-        """Generate IPC segment name from model path."""
-        # Convert "meta-llama/Llama-3.2-1B" -> "VLLM_META_LLAMA_LLAMA_3_2_1B"
-        name = model_path.replace("/", "_").replace("-", "_").replace(".", "_")
-        return f"VLLM_{name.upper()}"
+    def _get_descendant_pids(self, parent_pid: int) -> list:
+        """Get all descendant PIDs using /proc filesystem."""
+        descendants = []
+        queue = [parent_pid]
+
+        while queue:
+            pid = queue.pop(0)
+            try:
+                children_path = f"/proc/{pid}/task/{pid}/children"
+                with open(children_path) as f:
+                    child_pids = [int(p) for p in f.read().split() if p]
+                    descendants.extend(child_pids)
+                    queue.extend(child_pids)
+            except (FileNotFoundError, ProcessLookupError):
+                pass
+
+        return descendants
 
     def list_models(self) -> dict:
         """List all running models."""
@@ -620,10 +657,20 @@ class ModelManager:
             }
 
     def shutdown_all(self):
-        """Shutdown all running models."""
+        """Shutdown all running models and clean up shared resources."""
         models = list(self.running_models.keys())
         for model_path in models:
             self.unload_model(model_path)
+
+        # Delete the shared KVCached IPC segment now that all models are gone
+        try:
+            subprocess.run(
+                ["kvctl", "delete", "kvcached_mem_info"],
+                capture_output=True,
+                timeout=5
+            )
+        except:
+            pass  # Non-critical if segment doesn't exist
 
 # Usage
 manager = ModelManager()

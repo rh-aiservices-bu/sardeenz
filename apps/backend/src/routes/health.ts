@@ -3,7 +3,7 @@ import { Type } from '@sinclair/typebox'
 
 export default async function healthRoutes(fastify: FastifyInstance) {
   fastify.get(
-    '/health',
+    '/api/health',
     {
       schema: {
         tags: ['health'],
@@ -17,6 +17,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
           }),
         },
       },
+      config: { logRequests: false },
     },
     async () => {
       return {
@@ -29,7 +30,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
   )
 
   fastify.get(
-    '/health/ready',
+    '/api/health/ready',
     {
       schema: {
         tags: ['health'],
@@ -41,6 +42,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
           }),
         },
       },
+      config: { logRequests: false },
     },
     async () => {
       return {
@@ -51,7 +53,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
   )
 
   fastify.get(
-    '/health/live',
+    '/api/health/live',
     {
       schema: {
         tags: ['health'],
@@ -63,6 +65,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
           }),
         },
       },
+      config: { logRequests: false },
     },
     async () => {
       return {

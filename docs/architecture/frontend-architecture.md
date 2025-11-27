@@ -179,57 +179,112 @@ const ModelList: React.FC = () => {
 
 ### Route Structure
 
-| Path | Component | Purpose | Auth Required |
-|------|-----------|---------|---------------|
-| `/` | Dashboard | Model overview + metrics summary | Yes |
-| `/models` | ModelManagement | List all models, load/unload | Yes |
-| `/models/:id` | ModelDetails | Single model details, logs, metrics | Yes |
-| `/metrics` | Metrics | System-wide metrics and charts | Yes |
+| Path | Component | Purpose |
+|------|-----------|---------|
+| `/` | ModelManagement | Model list, load, unload, memory visualization |
+| `/gpu` | GpuInfo | GPU metrics and monitoring |
+| `/benchmark` | ModelBenchmark | Performance testing |
+| `/settings` | Settings | Application configuration |
 
-### Route Configuration
+### Centralized Route Configuration
+
+Routes are defined in a centralized configuration file (`src/routes.tsx`) that serves as the single source of truth for both routing and navigation:
+
+```tsx
+// src/routes.tsx
+import ModelManagement from './pages/ModelManagement'
+import GpuInfo from './pages/GpuInfo'
+import ModelBenchmark from './pages/ModelBenchmark'
+import Settings from './pages/Settings'
+
+export interface RouteConfig {
+  path: string
+  element: JSX.Element
+  label: string        // Navigation display label
+  itemId: string       // NavItem identifier
+}
+
+export const routes: RouteConfig[] = [
+  {
+    path: '/',
+    element: <ModelManagement />,
+    label: 'Model Management',
+    itemId: 'model-management',
+  },
+  {
+    path: '/gpu',
+    element: <GpuInfo />,
+    label: 'GPU Info',
+    itemId: 'gpu-info',
+  },
+  {
+    path: '/benchmark',
+    element: <ModelBenchmark />,
+    label: 'Model Benchmark',
+    itemId: 'model-benchmark',
+  },
+  {
+    path: '/settings',
+    element: <Settings />,
+    label: 'Settings',
+    itemId: 'settings',
+  },
+]
+```
+
+### App Integration with Auto-Generated Routes
+
+The `App.tsx` component imports the route configuration and automatically generates both the route definitions and navigation sidebar:
 
 ```tsx
 // src/App.tsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { routes } from './routes'
 
 function App() {
+  const location = useLocation()
+
+  // Auto-generated navigation sidebar from routes
+  const sidebar = (
+    <PageSidebar isSidebarOpen={isSidebarOpen}>
+      <PageSidebarBody>
+        <Nav>
+          <NavList>
+            {routes.map((route) => (
+              <NavItem
+                key={route.itemId}
+                itemId={route.itemId}
+                isActive={location.pathname === route.path}
+              >
+                <Link to={route.path}>{route.label}</Link>
+              </NavItem>
+            ))}
+          </NavList>
+        </Nav>
+      </PageSidebarBody>
+    </PageSidebar>
+  )
+
+  // Auto-generated route definitions
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-
-          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/models" element={<ModelManagement />} />
-            <Route path="/models/:id" element={<ModelDetails />} />
-            <Route path="/metrics" element={<Metrics />} />
-          </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
-  );
+    <Page masthead={masthead} sidebar={sidebar}>
+      <Routes>
+        {routes.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+      </Routes>
+    </Page>
+  )
 }
 ```
 
-### Protected Route Implementation
+### Benefits of Centralized Routing
 
-```tsx
-// src/components/Auth/ProtectedRoute.tsx
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-
-export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) return <Spinner />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-
-  return <>{children}</>;
-};
-```
+1. **Single Source of Truth**: Routes and navigation are defined in one place
+2. **Automatic Synchronization**: Navigation automatically updates when routes change
+3. **Type Safety**: TypeScript ensures all routes have required metadata
+4. **Easy Maintenance**: Adding a new route requires only one change in `routes.tsx`
+5. **Reduced Duplication**: No need to maintain separate route and navigation definitions
 
 ## Authentication Flow
 
