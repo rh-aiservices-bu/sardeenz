@@ -151,6 +151,26 @@ export interface UsageInfo {
   total_tokens: number
 }
 
+// Instance-specific responses
+
+export interface ListInstancesResponse {
+  instances: ModelInstanceDTO[]
+  total: number
+}
+
+export interface UnloadInstanceResponse {
+  status: 'success'
+  instance_id: string
+  model_path: string
+  unloaded_at: string
+}
+
+export interface GetInstanceLogsResponse {
+  instance_id: string
+  logs: string
+  line_count: number
+}
+
 // Error responses
 
 export interface ErrorResponse {
@@ -159,4 +179,25 @@ export interface ErrorResponse {
     type: string
     code?: string
   }
+}
+
+// Settings API types
+
+export interface SettingsResponse {
+  hf_token: string | null // Masked token (last 4 chars) or null
+  hf_token_source: 'env' | 'runtime' | null // Where token originated
+}
+
+export interface UpdateSettingsRequest {
+  hf_token?: string // Full token when updating
+}
+
+export interface TestHfTokenRequest {
+  token: string
+}
+
+export interface TestHfTokenResponse {
+  valid: boolean
+  username?: string // HF username if valid
+  error?: string // Error message if invalid
 }

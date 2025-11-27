@@ -57,6 +57,7 @@ Intelligent extraction of meaningful errors from vLLM output:
 | `src/routes/proxy.ts` | OpenAI-compatible inference proxy |
 | `src/routes/memory.ts` | GPU memory info via kvctl |
 | `src/routes/orphans.ts` | Orphan process detection |
+| `src/routes/settings.ts` | Application settings (HF token) |
 
 ## Stores (In-Memory)
 
@@ -64,6 +65,7 @@ Intelligent extraction of meaningful errors from vLLM output:
 |-------|---------|
 | `src/stores/model-store.ts` | ModelInstance tracking by ID/path |
 | `src/stores/operation-store.ts` | ControllerOperation audit trail |
+| `src/stores/runtime-settings.ts` | Runtime settings (HF token) |
 
 ## Model Loading Flow
 
@@ -114,6 +116,8 @@ npm run type-check -w apps/backend  # TypeScript type check
 
 ## Environment Variables
 
+See `apps/backend/.env.example` for a complete reference.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 3000 | Backend server port |
@@ -121,6 +125,7 @@ npm run type-check -w apps/backend  # TypeScript type check
 | `ENABLE_KVCACHED` | true | Enable KVCached GPU sharing |
 | `KVCACHED_AUTOPATCH` | 1 | Auto-patch vLLM for KVCached |
 | `LOG_LEVEL` | info | Pino log level |
+| `HF_TOKEN` | (none) | HuggingFace token for gated models |
 
 ## Testing Notes
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Card,
   CardTitle,
@@ -11,24 +11,35 @@ import {
   DescriptionListDescription,
   Flex,
   FlexItem,
+  Modal,
+  ModalVariant,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from '@patternfly/react-core'
-import { TrashIcon } from '@patternfly/react-icons'
+import { TrashIcon, FileIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
+import { ViewLogsDialog } from './ViewLogsDialog'
 import { useNotifications } from '../contexts/NotificationContext'
 
 interface ModelCardProps {
   model: ModelInstanceDTO
-  onUnload: (modelPath: string) => void
+  onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
+  isUnloading?: boolean
 }
 
 /**
  * Card component displaying model instance details with actions.
  * Following PatternFly 6 patterns and design tokens.
  */
-export function ModelCard({ model, onUnload }: ModelCardProps) {
+export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardProps) {
   const { addNotification } = useNotifications()
   const previousErrorRef = useRef<string | null>(null)
+  const [logsModalOpen, setLogsModalOpen] = useState(false)
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+
+  const isFailed = model.status === 'failed'
 
   // Push model errors to notification system when they first appear
   useEffect(() => {
@@ -42,10 +53,13 @@ export function ModelCard({ model, onUnload }: ModelCardProps) {
     previousErrorRef.current = model.error_message ?? null
   }, [model.error_message, model.model_path, addNotification])
 
-  const handleUnload = () => {
-    if (confirm(`Are you sure you want to unload ${model.model_path}?`)) {
-      onUnload(model.model_path)
-    }
+  const handleUnloadClick = () => {
+    setConfirmModalOpen(true)
+  }
+
+  const handleConfirmUnload = () => {
+    setConfirmModalOpen(false)
+    onUnload(model.id, model.model_path, isFailed)
   }
 
   const formatDate = (dateString?: string) => {
@@ -89,7 +103,24 @@ export function ModelCard({ model, onUnload }: ModelCardProps) {
           <DescriptionListGroup>
             <DescriptionListTerm>Loaded</DescriptionListTerm>
             <DescriptionListDescription>
-              {formatDate(model.loaded_at)}
+              <Flex
+                alignItems={{ default: 'alignItemsCenter' }}
+                gap={{ default: 'gapSm' }}
+              >
+                <FlexItem>{formatDate(model.loaded_at)}</FlexItem>
+                {(model.status === 'active' || model.status === 'failed') && (
+                  <FlexItem>
+                    <Button
+                      variant="link"
+                      isInline
+                      icon={<FileIcon />}
+                      onClick={() => setLogsModalOpen(true)}
+                    >
+                      Logs
+                    </Button>
+                  </FlexItem>
+                )}
+              </Flex>
             </DescriptionListDescription>
           </DescriptionListGroup>
           {model.ready_at && (
@@ -116,12 +147,46 @@ export function ModelCard({ model, onUnload }: ModelCardProps) {
         <Button
           variant="danger"
           icon={<TrashIcon />}
-          onClick={handleUnload}
-          isDisabled={model.status === 'stopping'}
+          onClick={handleUnloadClick}
+          isDisabled={model.status === 'stopping' || isUnloading}
+          isLoading={isUnloading}
         >
-          Unload
+          {isUnloading
+            ? (isFailed ? 'Removing...' : 'Unloading...')
+            : (isFailed ? 'Remove' : 'Unload')}
         </Button>
       </CardFooter>
+
+      <ViewLogsDialog
+        isOpen={logsModalOpen}
+        onClose={() => setLogsModalOpen(false)}
+        instanceId={model.id}
+        modelPath={model.model_path}
+      />
+
+      <Modal
+        variant={ModalVariant.small}
+        isOpen={confirmModalOpen}
+        onClose={() => setConfirmModalOpen(false)}
+      >
+        <ModalHeader
+          title={isFailed ? 'Remove failed model?' : 'Unload model?'}
+          titleIconVariant={isFailed ? 'danger' : 'warning'}
+        />
+        <ModalBody>
+          {isFailed
+            ? `This will remove the failed model entry for "${model.model_path}" from the list.`
+            : `This will unload "${model.model_path}" and free its GPU memory.`}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setConfirmModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant={isFailed ? 'danger' : 'primary'} onClick={handleConfirmUnload}>
+            {isFailed ? 'Remove' : 'Unload'}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </Card>
   )
 }

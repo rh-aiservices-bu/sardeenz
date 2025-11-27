@@ -165,6 +165,32 @@ export const ErrorResponseSchema = Type.Object({
   }),
 })
 
+// Settings schemas
+export const HfTokenSourceSchema = Type.Union([
+  Type.Literal('env'),
+  Type.Literal('runtime'),
+  Type.Null(),
+])
+
+export const SettingsResponseSchema = Type.Object({
+  hf_token: Type.Union([Type.String(), Type.Null()]),
+  hf_token_source: HfTokenSourceSchema,
+})
+
+export const UpdateSettingsRequestSchema = Type.Object({
+  hf_token: Type.Optional(Type.String({ minLength: 1 })),
+})
+
+export const TestHfTokenRequestSchema = Type.Object({
+  token: Type.String({ minLength: 1 }),
+})
+
+export const TestHfTokenResponseSchema = Type.Object({
+  valid: Type.Boolean(),
+  username: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
+})
+
 // Type exports for TypeScript inference
 export type LoadModelRequestType = Static<typeof LoadModelRequestSchema>
 export type LoadModelResponseType = Static<typeof LoadModelResponseSchema>
@@ -180,3 +206,7 @@ export type ChatCompletionRequestType = Static<typeof ChatCompletionRequestSchem
 export type ErrorResponseType = Static<typeof ErrorResponseSchema>
 export type ListInstancesResponseType = Static<typeof ListInstancesResponseSchema>
 export type UnloadInstanceResponseType = Static<typeof UnloadInstanceResponseSchema>
+export type SettingsResponseType = Static<typeof SettingsResponseSchema>
+export type UpdateSettingsRequestType = Static<typeof UpdateSettingsRequestSchema>
+export type TestHfTokenRequestType = Static<typeof TestHfTokenRequestSchema>
+export type TestHfTokenResponseType = Static<typeof TestHfTokenResponseSchema>

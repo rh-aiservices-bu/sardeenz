@@ -25,6 +25,7 @@ function ModelManagement() {
   const [models, setModels] = useState<ModelInstanceDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false)
+  const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
 
   const { addNotification } = useNotifications()
 
@@ -68,21 +69,26 @@ function ModelManagement() {
     })
   }
 
-  const handleUnloadModel = async (modelPath: string) => {
+  const handleUnloadModel = async (instanceId: string, modelPath: string, isFailed: boolean) => {
+    setUnloadingInstanceId(instanceId)
     try {
-      await apiClient.unloadModel(modelPath)
+      await apiClient.unloadModelByInstanceId(instanceId)
       addNotification({
-        title: 'Model unloaded',
-        description: `Successfully unloaded: ${modelPath}`,
+        title: isFailed ? 'Model removed' : 'Model unloaded',
+        description: isFailed
+          ? `Successfully removed: ${modelPath}`
+          : `Successfully unloaded: ${modelPath}`,
         variant: 'success',
       })
       await fetchModels()
     } catch (err) {
       addNotification({
-        title: 'Failed to unload model',
+        title: isFailed ? 'Failed to remove model' : 'Failed to unload model',
         description: err instanceof Error ? err.message : 'Unknown error',
         variant: 'danger',
       })
+    } finally {
+      setUnloadingInstanceId(null)
     }
   }
 
@@ -142,7 +148,11 @@ function ModelManagement() {
           <Grid hasGutter style={{ marginTop: 'var(--pf-t--global--spacer--xl)' }}>
             {models.map((model) => (
               <GridItem key={model.id} span={12} lg={6} xl={4}>
-                <ModelCard model={model} onUnload={handleUnloadModel} />
+                <ModelCard
+                  model={model}
+                  onUnload={handleUnloadModel}
+                  isUnloading={unloadingInstanceId === model.id}
+                />
               </GridItem>
             ))}
           </Grid>

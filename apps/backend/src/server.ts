@@ -3,6 +3,7 @@ import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { config } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
+import { detectGpuInfo } from './utils/gpu-info.js'
 
 // Create logger
 const logger = createLogger({
@@ -44,9 +45,11 @@ await fastify.register(import('@fastify/swagger'), {
       { name: 'models', description: 'Model lifecycle management endpoints' },
       { name: 'events', description: 'Real-time event streaming (SSE) endpoints' },
       { name: 'memory', description: 'GPU memory management endpoints' },
+      { name: 'gpu', description: 'GPU information and monitoring endpoints' },
       { name: 'proxy', description: 'Inference proxy endpoints' },
       { name: 'health', description: 'Health check endpoints' },
       { name: 'orphans', description: 'Orphan process detection and cleanup (FR-027)' },
+      { name: 'settings', description: 'Application settings endpoints' },
     ],
   },
 })
@@ -72,8 +75,10 @@ await fastify.register(import('./routes/health.js'))
 await fastify.register(import('./routes/models.js'))
 await fastify.register(import('./routes/events.js'))
 await fastify.register(import('./routes/memory.js'))
+await fastify.register(import('./routes/gpu.js'))
 await fastify.register(import('./routes/proxy.js'))
 await fastify.register(import('./routes/orphans.js'))
+await fastify.register(import('./routes/settings.js'))
 
 // Root endpoint
 fastify.get('/', async () => {
@@ -88,6 +93,17 @@ fastify.get('/', async () => {
 // Start server
 async function start() {
   try {
+    // Detect GPU info at startup (cache result for later use)
+    const gpuInfo = await detectGpuInfo()
+    if (gpuInfo.length > 0) {
+      logger.info(
+        { gpus: gpuInfo.map((g) => ({ name: g.name, totalMemoryGB: g.totalMemoryGB })) },
+        `Detected ${gpuInfo.length} GPU(s)`
+      )
+    } else {
+      logger.warn('No GPU detected via nvidia-smi, using default GPU memory values')
+    }
+
     await fastify.listen({
       port: config.port,
       host: config.host,

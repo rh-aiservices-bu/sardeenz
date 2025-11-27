@@ -9,7 +9,57 @@ import type {
   MemoryUsageResponse,
   SetMemoryLimitsRequest,
   SetMemoryLimitsResponse,
+  GetInstanceLogsResponse,
+  SettingsResponse,
+  UpdateSettingsRequest,
+  TestHfTokenResponse,
 } from '@sardeenz/types'
+
+// GPU info types (matching backend NvidiaSmiInfo)
+export interface GpuStatus {
+  index: number
+  name: string
+  persistenceMode: string
+  busId: string
+  displayActive: string
+  eccErrors: string | null
+  fan: string
+  temperature: string
+  performanceState: string
+  powerUsage: string
+  powerCap: string
+  memoryUsed: string
+  memoryTotal: string
+  memoryUsedMB: number
+  memoryTotalMB: number
+  gpuUtilization: string
+  computeMode: string
+  migMode: string | null
+}
+
+export interface GpuProcess {
+  gpu: number
+  gi: string
+  ci: string
+  pid: number
+  type: string
+  processName: string
+  gpuMemory: string
+  gpuMemoryMB: number
+}
+
+export interface DriverInfo {
+  nvidiaSmiVersion: string
+  driverVersion: string
+  cudaVersion: string
+}
+
+export interface NvidiaSmiInfo {
+  timestamp: string
+  driver: DriverInfo
+  gpus: GpuStatus[]
+  processes: GpuProcess[]
+}
 
 // Retry configuration
 const INITIAL_DELAY_MS = 2000
@@ -82,6 +132,13 @@ class ApiClient {
     return response.data
   }
 
+  async unloadModelByInstanceId(instanceId: string): Promise<UnloadModelResponse> {
+    const response = await this.client.delete<UnloadModelResponse>(
+      `/api/models/instances/${instanceId}`
+    )
+    return response.data
+  }
+
   async listModels(): Promise<ListModelsResponse> {
     const response = await this.client.get<ListModelsResponse>('/api/models')
     return response.data
@@ -97,6 +154,13 @@ class ApiClient {
     const encodedPath = encodeURIComponent(modelPath)
     const response = await this.client.get<ModelHealthResponse>(
       `/api/models/${encodedPath}/health`
+    )
+    return response.data
+  }
+
+  async getInstanceLogs(instanceId: string): Promise<GetInstanceLogsResponse> {
+    const response = await this.client.get<GetInstanceLogsResponse>(
+      `/api/models/instances/${instanceId}/logs`
     )
     return response.data
   }
@@ -120,6 +184,32 @@ class ApiClient {
 
   async healthCheck(): Promise<{ status: string }> {
     const response = await this.client.get('/health')
+    return response.data
+  }
+
+  // GPU info
+
+  async getGpuInfo(): Promise<NvidiaSmiInfo> {
+    const response = await this.client.get<NvidiaSmiInfo>('/api/gpu/info')
+    return response.data
+  }
+
+  // Settings endpoints
+
+  async getSettings(): Promise<SettingsResponse> {
+    const response = await this.client.get<SettingsResponse>('/api/settings')
+    return response.data
+  }
+
+  async updateSettings(request: UpdateSettingsRequest): Promise<SettingsResponse> {
+    const response = await this.client.put<SettingsResponse>('/api/settings', request)
+    return response.data
+  }
+
+  async testHfToken(token: string): Promise<TestHfTokenResponse> {
+    const response = await this.client.post<TestHfTokenResponse>('/api/settings/hf-token/test', {
+      token,
+    })
     return response.data
   }
 }

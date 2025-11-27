@@ -4,12 +4,14 @@ import { randomUUID } from 'crypto'
 import type { ModelInstance, ModelStatus } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
-import { getNextPort, killProcessGracefully, isProcessRunning } from '../utils/process.js'
+import { getNextPort, killProcessGracefully, isProcessRunning, getDescendantPids } from '../utils/process.js'
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
+import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 import type { Logger } from '@sardeenz/utils'
 import { processLogBuffer } from './process-log-buffer.js'
 import { eventBus } from './event-bus.js'
+import { runtimeSettings } from '../stores/runtime-settings.js'
 
 export interface LaunchModelOptions {
   modelPath: string
@@ -57,6 +59,9 @@ export class ModelManager extends EventEmitter {
     try {
       // Spawn vLLM process
       // Note: GPU memory is managed by KVCached, no --gpu-memory-utilization flag needed
+      // Get HF token from runtime settings (may be from env or set via API)
+      const hfToken = runtimeSettings.getHfToken()
+
       const proc = spawn('vllm', [
         'serve',
         modelPath,
@@ -70,6 +75,7 @@ export class ModelManager extends EventEmitter {
           ...process.env,
           ENABLE_KVCACHED: config.enableKvcached ? 'true' : 'false',
           KVCACHED_AUTOPATCH: config.kvcachedAutopatch ? '1' : '0',
+          ...(hfToken ? { HF_TOKEN: hfToken } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -179,6 +185,50 @@ export class ModelManager extends EventEmitter {
       // Update status to active
       instance.status = 'active' as ModelStatus
       instance.readyAt = new Date()
+
+      // Get actual GPU memory usage from nvidia-smi process list
+      // vLLM uses multiprocessing/Ray, so we need to find all descendant processes
+      try {
+        const gpuInfo = await getNvidiaSmiInfo()
+
+        // Get all descendant PIDs of the vLLM process (child workers use the GPU)
+        const descendantPids = await getDescendantPids(instance.processId)
+        const allPids = new Set([instance.processId, ...descendantPids])
+
+        // Sum GPU memory from all descendant processes
+        let totalGpuMemoryMB = 0
+        for (const proc of gpuInfo.processes) {
+          if (allPids.has(proc.pid)) {
+            totalGpuMemoryMB += proc.gpuMemoryMB
+          }
+        }
+
+        if (totalGpuMemoryMB > 0 && gpuInfo.gpus.length > 0) {
+          const gpuTotalMB = gpuInfo.gpus[0].memoryTotalMB
+          instance.gpuMemoryUtilization = gpuTotalMB > 0 ? totalGpuMemoryMB / gpuTotalMB : 0
+
+          this.logger.info(
+            {
+              modelPath,
+              instanceId,
+              processId: instance.processId,
+              descendantPids,
+              totalGpuMemoryMB,
+              gpuTotalMB,
+              gpuUtilization: instance.gpuMemoryUtilization,
+            },
+            'Got GPU memory usage from nvidia-smi (including child processes)'
+          )
+        } else {
+          this.logger.warn(
+            { modelPath, instanceId, processId: instance.processId, descendantPids },
+            'No matching processes found in nvidia-smi output'
+          )
+        }
+      } catch (err) {
+        this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
+      }
+
       modelStore.set(instance)
 
       // Emit status event for active state
@@ -245,11 +295,26 @@ export class ModelManager extends EventEmitter {
     }
 
     const proc = this.processes.get(instance.id)
+
+    // If no process exists (e.g., failed model), just clean up the store
     if (!proc) {
-      throw new InternalError(`Process for model instance ${instance.id} not found`)
+      this.logger.info({ instanceId: instance.id }, 'No process to kill, cleaning up store entry')
+
+      // Clean up IPC segment (may not exist, but try anyway)
+      await this.deleteIpcSegment(instance.ipcSegmentName)
+
+      // Clean up logs
+      processLogBuffer.clear(instance.id)
+
+      // Remove from store
+      modelStore.delete(instance.id)
+
+      this.logger.info({ instanceId: instance.id, modelPath: instance.modelPath }, 'Model entry removed')
+      this.emit('model:unloaded', instance)
+      return
     }
 
-    // Update status
+    // Update status for active process
     instance.status = 'stopping' as ModelStatus
     modelStore.set(instance)
 

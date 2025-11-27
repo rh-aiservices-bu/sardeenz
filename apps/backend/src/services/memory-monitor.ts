@@ -3,6 +3,7 @@ import type { ResourceMetrics } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import type { Logger } from '@sardeenz/utils'
 import { InternalError } from '../utils/errors.js'
+import { getPrimaryGpuInfo } from '../utils/gpu-info.js'
 
 interface KvctlListEntry {
   name: string
@@ -40,8 +41,9 @@ export class MemoryMonitor {
       // Filter for vLLM segments
       const vllmSegments = segments.filter((s) => s.name.startsWith('VLLM_'))
 
-      // Calculate totals (assuming 24GB GPU for now, should read from nvidia-smi)
-      const totalGpu = 24.0
+      // Get actual GPU total memory from nvidia-smi
+      const gpuInfo = await getPrimaryGpuInfo()
+      const totalGpu = gpuInfo.totalMemoryGB
       const usedGpu = vllmSegments.reduce((sum, s) => sum + s.size_gb, 0)
 
       // Map segments to models

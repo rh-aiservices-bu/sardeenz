@@ -42,6 +42,8 @@ import { BarsIcon, SunIcon, MoonIcon, ExclamationCircleIcon, UserIcon } from '@p
 import sardeenzLogo from '../../../assets/sardeenz.svg'
 import ModelManagement from './pages/ModelManagement'
 import ModelBenchmark from './pages/ModelBenchmark'
+import GpuInfo from './pages/GpuInfo'
+import Settings from './pages/Settings'
 import { useNotifications } from './contexts/NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
 import { NotificationDrawer, NotificationBadgeButton } from './components/NotificationDrawer'
@@ -178,8 +180,14 @@ function App() {
             <NavItem itemId="model-management" isActive={location.pathname === '/'}>
               <Link to="/">Model Management</Link>
             </NavItem>
+            <NavItem itemId="gpu-info" isActive={location.pathname === '/gpu'}>
+              <Link to="/gpu">GPU Info</Link>
+            </NavItem>
             <NavItem itemId="model-benchmark" isActive={location.pathname === '/benchmark'}>
               <Link to="/benchmark">Model Benchmark</Link>
+            </NavItem>
+            <NavItem itemId="settings" isActive={location.pathname === '/settings'}>
+              <Link to="/settings">Settings</Link>
             </NavItem>
           </NavList>
         </Nav>
@@ -249,7 +257,9 @@ function App() {
             <DrawerContentBody>
               <Routes>
                 <Route path="/" element={<ModelManagement />} />
+                <Route path="/gpu" element={<GpuInfo />} />
                 <Route path="/benchmark" element={<ModelBenchmark />} />
+                <Route path="/settings" element={<Settings />} />
               </Routes>
             </DrawerContentBody>
           </DrawerContent>

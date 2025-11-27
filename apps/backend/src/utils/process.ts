@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import * as fs from 'node:fs'
 
 export interface ProcessOptions {
   command: string
@@ -145,4 +146,37 @@ export async function waitFor(
 
     await new Promise((resolve) => setTimeout(resolve, interval))
   }
+}
+
+/**
+ * Get all descendant PIDs of a process (children, grandchildren, etc.)
+ * Uses /proc filesystem on Linux to traverse the process tree
+ */
+export async function getDescendantPids(parentPid: number): Promise<number[]> {
+  const descendants: number[] = []
+  const queue: number[] = [parentPid]
+
+  while (queue.length > 0) {
+    const pid = queue.shift()!
+    try {
+      // Read /proc/<pid>/task/<pid>/children for direct children
+      const childrenPath = `/proc/${pid}/task/${pid}/children`
+      const childrenContent = await fs.promises.readFile(childrenPath, 'utf-8')
+      const childPids = childrenContent
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(Number)
+        .filter((n) => !isNaN(n))
+
+      for (const childPid of childPids) {
+        descendants.push(childPid)
+        queue.push(childPid) // Check grandchildren too
+      }
+    } catch {
+      // Process may have exited, or file doesn't exist
+    }
+  }
+
+  return descendants
 }

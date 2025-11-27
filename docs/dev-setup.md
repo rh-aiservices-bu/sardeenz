@@ -52,13 +52,23 @@ On first run, the script will:
 
 ### Environment Variables
 
-The start-dev script configures these environment variables for KVCached GPU memory sharing:
+The backend uses environment variables for configuration. A reference file is available at `apps/backend/.env.example`.
 
-| Variable | Value | Description |
-|----------|-------|-------------|
+**KVCached variables** (configured by start-dev script):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `ENABLE_KVCACHED` | `true` | Enables KVCached memory sharing |
 | `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for KVCached support |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index (override with env var) |
+| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index |
+
+**HuggingFace authentication** (for gated models like Llama):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HF_TOKEN` | (none) | HuggingFace access token for gated models |
+
+Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens). You can also set this via the Settings page in the web UI.
 
 ### Model Loading
 
