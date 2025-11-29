@@ -119,7 +119,7 @@ export default async function eventsRoutes(fastify: FastifyInstance) {
             instance_id,
             null,
             instance.status,
-            instance.status === 'active'
+            instance.status === 'running'
               ? 'Model is ready'
               : instance.status === 'starting'
                 ? 'Model is loading'

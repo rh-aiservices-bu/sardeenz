@@ -18,7 +18,7 @@ import {
 import { PlusCircleIcon, CubesIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import type { ModelInstanceDTO, LoadModelRequest } from '@sardeenz/types'
-import { ModelCard, LoadModelDialog } from '../components'
+import { ModelCard, LoadModelDialog, GpuMemoryPanel } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
 
 function ModelManagement() {
@@ -112,7 +112,7 @@ function ModelManagement() {
           alignItems={{ default: 'alignItemsCenter' }}
         >
           <FlexItem>
-            <Content component="h1">Model Management</Content>
+            <Content component="h1">Model Placement Management</Content>
           </FlexItem>
           <FlexItem>
             <Button
@@ -120,16 +120,21 @@ function ModelManagement() {
               icon={<PlusCircleIcon />}
               onClick={() => setIsLoadModalOpen(true)}
             >
-              Load Model
+              Start Model
             </Button>
           </FlexItem>
         </Flex>
 
+        {/* GPU Memory Overview Panel */}
+        <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
+          <GpuMemoryPanel />
+        </div>
+
         {models.length === 0 ? (
           <Card style={{ marginTop: 'var(--pf-t--global--spacer--xl)' }}>
             <CardBody>
-              <EmptyState titleText="No models loaded" icon={CubesIcon}>
-                <EmptyStateBody>Load a model to get started with inference.</EmptyStateBody>
+              <EmptyState titleText="No models started" icon={CubesIcon}>
+                <EmptyStateBody>Start a model to get started with inference.</EmptyStateBody>
                 <EmptyStateFooter>
                   <EmptyStateActions>
                     <Button
@@ -137,7 +142,7 @@ function ModelManagement() {
                       onClick={() => setIsLoadModalOpen(true)}
                       icon={<PlusCircleIcon />}
                     >
-                      Load Model
+                      Start Model
                     </Button>
                   </EmptyStateActions>
                 </EmptyStateFooter>

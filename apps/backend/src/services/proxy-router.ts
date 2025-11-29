@@ -91,22 +91,24 @@ export class ProxyRouter {
   }> {
     const { modelPath, endpoint, method, body, streaming, onChunk } = options
 
-    // Find active model instances
-    const instances = modelStore.getActiveByPath(modelPath)
+    // Find running model instances by model name
+    // The modelPath parameter is actually the model name from the request's "model" field
+    const instances = modelStore.getRunningByName(modelPath)
 
     if (instances.length === 0) {
       // Check if any instances exist at all
-      const allInstances = modelStore.getAllByPath(modelPath)
+      const allInstances = modelStore.getAllByName(modelPath)
+
       if (allInstances.length === 0) {
         throw new NotFoundError(
-          `Model ${modelPath} not loaded. Available models: ${modelStore.getAllPaths().join(', ')}`
+          `Model ${modelPath} not loaded. Available models: ${modelStore.getAllNames().join(', ')}`
         )
       }
 
-      // Instances exist but none are active
+      // Instances exist but none are running
       const statuses = allInstances.map((i) => `${i.id.slice(0, 8)}:${i.status}`).join(', ')
       throw new ServiceUnavailableError(
-        `Model ${modelPath} has no active instances. Instance states: ${statuses}`
+        `Model ${modelPath} has no running instances. Instance states: ${statuses}`
       )
     }
 
@@ -163,7 +165,31 @@ export class ProxyRouter {
         })
 
         if (!response.ok) {
-          throw new Error(`vLLM returned ${response.status}: ${response.statusText}`)
+          // Read error body from vLLM and return it for proper error forwarding
+          const errorData = (await response.json().catch(() => ({
+            error: { message: response.statusText, type: 'upstream_error' },
+          }))) as { error?: { message?: string }; message?: string }
+
+          const durationMs = Date.now() - startTime
+
+          // Update request record
+          request.completedAt = new Date()
+          request.status = 'failed' as RequestStatus
+          request.statusCode = response.status
+          request.errorMessage =
+            errorData.error?.message || errorData.message || response.statusText
+          request.durationMs = durationMs
+          requestStore.add(modelPath, request)
+
+          // Update metrics
+          metricsStore.recordRequest(modelPath, false, durationMs)
+
+          return {
+            requestId,
+            response: errorData,
+            statusCode: response.status,
+            instanceId: instance.id,
+          }
         }
 
         // Stream response

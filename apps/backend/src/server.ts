@@ -16,7 +16,7 @@ const fastify = Fastify({
   loggerInstance: logger,
   requestIdHeader: 'x-request-id',
   requestIdLogLabel: 'reqId',
-  disableRequestLogging: false,
+  disableRequestLogging: true,
   trustProxy: true,
 }).withTypeProvider<TypeBoxTypeProvider>()
 
@@ -25,6 +25,9 @@ await fastify.register(import('@fastify/cors'), {
   origin: true, // Allow all origins in development
   credentials: true,
 })
+
+// Register custom request logging plugin
+await fastify.register(import('./plugins/request-logging.js'))
 
 // Register Swagger/OpenAPI documentation
 await fastify.register(import('@fastify/swagger'), {

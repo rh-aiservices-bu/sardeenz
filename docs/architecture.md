@@ -142,7 +142,9 @@ sardeenz/
 - `GET /api/v1/models` - List all model instances
 - `GET /api/v1/models/{id}` - Get model instance details
 - `GET /api/v1/metrics` - Prometheus-format metrics
-- `GET /health` - Health check endpoint
+- `GET /api/health` - Health check endpoint
+- `GET /api/health/ready` - Readiness probe endpoint
+- `GET /api/health/live` - Liveness probe endpoint
 
 **Authentication:** OAuth 2.0 / OIDC with RBAC
 - `admin` role: Full control (load/unload)
@@ -188,6 +190,55 @@ Extracts meaningful error messages from vLLM process output:
 | Generic exception | Python traceback extraction |
 
 Falls back to last stderr lines with exit code if no pattern matches.
+
+#### Memory Parser
+
+Parses vLLM process logs to extract memory metrics and process information after model loading:
+
+**Memory Metrics Patterns:**
+
+| Log Pattern | Extracted Field |
+|-------------|-----------------|
+| `Model loading took X.XX GiB` | `weightsMemoryGiB` |
+| `Graph capturing finished...took X.XX GiB` | `cudaGraphMemoryGiB` |
+| `Available KV cache memory: X.XX GiB` | `kvCacheAvailableGiB` |
+| `GPU KV cache size: N tokens` | Used for per-request calculation |
+| `Using max model len N` | `maxModelLen` |
+
+The `kvCachePerRequestMiB` is calculated as: `(kvCacheAvailableGiB * 1024) / totalTokens * maxModelLen`
+
+**Process ID Patterns:**
+
+| Log Pattern | Extracted Field | Description |
+|-------------|-----------------|-------------|
+| `EngineCore_DP0 pid=N` | `engineCorePid` | The vLLM EngineCore process that allocates GPU VRAM |
+| `APIServer pid=N` | `processId` | The main API server process (from spawn) |
+
+Metrics are parsed once when the model transitions to `active` status and stored in the `ModelInstance` fields. Returns `null` if critical metrics cannot be parsed.
+
+#### GPU Memory Tracking
+
+vLLM spawns multiple processes internally. The process returned by `spawn()` is the **API Server**, but GPU memory is allocated by the **EngineCore** process:
+
+```
+vLLM Process Architecture:
+┌─────────────────────────────────────┐
+│  APIServer (pid from spawn)         │ ◄── No GPU memory
+│    └── EngineCore_DP0 (child)       │ ◄── Allocates GPU VRAM
+│          └── (worker processes)     │
+└─────────────────────────────────────┘
+```
+
+**Why this matters:**
+- `nvidia-smi` shows GPU memory by PID
+- Looking up memory by the API Server PID returns 0
+- The EngineCore PID must be extracted from logs for accurate memory tracking
+
+**Implementation:**
+1. Parse vLLM logs for `EngineCore_DP0 pid=N` pattern
+2. Store in `ModelInstance.engineCorePid`
+3. Use `engineCorePid` (falling back to `processId`) for nvidia-smi lookups
+4. Per-model memory breakdown in dashboard uses this PID for accurate reporting
 
 ### 2. Unified Proxy
 
@@ -278,12 +329,22 @@ interface ModelInstance {
   displayName: string;             // Human-readable name
   status: 'starting' | 'active' | 'stopping' | 'failed';
   port: number;                    // vLLM API port
-  pid: number;                     // Process ID
+  processId: number;               // API Server PID (from spawn)
+  engineCorePid?: number;          // EngineCore PID (allocates GPU VRAM)
   gpuMemoryLimit: number;          // GB allocated
   createdAt: Date;
   startedAt?: Date;
   stoppedAt?: Date;
   errorMessage?: string;
+  memoryMetrics?: ModelMemoryMetrics; // Parsed from vLLM logs after loading
+}
+
+interface ModelMemoryMetrics {
+  weightsMemoryGiB: number;        // Model weights memory
+  cudaGraphMemoryGiB: number;      // CUDA graph capture memory
+  kvCacheAvailableGiB: number;     // Available KV cache memory
+  kvCachePerRequestMiB: number;    // KV cache per max-size request
+  maxModelLen: number;             // Max context length
 }
 ```
 

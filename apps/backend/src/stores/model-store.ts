@@ -3,13 +3,15 @@ import type { ModelInstance } from '@sardeenz/types'
 /**
  * In-memory store for model instances
  * Supports multiple instances of the same model (FR-004)
- * Uses dual maps: instances by ID and index by model path
+ * Uses dual maps: instances by ID and indexes by model path and model name
  */
 class ModelStore {
   // Primary storage: keyed by instance ID (UUID)
   private instances: Map<string, ModelInstance> = new Map()
   // Index: model path -> Set of instance IDs
   private instancesByPath: Map<string, Set<string>> = new Map()
+  // Index: model name -> Set of instance IDs (for --served-model-name support)
+  private instancesByName: Map<string, Set<string>> = new Map()
 
   /**
    * Add or update a model instance
@@ -30,6 +32,18 @@ class ModelStore {
       }
     }
 
+    // If updating existing instance, check if modelName changed
+    if (existingInstance && existingInstance.modelName !== instance.modelName) {
+      // Remove from old name index
+      const oldNameIds = this.instancesByName.get(existingInstance.modelName)
+      if (oldNameIds) {
+        oldNameIds.delete(instance.id)
+        if (oldNameIds.size === 0) {
+          this.instancesByName.delete(existingInstance.modelName)
+        }
+      }
+    }
+
     // Store instance
     this.instances.set(instance.id, instance)
 
@@ -40,6 +54,14 @@ class ModelStore {
       this.instancesByPath.set(instance.modelPath, pathIds)
     }
     pathIds.add(instance.id)
+
+    // Update name index
+    let nameIds = this.instancesByName.get(instance.modelName)
+    if (!nameIds) {
+      nameIds = new Set()
+      this.instancesByName.set(instance.modelName, nameIds)
+    }
+    nameIds.add(instance.id)
   }
 
   /**
@@ -50,17 +72,17 @@ class ModelStore {
   }
 
   /**
-   * Get a model instance by model path (returns first active, or first found)
+   * Get a model instance by model path (returns first running, or first found)
    * For backwards compatibility with existing code
    */
   getByPath(modelPath: string): ModelInstance | undefined {
     const ids = this.instancesByPath.get(modelPath)
     if (!ids || ids.size === 0) return undefined
 
-    // Prefer active instances
+    // Prefer running instances
     for (const id of ids) {
       const instance = this.instances.get(id)
-      if (instance?.status === 'active') {
+      if (instance?.status === 'running') {
         return instance
       }
     }
@@ -83,10 +105,29 @@ class ModelStore {
   }
 
   /**
-   * Get all active instances for a model path
+   * Get all running instances for a model path
    */
-  getActiveByPath(modelPath: string): ModelInstance[] {
-    return this.getAllByPath(modelPath).filter((i) => i.status === 'active')
+  getRunningByPath(modelPath: string): ModelInstance[] {
+    return this.getAllByPath(modelPath).filter((i) => i.status === 'running')
+  }
+
+  /**
+   * Get all instances for a model name (for --served-model-name support)
+   */
+  getAllByName(modelName: string): ModelInstance[] {
+    const ids = this.instancesByName.get(modelName)
+    if (!ids) return []
+
+    return Array.from(ids)
+      .map((id) => this.instances.get(id))
+      .filter((instance): instance is ModelInstance => instance !== undefined)
+  }
+
+  /**
+   * Get all running instances for a model name
+   */
+  getRunningByName(modelName: string): ModelInstance[] {
+    return this.getAllByName(modelName).filter((i) => i.status === 'running')
   }
 
   /**
@@ -120,6 +161,15 @@ class ModelStore {
       }
     }
 
+    // Remove from name index
+    const nameIds = this.instancesByName.get(instance.modelName)
+    if (nameIds) {
+      nameIds.delete(instanceId)
+      if (nameIds.size === 0) {
+        this.instancesByName.delete(instance.modelName)
+      }
+    }
+
     return this.instances.delete(instanceId)
   }
 
@@ -150,6 +200,7 @@ class ModelStore {
   clear(): void {
     this.instances.clear()
     this.instancesByPath.clear()
+    this.instancesByName.clear()
   }
 
   /**
@@ -168,6 +219,13 @@ class ModelStore {
    */
   getAllPaths(): string[] {
     return Array.from(this.instancesByPath.keys())
+  }
+
+  /**
+   * Get all unique model names
+   */
+  getAllNames(): string[] {
+    return Array.from(this.instancesByName.keys())
   }
 }
 

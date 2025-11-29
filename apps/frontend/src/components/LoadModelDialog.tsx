@@ -9,6 +9,7 @@ import {
   Form,
   FormGroup,
   TextInput,
+  TextArea,
   NumberInput,
   FormHelperText,
   HelperText,
@@ -54,6 +55,7 @@ export function LoadModelDialog({
   // Form state
   const [modelPath, setModelPath] = useState('')
   const [maxTokens, setMaxTokens] = useState(4096)
+  const [extraArgs, setExtraArgs] = useState('')
   const [validated, setValidated] = useState<'default' | 'error'>('default')
 
   // Loading state
@@ -67,7 +69,7 @@ export function LoadModelDialog({
     eventTypes: ['log', 'status'],
     replayLogs: true,
     onStatusChange: (status) => {
-      if (status.data.currentStatus === ('active' as ModelStatus)) {
+      if (status.data.currentStatus === ('running' as ModelStatus)) {
         setPhase('success')
         onSuccess?.()
         // Auto-close after 2 seconds on success
@@ -81,6 +83,14 @@ export function LoadModelDialog({
     },
   })
 
+  /** Parse extra args textarea into array, filtering empty lines */
+  const parseExtraArgs = (text: string): string[] => {
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  }
+
   const handleSubmit = async () => {
     if (!modelPath.trim()) {
       setValidated('error')
@@ -91,9 +101,11 @@ export function LoadModelDialog({
     setErrorMessage(null)
 
     try {
+      const parsedArgs = parseExtraArgs(extraArgs)
       const result = await onLoad({
         model_path: modelPath.trim(),
         max_tokens: maxTokens,
+        extra_args: parsedArgs.length > 0 ? parsedArgs : undefined,
       })
 
       // Start listening for events from this instance
@@ -108,6 +120,7 @@ export function LoadModelDialog({
     // Reset all state
     setModelPath('')
     setMaxTokens(4096)
+    setExtraArgs('')
     setValidated('default')
     setPhase('form')
     setInstanceId(null)
@@ -132,13 +145,13 @@ export function LoadModelDialog({
   const getTitle = () => {
     switch (phase) {
       case 'form':
-        return 'Load Model'
+        return 'Start Model'
       case 'loading':
-        return `Loading: ${modelPath}`
+        return `Starting: ${modelPath}`
       case 'success':
-        return 'Model Loaded'
+        return 'Model Started'
       case 'failed':
-        return 'Load Failed'
+        return 'Start Failed'
     }
   }
 
@@ -187,6 +200,26 @@ export function LoadModelDialog({
                 inputAriaLabel="Max tokens"
               />
             </FormGroup>
+
+            <FormGroup label="Additional vLLM Arguments" fieldId="extra-args">
+              <TextArea
+                id="extra-args"
+                value={extraArgs}
+                onChange={(_event, value) => setExtraArgs(value)}
+                placeholder={`--served-model-name=MyModel\n--tensor-parallel-size=2\n--max-num-seqs=256\n--trust-remote-code`}
+                aria-label="Additional vLLM CLI arguments, one per line"
+                rows={4}
+                resizeOrientation="vertical"
+              />
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem>
+                    Enter one argument per line. Some arguments like --gpu-memory-utilization are
+                    managed by the system and will be ignored.
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
+            </FormGroup>
           </Form>
         )}
 
@@ -233,7 +266,7 @@ export function LoadModelDialog({
         {phase === 'form' && (
           <>
             <Button variant="primary" onClick={handleSubmit}>
-              Load Model
+              Start Model
             </Button>
             <Button variant="link" onClick={handleClose}>
               Cancel

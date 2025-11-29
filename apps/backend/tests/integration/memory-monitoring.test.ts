@@ -59,23 +59,32 @@ describe('Memory Monitoring Routes', () => {
 
   describe('GET /api/memory/usage', () => {
     it('should return GPU memory usage', async () => {
-      // Mock the response from MemoryMonitor
+      // Mock the response from MemoryMonitor (current format)
       mockGetMemoryUsage.mockResolvedValueOnce({
-        gpu_total_gb: 24.0,
-        gpu_used_gb: 7.5,
-        gpu_free_gb: 16.5,
+        kvcache: {
+          total_gb: 6.0,
+          prealloc_gb: 4.0,
+          used_gb: 1.0,
+          free_gb: 1.0,
+        },
+        gpu: {
+          total_gb: 24.0,
+          used_gb: 7.5,
+          free_gb: 16.5,
+          utilization_percent: 45,
+        },
         models: [
           {
-            model_path: 'meta-llama-llama-3-2-1b',
-            gpu_memory_used_gb: 2.5,
-            gpu_memory_limit_gb: 4.0,
-            gpu_memory_usage_percent: 62.5,
+            model_path: 'meta-llama/Llama-3.2-1B',
+            display_name: 'Llama-3.2-1B',
+            gpu_memory_gb: 2.5,
+            color: '#0066CC',
           },
           {
-            model_path: 'mistralai-mistral-7b',
-            gpu_memory_used_gb: 5.0,
-            gpu_memory_limit_gb: 8.0,
-            gpu_memory_usage_percent: 62.5,
+            model_path: 'mistralai/Mistral-7B',
+            display_name: 'Mistral-7B',
+            gpu_memory_gb: 5.0,
+            color: '#5752D1',
           },
         ],
       })
@@ -88,23 +97,34 @@ describe('Memory Monitoring Routes', () => {
       expect(response.statusCode).toBe(200)
 
       const body = JSON.parse(response.payload)
-      expect(body.gpu_total_gb).toBe(24.0)
-      expect(body.gpu_used_gb).toBe(7.5)
-      expect(body.gpu_free_gb).toBe(16.5)
+      expect(body.gpu.total_gb).toBe(24.0)
+      expect(body.gpu.used_gb).toBe(7.5)
+      expect(body.gpu.free_gb).toBe(16.5)
+      expect(body.kvcache.total_gb).toBe(6.0)
+      expect(body.kvcache.prealloc_gb).toBe(4.0)
       expect(body.models).toBeInstanceOf(Array)
       expect(body.models).toHaveLength(2)
 
       // Check first model
-      expect(body.models[0].gpu_memory_used_gb).toBe(2.5)
-      expect(body.models[0].gpu_memory_limit_gb).toBe(4.0)
-      expect(body.models[0].gpu_memory_usage_percent).toBe(62.5)
+      expect(body.models[0].gpu_memory_gb).toBe(2.5)
+      expect(body.models[0].display_name).toBe('Llama-3.2-1B')
+      expect(body.models[0].color).toBe('#0066CC')
     })
 
     it('should return empty models array when no segments exist', async () => {
       mockGetMemoryUsage.mockResolvedValueOnce({
-        gpu_total_gb: 24.0,
-        gpu_used_gb: 0,
-        gpu_free_gb: 24.0,
+        kvcache: {
+          total_gb: 0,
+          prealloc_gb: 0,
+          used_gb: 0,
+          free_gb: 0,
+        },
+        gpu: {
+          total_gb: 24.0,
+          used_gb: 0,
+          free_gb: 24.0,
+          utilization_percent: 0,
+        },
         models: [],
       })
 
@@ -117,7 +137,7 @@ describe('Memory Monitoring Routes', () => {
 
       const body = JSON.parse(response.payload)
       expect(body.models).toEqual([])
-      expect(body.gpu_used_gb).toBe(0)
+      expect(body.gpu.used_gb).toBe(0)
     })
 
     it('should handle kvctl errors gracefully', async () => {
@@ -142,7 +162,7 @@ describe('Memory Monitoring Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -204,7 +224,7 @@ describe('Memory Monitoring Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,

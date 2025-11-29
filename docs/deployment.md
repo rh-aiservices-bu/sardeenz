@@ -146,7 +146,7 @@ ENV KVCACHED_AUTOPATCH=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
 # Start command
 CMD ["node", "backend/index.js"]
@@ -185,7 +185,7 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -311,7 +311,7 @@ spec:
           mountPath: /tmp/kvcached
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/health/live
             port: 3000
           initialDelaySeconds: 30
           periodSeconds: 30
@@ -319,7 +319,7 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/health/ready
             port: 3000
           initialDelaySeconds: 10
           periodSeconds: 10
@@ -539,7 +539,7 @@ Checks if the application is running:
 ```yaml
 livenessProbe:
   httpGet:
-    path: /health
+    path: /api/health/live
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 30
@@ -550,7 +550,7 @@ livenessProbe:
 **Response (Healthy):**
 ```json
 {
-  "status": "healthy",
+  "status": "alive",
   "timestamp": "2025-11-11T10:00:00Z"
 }
 ```
@@ -562,13 +562,23 @@ Checks if the application is ready to serve traffic:
 ```yaml
 readinessProbe:
   httpGet:
-    path: /health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
 ```
+
+**Response (Ready):**
+```json
+{
+  "status": "ready",
+  "timestamp": "2025-11-11T10:00:00Z"
+}
+```
+
+> **Note:** Health check endpoints have quiet logging enabled. Successful requests (2xx) are logged at debug level only to reduce log noise from frequent polling. Errors (4xx/5xx) are always logged at warn/error levels.
 
 ## Monitoring
 
@@ -646,7 +656,7 @@ oc exec -it <pod-name> -- kvctl status
 oc logs <pod-name> --tail=100
 
 # Check health endpoint directly
-oc exec -it <pod-name> -- curl http://localhost:3000/health
+oc exec -it <pod-name> -- curl http://localhost:3000/api/health
 ```
 
 **Solution:** Check for application errors in logs.

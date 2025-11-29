@@ -1,15 +1,49 @@
 import { spawn } from 'child_process'
-import type { ResourceMetrics } from '@sardeenz/types'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import type { ResourceMetrics, MemoryUsageResponse, KVCacheMetrics, GpuMetrics, ModelGpuMemory } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import type { Logger } from '@sardeenz/utils'
 import { InternalError } from '../utils/errors.js'
-import { getPrimaryGpuInfo } from '../utils/gpu-info.js'
+import { getPrimaryGpuInfo, getNvidiaSmiInfo } from '../utils/gpu-info.js'
 
-interface KvctlListEntry {
-  name: string
-  size_gb: number
-  limit_gb: number
-  usage_percent: number
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+/** KVCache segment info from Python script (reads /dev/shm like kvtop) */
+interface KvcacheSegment {
+  ipc_name: string
+  total_size: number // bytes
+  used_size: number // bytes
+  prealloc_size: number // bytes
+}
+
+// Color palette for model visualization (PatternFly-inspired)
+const MODEL_COLORS = [
+  '#0066CC', // Blue
+  '#5752D1', // Purple
+  '#009596', // Cyan
+  '#EC7A08', // Orange
+  '#A30000', // Red
+  '#3E8635', // Green
+  '#8B5CF6', // Violet
+  '#06B6D4', // Teal
+]
+
+/**
+ * Get a color for a model based on its index in the list.
+ * Uses sequential assignment to guarantee unique colors for the first 8 models.
+ */
+function getModelColor(_instanceId: string, index: number): string {
+  return MODEL_COLORS[index % MODEL_COLORS.length]
+}
+
+/**
+ * Extract display name from model path (e.g., "meta-llama/Llama-3.2-1B" -> "Llama-3.2-1B")
+ */
+function getDisplayName(modelPath: string): string {
+  const parts = modelPath.split('/')
+  return parts[parts.length - 1] || modelPath
 }
 
 export class MemoryMonitor {
@@ -21,48 +55,82 @@ export class MemoryMonitor {
   }
 
   /**
-   * Get GPU memory usage for all models
+   * Get GPU memory usage for all models (new enhanced format)
    */
-  async getMemoryUsage(): Promise<{
-    gpu_total_gb: number
-    gpu_used_gb: number
-    gpu_free_gb: number
-    models: Array<{
-      model_path: string
-      gpu_memory_used_gb: number
-      gpu_memory_limit_gb: number
-      gpu_memory_usage_percent: number
-    }>
-  }> {
+  async getMemoryUsage(): Promise<MemoryUsageResponse> {
     try {
-      const kvctlOutput = await this.runKvctlList()
-      const segments = this.parseKvctlOutput(kvctlOutput)
+      // Get KVCache segments from Python script (reads /dev/shm like kvtop)
+      // and GPU info from nvidia-smi in parallel
+      const [kvcacheSegments, gpuInfo, nvidiaSmiInfo] = await Promise.all([
+        this.runKvcacheStats(),
+        getPrimaryGpuInfo(),
+        getNvidiaSmiInfo(),
+      ])
 
-      // Filter for vLLM segments
-      const vllmSegments = segments.filter((s) => s.name.startsWith('VLLM_'))
+      // Calculate KVCache pool metrics (aggregate from all segments)
+      const kvcacheTotalBytes = kvcacheSegments.reduce((sum, s) => sum + s.total_size, 0)
+      const kvcacheUsedBytes = kvcacheSegments.reduce((sum, s) => sum + s.used_size, 0)
+      const kvcachePreallocBytes = kvcacheSegments.reduce((sum, s) => sum + s.prealloc_size, 0)
+      // Free = total - used - prealloc
+      const kvcacheFreeBytes = Math.max(0, kvcacheTotalBytes - kvcacheUsedBytes - kvcachePreallocBytes)
 
-      // Get actual GPU total memory from nvidia-smi
-      const gpuInfo = await getPrimaryGpuInfo()
-      const totalGpu = gpuInfo.totalMemoryGB
-      const usedGpu = vllmSegments.reduce((sum, s) => sum + s.size_gb, 0)
+      const kvcache: KVCacheMetrics = {
+        total_gb: kvcacheTotalBytes / 1024 ** 3,
+        prealloc_gb: kvcachePreallocBytes / 1024 ** 3,
+        used_gb: kvcacheUsedBytes / 1024 ** 3,
+        free_gb: kvcacheFreeBytes / 1024 ** 3,
+      }
 
-      // Map segments to models
-      const models = vllmSegments.map((segment) => {
-        // Convert segment name back to model path
-        const modelPath = this.segmentNameToModelPath(segment.name)
+      // Get GPU metrics from nvidia-smi
+      const primaryGpu = nvidiaSmiInfo.gpus[0]
+      const gpuUsedMB = primaryGpu?.memoryUsedMB ?? 0
+      const gpuTotalMB = primaryGpu?.memoryTotalMB ?? gpuInfo.totalMemoryMB
+
+      const gpu: GpuMetrics = {
+        total_gb: gpuTotalMB / 1024,
+        used_gb: gpuUsedMB / 1024,
+        free_gb: (gpuTotalMB - gpuUsedMB) / 1024,
+        utilization_percent: parseFloat(primaryGpu?.gpuUtilization?.replace('%', '') || '0'),
+      }
+
+      // Build map of PID -> GPU memory from nvidia-smi processes
+      const processMemoryByPid = new Map<number, number>()
+      for (const proc of nvidiaSmiInfo.processes) {
+        processMemoryByPid.set(proc.pid, proc.gpuMemoryMB)
+      }
+
+      // Build per-model GPU memory breakdown using actual nvidia-smi process memory
+      const allInstances = modelStore.getAll()
+      const runningInstances = allInstances.filter((instance) => instance.status === 'running')
+
+      // Track display name counts to generate unique suffixes for duplicates
+      const displayNameCounts = new Map<string, number>()
+
+      const models: ModelGpuMemory[] = runningInstances.map((instance, index) => {
+        // Use EngineCore PID if available (it's the process that allocates GPU VRAM)
+        // Fall back to main process ID if EngineCore PID not extracted from logs
+        const gpuPid = instance.engineCorePid ?? instance.processId
+        const processMemoryMB = processMemoryByPid.get(gpuPid) ?? 0
+        const gpuMemoryGb = processMemoryMB / 1024
+
+        // Generate unique display name with suffix for duplicates
+        const baseName = getDisplayName(instance.modelPath)
+        const count = (displayNameCounts.get(baseName) ?? 0) + 1
+        displayNameCounts.set(baseName, count)
+        const displayName = count === 1 ? baseName : `${baseName} (${count})`
 
         return {
-          model_path: modelPath,
-          gpu_memory_used_gb: segment.size_gb,
-          gpu_memory_limit_gb: segment.limit_gb,
-          gpu_memory_usage_percent: segment.usage_percent,
+          model_path: instance.modelPath,
+          instance_id: instance.id,
+          display_name: displayName,
+          gpu_memory_gb: gpuMemoryGb,
+          color: getModelColor(instance.id, index),
         }
       })
 
       return {
-        gpu_total_gb: totalGpu,
-        gpu_used_gb: usedGpu,
-        gpu_free_gb: totalGpu - usedGpu,
+        kvcache,
+        gpu,
         models,
       }
     } catch (err) {
@@ -108,11 +176,15 @@ export class MemoryMonitor {
         return undefined
       }
 
+      // Calculate usage percentage based on model's footprint relative to total GPU
+      const usagePercent =
+        memoryUsage.gpu.total_gb > 0 ? (modelMemory.gpu_memory_gb / memoryUsage.gpu.total_gb) * 100 : 0
+
       const metrics: ResourceMetrics = {
         modelPath,
-        gpuMemoryUsedGB: modelMemory.gpu_memory_used_gb,
-        gpuMemoryLimitGB: modelMemory.gpu_memory_limit_gb,
-        gpuMemoryUsagePercent: modelMemory.gpu_memory_usage_percent,
+        gpuMemoryUsedGB: modelMemory.gpu_memory_gb,
+        gpuMemoryLimitGB: memoryUsage.gpu.total_gb, // Use total GPU as limit for now
+        gpuMemoryUsagePercent: usagePercent,
         activeConnections: 0, // Will be tracked by ProxyRouter
         totalRequests: 0, // Will be tracked by ProxyRouter
         successfulRequests: 0,
@@ -128,37 +200,6 @@ export class MemoryMonitor {
       this.logger.error({ modelPath, err }, 'Failed to collect metrics')
       return undefined
     }
-  }
-
-  /**
-   * Run kvctl list command and return output
-   */
-  private async runKvctlList(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const proc = spawn('kvctl', ['list', '--json'])
-      let stdout = ''
-      let stderr = ''
-
-      proc.stdout?.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      proc.stderr?.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      proc.on('exit', (code) => {
-        if (code !== 0) {
-          reject(new Error(`kvctl list failed with code ${code}: ${stderr}`))
-        } else {
-          resolve(stdout.trim())
-        }
-      })
-
-      proc.on('error', (err) => {
-        reject(err)
-      })
-    })
   }
 
   /**
@@ -188,29 +229,46 @@ export class MemoryMonitor {
   }
 
   /**
-   * Parse kvctl list JSON output
+   * Run Python script to read KVCache stats from shared memory (like kvtop)
+   * Returns empty array if script fails or no segments found
    */
-  private parseKvctlOutput(output: string): KvctlListEntry[] {
-    try {
-      const data = JSON.parse(output)
-      if (Array.isArray(data)) {
-        return data as KvctlListEntry[]
-      }
-      return []
-    } catch (err) {
-      this.logger.warn({ err, output }, 'Failed to parse kvctl output')
-      return []
-    }
-  }
+  private async runKvcacheStats(): Promise<KvcacheSegment[]> {
+    return new Promise((resolve) => {
+      // Script is in scripts/ relative to src/services/
+      const scriptPath = path.join(__dirname, '../../scripts/kvcache-stats.py')
+      const proc = spawn('python3', [scriptPath])
+      let stdout = ''
+      let stderr = ''
 
-  /**
-   * Convert IPC segment name back to model path
-   */
-  private segmentNameToModelPath(segmentName: string): string {
-    // Convert "VLLM_META_LLAMA_LLAMA_3_2_1B" -> "meta-llama/Llama-3.2-1B"
-    // This is approximate reverse mapping
-    const withoutPrefix = segmentName.replace(/^VLLM_/, '')
-    return withoutPrefix.toLowerCase().replace(/_/g, '-')
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString()
+      })
+
+      proc.stderr?.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      proc.on('exit', (code) => {
+        if (code !== 0) {
+          this.logger.warn({ code, stderr }, 'kvcache-stats.py failed')
+          resolve([])
+        } else {
+          try {
+            const segments = JSON.parse(stdout.trim()) as KvcacheSegment[]
+            this.logger.debug({ segmentCount: segments.length }, 'Got KVCache segments from Python script')
+            resolve(segments)
+          } catch (err) {
+            this.logger.warn({ err, stdout: stdout.substring(0, 200) }, 'Failed to parse kvcache-stats.py output')
+            resolve([])
+          }
+        }
+      })
+
+      proc.on('error', (err) => {
+        this.logger.warn({ err }, 'Failed to spawn kvcache-stats.py')
+        resolve([])
+      })
+    })
   }
 
   /**

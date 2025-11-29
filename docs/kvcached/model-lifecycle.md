@@ -280,32 +280,45 @@ process = launch_with_controller(models)
 
 ## Unloading Models
 
-Models can be unloaded by stopping their processes or through the controller.
+Models can be unloaded by stopping their processes. **Important:** When using KVCached with shared memory, you must use SIGKILL (not SIGTERM) to avoid deleting the shared IPC segment.
 
-### Method 1: Stop vLLM Process
+### Understanding IPC Lifecycle
+
+KVCached uses a shared IPC segment (`kvcached_mem_info`) for all models. When a vLLM process receives SIGTERM, Python's signal handlers run `MemInfoTracker.cleanup()` which deletes this shared segment, breaking all other running models.
+
+**Solution:** Use SIGKILL to bypass signal handlers. The shared IPC segment is only deleted on server shutdown when all models are gone.
+
+### Understanding vLLM Process Tree
+
+vLLM spawns multiple processes:
+- **API Server** (parent) - handles HTTP requests, no GPU memory
+- **EngineCore** (child) - allocates and uses GPU VRAM
+
+SIGKILL only kills the target process - it doesn't propagate to children. If you only kill the parent, the EngineCore child becomes an orphan and continues consuming GPU memory. **You must kill all descendant processes before killing the parent.**
+
+### Method 1: Stop vLLM Process (SIGKILL)
 
 **If launched manually**:
 ```bash
 # Find process
 ps aux | grep vllm
 
-# Kill process
-kill <PID>
+# Use SIGKILL (-9), NOT SIGTERM
+kill -9 <PID>
 
-# Or use pkill
-pkill -f "vllm serve meta-llama/Llama-3.2-1B"
+# Or use pkill with -9
+pkill -9 -f "vllm serve meta-llama/Llama-3.2-1B"
 ```
+
+> **Warning:** Do NOT use `kill <PID>` without `-9` as it sends SIGTERM which triggers IPC cleanup.
 
 **If launched via controller (tmux)**:
 ```bash
 # List tmux sessions
 tmux list-sessions
 
-# Kill specific session
+# Kill specific session (sends SIGKILL by default)
 tmux kill-session -t <session-name>
-
-# Kill all vLLM sessions
-tmux kill-session -t vllm-*
 ```
 
 ### Method 2: Programmatic Termination
@@ -316,20 +329,46 @@ import subprocess
 import signal
 import os
 
+def get_descendant_pids(parent_pid):
+    """Get all descendant PIDs using /proc filesystem."""
+    descendants = []
+    queue = [parent_pid]
+
+    while queue:
+        pid = queue.pop(0)
+        try:
+            children_path = f"/proc/{pid}/task/{pid}/children"
+            with open(children_path) as f:
+                child_pids = [int(p) for p in f.read().split() if p]
+                descendants.extend(child_pids)
+                queue.extend(child_pids)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+
+    return descendants
+
 def stop_vllm_process(process):
-    """Stop a vLLM process gracefully."""
+    """Stop a vLLM process and all its children using SIGKILL.
 
-    # Send SIGTERM for graceful shutdown
-    process.terminate()
+    IMPORTANT: Must kill descendants (EngineCore) before parent!
+    - SIGKILL doesn't propagate to children
+    - EngineCore is the process that allocates GPU VRAM
+    - SIGTERM would trigger IPC cleanup, breaking other models
+    """
+    # Get all descendant PIDs (includes EngineCore)
+    descendants = get_descendant_pids(process.pid)
 
-    # Wait up to 30 seconds
-    try:
-        process.wait(timeout=30)
-        print("Process stopped gracefully")
-    except subprocess.TimeoutExpired:
-        # Force kill if not stopped
-        process.kill()
-        print("Process force killed")
+    # Kill descendants first (frees GPU memory)
+    for pid in descendants:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    # Kill parent process
+    process.kill()  # SIGKILL
+    process.wait()
+    print("Process and all children stopped")
 
 def stop_vllm_by_port(port):
     """Stop vLLM process listening on specific port."""
@@ -343,7 +382,17 @@ def stop_vllm_by_port(port):
 
     if result.stdout:
         pid = int(result.stdout.strip())
-        os.kill(pid, signal.SIGTERM)
+
+        # Kill descendants first
+        descendants = get_descendant_pids(pid)
+        for child_pid in descendants:
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        # Kill parent
+        os.kill(pid, signal.SIGKILL)
         print(f"Stopped process on port {port}")
     else:
         print(f"No process found on port {port}")
@@ -360,23 +409,33 @@ Stop the entire controller and all managed models:
 # Find controller process
 ps aux | grep "controller.launch"
 
-# Send SIGTERM
-kill <PID>
+# Use SIGKILL
+kill -9 <PID>
 
-# Or use Ctrl+C if running in foreground
+# Or use Ctrl+C if running in foreground (followed by cleanup)
 ```
 
-### Cleanup After Unloading
+### IPC Cleanup (Server Shutdown Only)
 
-After unloading a model, clean up IPC segments:
+**Do NOT** delete IPC segments when unloading individual models. The shared segment is only deleted when the server shuts down:
 
 ```bash
-# List segments
-kvctl list
-
-# Delete segment for stopped model
-kvctl delete VLLM_MODEL_1
+# Only after ALL models are unloaded:
+kvctl delete kvcached_mem_info
 ```
+
+```python
+def shutdown_all(self):
+    """Shutdown all models and clean up shared resources."""
+    # First, unload all models
+    for model_path in list(self.running_models.keys()):
+        self.unload_model(model_path)
+
+    # Now it's safe to delete the shared IPC segment
+    subprocess.run(["kvctl", "delete", "kvcached_mem_info"])
+```
+
+> **Note:** If you're only unloading one model while others continue running, do NOT call `kvctl delete`. The shared IPC segment must remain for other models.
 
 ## Model Sleep and Wake
 

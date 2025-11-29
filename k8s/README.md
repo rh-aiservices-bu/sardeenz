@@ -175,16 +175,18 @@ nodeSelector:
 
 The deployment includes three probe types:
 
-1. **Startup Probe** - `/health` endpoint, 2-minute startup grace period
-2. **Liveness Probe** - `/health/live` endpoint, kills unhealthy containers
-3. **Readiness Probe** - `/health/ready` endpoint, removes from service when not ready
+1. **Startup Probe** - `/api/health` endpoint, 2-minute startup grace period
+2. **Liveness Probe** - `/api/health/live` endpoint, kills unhealthy containers
+3. **Readiness Probe** - `/api/health/ready` endpoint, removes from service when not ready
+
+> **Note:** Health check endpoints have quiet logging enabled. Successful requests (2xx) are logged at debug level only to reduce log noise from frequent polling. Errors (4xx/5xx) are always logged at warn/error levels.
 
 **Probe configuration:**
 
 ```yaml
 startupProbe:
   httpGet:
-    path: /health
+    path: /api/health
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -192,7 +194,7 @@ startupProbe:
 
 livenessProbe:
   httpGet:
-    path: /health/live
+    path: /api/health/live
     port: 3000
   initialDelaySeconds: 90
   periodSeconds: 30
@@ -200,7 +202,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /health/ready
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 60
   periodSeconds: 10

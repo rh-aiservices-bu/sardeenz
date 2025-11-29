@@ -13,6 +13,8 @@ import type {
   SettingsResponse,
   UpdateSettingsRequest,
   TestHfTokenResponse,
+  ChatCompletionRequest,
+  ChatCompletionResponse,
 } from '@sardeenz/types'
 
 // GPU info types (matching backend NvidiaSmiInfo)
@@ -72,6 +74,56 @@ const getBackoffDelay = (attempt: number) =>
 // Extended config type to track retry count
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   __retryCount?: number
+}
+
+/**
+ * Error details with optional status code
+ */
+export interface ErrorDetails {
+  statusCode?: number
+  message: string
+}
+
+/**
+ * Extract error details (status code + message) from various error types.
+ * Handles axios errors with response data from vLLM/OpenAI format.
+ */
+export function extractErrorDetails(error: unknown): ErrorDetails {
+  if (axios.isAxiosError(error)) {
+    const statusCode = error.response?.status
+    const data = error.response?.data
+
+    let message = error.message
+    if (data) {
+      // vLLM/OpenAI error format: { error: { message: "..." } }
+      if (typeof data.error?.message === 'string') {
+        message = data.error.message
+      } else if (typeof data.message === 'string') {
+        // Alternative format: { message: "..." }
+        message = data.message
+      } else if (typeof data === 'object') {
+        // Fallback: stringify the data if it's an object
+        message = JSON.stringify(data)
+      }
+    }
+
+    // Clean up vLLM artifacts (sometimes appends Python's "None" to messages)
+    message = message.replace(/\s+None\s*$/, '').trim()
+
+    return { statusCode, message }
+  }
+  if (error instanceof Error) {
+    return { message: error.message }
+  }
+  return { message: 'Unknown error' }
+}
+
+/**
+ * Extract a meaningful error message from various error types.
+ * @deprecated Use extractErrorDetails() for status code support
+ */
+export function extractErrorMessage(error: unknown): string {
+  return extractErrorDetails(error).message
 }
 
 class ApiClient {
@@ -183,7 +235,7 @@ class ApiClient {
   // Health check
 
   async healthCheck(): Promise<{ status: string }> {
-    const response = await this.client.get('/health')
+    const response = await this.client.get('/api/health')
     return response.data
   }
 
@@ -210,6 +262,38 @@ class ApiClient {
     const response = await this.client.post<TestHfTokenResponse>('/api/settings/hf-token/test', {
       token,
     })
+    return response.data
+  }
+
+  // Inference endpoints
+
+  async sendChatCompletionViaProxy(
+    request: ChatCompletionRequest
+  ): Promise<ChatCompletionResponse> {
+    const response = await this.client.post<ChatCompletionResponse>(
+      '/v1/chat/completions',
+      request
+    )
+    return response.data
+  }
+
+  async sendChatCompletionDirect(
+    port: number,
+    request: ChatCompletionRequest
+  ): Promise<ChatCompletionResponse> {
+    // Create a separate axios instance for direct model calls
+    const directClient = axios.create({
+      baseURL: `http://localhost:${port}`,
+      timeout: 180000, // 3 minutes
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const response = await directClient.post<ChatCompletionResponse>(
+      '/v1/chat/completions',
+      request
+    )
     return response.data
   }
 }

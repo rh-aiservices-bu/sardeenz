@@ -13,10 +13,10 @@ describe('Proxy Routing', () => {
   let app: FastifyInstance
   let fetchMock: Mock
 
-  const activeModel: ModelInstance = {
+  const runningModel: ModelInstance = {
     id: 'instance-1',
     modelPath: 'meta-llama/Llama-3.2-1B',
-    status: 'active' as ModelStatus,
+    status: 'running' as ModelStatus,
     port: 12346,
     processId: 12345,
     maxTokens: 4096,
@@ -44,7 +44,7 @@ describe('Proxy Routing', () => {
 
   describe('POST /v1/completions', () => {
     it('should forward request to loaded model', async () => {
-      modelStore.set('meta-llama/Llama-3.2-1B', activeModel)
+      modelStore.set('meta-llama/Llama-3.2-1B', runningModel)
       fetchMock.mockResolvedValueOnce(createMockCompletionResponse('meta-llama/Llama-3.2-1B'))
 
       const response = await app.inject({
@@ -67,7 +67,7 @@ describe('Proxy Routing', () => {
 
       // Verify fetch was called with correct URL
       expect(fetchMock).toHaveBeenCalledWith(
-        `http://localhost:${activeModel.port}/v1/completions`,
+        `http://localhost:${runningModel.port}/v1/completions`,
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -94,7 +94,7 @@ describe('Proxy Routing', () => {
 
     it('should return 404 when model is not active', async () => {
       const startingModel: ModelInstance = {
-        ...activeModel,
+        ...runningModel,
         status: 'starting' as ModelStatus,
       }
       modelStore.set('meta-llama/Llama-3.2-1B', startingModel)
@@ -115,7 +115,7 @@ describe('Proxy Routing', () => {
     })
 
     it('should handle streaming requests', async () => {
-      modelStore.set('meta-llama/Llama-3.2-1B', activeModel)
+      modelStore.set('meta-llama/Llama-3.2-1B', runningModel)
       fetchMock.mockResolvedValueOnce(createMockStreamingResponse('meta-llama/Llama-3.2-1B'))
 
       const response = await app.inject({
@@ -134,7 +134,7 @@ describe('Proxy Routing', () => {
     })
 
     it('should return 502 when vLLM returns error', async () => {
-      modelStore.set('meta-llama/Llama-3.2-1B', activeModel)
+      modelStore.set('meta-llama/Llama-3.2-1B', runningModel)
       fetchMock.mockRejectedValueOnce(new Error('Connection refused'))
 
       const response = await app.inject({
@@ -155,7 +155,7 @@ describe('Proxy Routing', () => {
 
   describe('POST /v1/chat/completions', () => {
     it('should forward chat request to loaded model', async () => {
-      modelStore.set('meta-llama/Llama-3.2-1B', activeModel)
+      modelStore.set('meta-llama/Llama-3.2-1B', runningModel)
       fetchMock.mockResolvedValueOnce(createMockChatCompletionResponse('meta-llama/Llama-3.2-1B'))
 
       const response = await app.inject({
@@ -181,7 +181,7 @@ describe('Proxy Routing', () => {
 
       // Verify fetch was called with correct URL
       expect(fetchMock).toHaveBeenCalledWith(
-        `http://localhost:${activeModel.port}/v1/chat/completions`,
+        `http://localhost:${runningModel.port}/v1/chat/completions`,
         expect.objectContaining({
           method: 'POST',
         })
@@ -205,7 +205,7 @@ describe('Proxy Routing', () => {
     })
 
     it('should handle streaming chat requests', async () => {
-      modelStore.set('meta-llama/Llama-3.2-1B', activeModel)
+      modelStore.set('meta-llama/Llama-3.2-1B', runningModel)
       fetchMock.mockResolvedValueOnce(createMockStreamingResponse('meta-llama/Llama-3.2-1B'))
 
       const response = await app.inject({
@@ -224,8 +224,8 @@ describe('Proxy Routing', () => {
 
     it('should include available models in error message', async () => {
       // Add some models to the store
-      modelStore.set('model-a', { ...activeModel, modelPath: 'model-a' })
-      modelStore.set('model-b', { ...activeModel, modelPath: 'model-b' })
+      modelStore.set('model-a', { ...runningModel, modelPath: 'model-a' })
+      modelStore.set('model-b', { ...runningModel, modelPath: 'model-b' })
 
       const response = await app.inject({
         method: 'POST',

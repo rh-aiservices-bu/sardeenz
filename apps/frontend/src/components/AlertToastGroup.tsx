@@ -30,6 +30,7 @@ export const AlertToastGroup: React.FC<AlertToastGroupProps> = ({ notifications,
           key={notification.id}
           variant={getAlertVariant(notification.variant)}
           title={notification.title}
+          isExpandable={!!notification.description && notification.description.length > 100}
           timeout={notification.timeout || 5000}
           onTimeout={() => onRemove(notification.id)}
           actionClose={

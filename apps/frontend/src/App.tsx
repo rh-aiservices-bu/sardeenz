@@ -40,10 +40,7 @@ import {
 } from '@patternfly/react-core'
 import { BarsIcon, SunIcon, MoonIcon, ExclamationCircleIcon, UserIcon } from '@patternfly/react-icons'
 import sardeenzLogo from '../../../assets/sardeenz.svg'
-import ModelManagement from './pages/ModelManagement'
-import ModelBenchmark from './pages/ModelBenchmark'
-import GpuInfo from './pages/GpuInfo'
-import Settings from './pages/Settings'
+import { routes } from './routes'
 import { useNotifications } from './contexts/NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
 import { NotificationDrawer, NotificationBadgeButton } from './components/NotificationDrawer'
@@ -177,18 +174,11 @@ function App() {
       <PageSidebarBody>
         <Nav>
           <NavList>
-            <NavItem itemId="model-management" isActive={location.pathname === '/'}>
-              <Link to="/">Model Management</Link>
-            </NavItem>
-            <NavItem itemId="gpu-info" isActive={location.pathname === '/gpu'}>
-              <Link to="/gpu">GPU Info</Link>
-            </NavItem>
-            <NavItem itemId="model-benchmark" isActive={location.pathname === '/benchmark'}>
-              <Link to="/benchmark">Model Benchmark</Link>
-            </NavItem>
-            <NavItem itemId="settings" isActive={location.pathname === '/settings'}>
-              <Link to="/settings">Settings</Link>
-            </NavItem>
+            {routes.map((route) => (
+              <NavItem key={route.itemId} itemId={route.itemId} isActive={location.pathname === route.path}>
+                <Link to={route.path}>{route.label}</Link>
+              </NavItem>
+            ))}
           </NavList>
         </Nav>
       </PageSidebarBody>
@@ -256,10 +246,9 @@ function App() {
           <DrawerContent panelContent={drawerPanelContent}>
             <DrawerContentBody>
               <Routes>
-                <Route path="/" element={<ModelManagement />} />
-                <Route path="/gpu" element={<GpuInfo />} />
-                <Route path="/benchmark" element={<ModelBenchmark />} />
-                <Route path="/settings" element={<Settings />} />
+                {routes.map((route) => (
+                  <Route key={route.path} path={route.path} element={route.element} />
+                ))}
               </Routes>
             </DrawerContentBody>
           </DrawerContent>

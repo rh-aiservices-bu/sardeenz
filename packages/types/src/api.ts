@@ -5,6 +5,7 @@ import type { ModelStatus } from './models.js'
 export interface LoadModelRequest {
   model_path: string
   max_tokens?: number
+  extra_args?: string[] // Additional vLLM CLI arguments
 }
 
 export interface LoadModelResponse {
@@ -26,9 +27,20 @@ export interface ListModelsResponse {
   total: number
 }
 
+/** Memory metrics in API response (snake_case) */
+export interface ModelMemoryMetricsDTO {
+  weights_memory_gib: number
+  cuda_graph_memory_gib: number
+  kv_cache_available_gib: number
+  kv_cache_per_request_mib: number
+  max_model_len: number
+}
+
 export interface ModelInstanceDTO {
   id: string
   model_path: string
+  /** Model name used by vLLM for inference (from --served-model-name or defaults to model_path) */
+  model_name: string
   status: ModelStatus
   port: number
   process_id: number
@@ -37,6 +49,9 @@ export interface ModelInstanceDTO {
   loaded_at: string
   ready_at?: string
   error_message?: string
+  memory_metrics?: ModelMemoryMetricsDTO
+  has_chat_template?: boolean
+  launch_command?: string // Full vLLM command for debugging/reproduction
 }
 
 export interface GetModelResponse {
@@ -50,13 +65,38 @@ export interface ModelHealthResponse {
   uptime_seconds: number
 }
 
-export interface MemoryUsageResponse {
-  gpu_total_gb: number
-  gpu_used_gb: number
-  gpu_free_gb: number
-  models: ModelMemoryUsage[]
+/** KVCache memory pool metrics (shared across all models) */
+export interface KVCacheMetrics {
+  total_gb: number // Total KVCache pool size
+  prealloc_gb: number // Pre-allocated but not yet used
+  used_gb: number // Currently used by active requests
+  free_gb: number // Available for new allocations
 }
 
+/** GPU memory metrics from nvidia-smi */
+export interface GpuMetrics {
+  total_gb: number
+  used_gb: number // Total used by all processes
+  free_gb: number
+  utilization_percent: number
+}
+
+/** Per-model GPU memory breakdown */
+export interface ModelGpuMemory {
+  model_path: string
+  instance_id: string // Unique instance identifier
+  display_name: string // Short name for legend, unique per instance (e.g., "Llama-3.2-1B", "Llama-3.2-1B (2)")
+  gpu_memory_gb: number // Model's GPU footprint (weights + CUDA graphs)
+  color: string // Assigned color for visualization
+}
+
+export interface MemoryUsageResponse {
+  kvcache: KVCacheMetrics
+  gpu: GpuMetrics
+  models: ModelGpuMemory[]
+}
+
+/** Legacy model memory usage (for backward compatibility) */
 export interface ModelMemoryUsage {
   model_path: string
   gpu_memory_used_gb: number
@@ -122,6 +162,7 @@ export interface ChatCompletionRequest {
   presence_penalty?: number
   frequency_penalty?: number
   user?: string
+  chat_template?: string // Optional custom chat template (requires --trust-request-chat-template flag)
 }
 
 export interface ChatMessage {

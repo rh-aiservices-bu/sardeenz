@@ -24,6 +24,10 @@ export default tseslint.config(
         ...globals.node,
         ...globals.es2022,
       },
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
       // TypeScript rules

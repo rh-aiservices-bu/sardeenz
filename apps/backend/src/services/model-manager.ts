@@ -4,9 +4,10 @@ import { randomUUID } from 'crypto'
 import type { ModelInstance, ModelStatus } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
-import { getNextPort, killProcessGracefully, isProcessRunning, getDescendantPids } from '../utils/process.js'
+import { getNextPort, killProcessImmediate, isProcessRunning, getDescendantPids } from '../utils/process.js'
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
+import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
 import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 import type { Logger } from '@sardeenz/utils'
 import { processLogBuffer } from './process-log-buffer.js'
@@ -16,6 +17,53 @@ import { runtimeSettings } from '../stores/runtime-settings.js'
 export interface LaunchModelOptions {
   modelPath: string
   maxTokens?: number
+  extraArgs?: string[]
+}
+
+/** Arguments that are managed by the system and should be filtered out from user input */
+const FORBIDDEN_ARGS = [
+  '--gpu-memory-utilization',
+  '--port',
+  '--no-enable-prefix-caching',
+  '--disable-log-requests',
+  '--disable-log-stats',
+  '--max-model-len',
+]
+
+/**
+ * Sanitize user-provided vLLM arguments:
+ * - Filter out empty lines
+ * - Ensure args start with - or --
+ * - Remove system-managed arguments
+ */
+function sanitizeVllmArgs(args: string[]): string[] {
+  return args
+    .map((arg) => arg.trim())
+    .filter((arg) => arg.length > 0)
+    .filter((arg) => arg.startsWith('-'))
+    .filter((arg) => {
+      const argName = arg.split('=')[0].toLowerCase()
+      return !FORBIDDEN_ARGS.some((forbidden) => argName === forbidden.toLowerCase())
+    })
+}
+
+/**
+ * Extract --served-model-name from vLLM arguments if present
+ * Supports both formats: --served-model-name=value and --served-model-name value
+ */
+function extractServedModelName(args: string[], defaultName: string): string {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    // Handle --served-model-name=value format
+    if (arg.startsWith('--served-model-name=')) {
+      return arg.split('=')[1]
+    }
+    // Handle --served-model-name value format
+    if (arg === '--served-model-name' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+      return args[i + 1]
+    }
+  }
+  return defaultName
 }
 
 export class ModelManager extends EventEmitter {
@@ -34,9 +82,12 @@ export class ModelManager extends EventEmitter {
    * GPU memory is managed by KVCached
    */
   async launchModel(options: LaunchModelOptions): Promise<ModelInstance> {
-    const { modelPath, maxTokens = 4096 } = options
+    const { modelPath, maxTokens = 4096, extraArgs = [] } = options
 
-    this.logger.info({ modelPath }, 'Launching model')
+    // Sanitize user-provided extra arguments
+    const sanitizedExtraArgs = sanitizeVllmArgs(extraArgs)
+
+    this.logger.info({ modelPath, extraArgs: sanitizedExtraArgs }, 'Launching model')
 
     // Get next available port
     const usedPorts = modelStore.getUsedPorts()
@@ -44,9 +95,12 @@ export class ModelManager extends EventEmitter {
 
     // Create instance record with unique ID
     const instanceId = randomUUID()
+    // Extract model name from --served-model-name arg if provided, otherwise use modelPath
+    const modelName = extractServedModelName(sanitizedExtraArgs, modelPath)
     const instance: ModelInstance = {
       id: instanceId,
       modelPath,
+      modelName,
       status: 'starting' as ModelStatus,
       port,
       processId: 0, // Will be set after spawn
@@ -62,7 +116,8 @@ export class ModelManager extends EventEmitter {
       // Get HF token from runtime settings (may be from env or set via API)
       const hfToken = runtimeSettings.getHfToken()
 
-      const proc = spawn('vllm', [
+      // Build the command arguments array
+      const baseArgs = [
         'serve',
         modelPath,
         '--disable-log-requests',
@@ -70,7 +125,15 @@ export class ModelManager extends EventEmitter {
         '--no-enable-prefix-caching', // Required for KVCached
         `--port=${port}`,
         `--max-model-len=${maxTokens}`,
-      ], {
+      ]
+
+      // Append sanitized user-provided extra arguments
+      const allArgs = [...baseArgs, ...sanitizedExtraArgs]
+
+      // Build and store the full launch command for debugging/reproduction
+      instance.launchCommand = ['vllm', ...allArgs].join(' ')
+
+      const proc = spawn('vllm', allArgs, {
         env: {
           ...process.env,
           ENABLE_KVCACHED: config.enableKvcached ? 'true' : 'false',
@@ -182,20 +245,64 @@ export class ModelManager extends EventEmitter {
         return
       }
 
-      // Update status to active
-      instance.status = 'active' as ModelStatus
+      // Update status to running
+      instance.status = 'running' as ModelStatus
       instance.readyAt = new Date()
 
+      // Parse logs first to extract EngineCore PID and memory metrics
+      const logs = processLogBuffer.getBuffer(instanceId)
+
+      // Extract EngineCore PID (the process that actually uses GPU VRAM)
+      // The vLLM API Server (instance.processId) doesn't allocate GPU memory directly
+      const engineCorePid = extractEngineCorePid(logs)
+      if (engineCorePid) {
+        instance.engineCorePid = engineCorePid
+        this.logger.info(
+          { instanceId, modelPath, engineCorePid, apiServerPid: instance.processId },
+          'Extracted EngineCore PID from vLLM logs'
+        )
+      } else {
+        this.logger.warn(
+          { instanceId, modelPath },
+          'Could not extract EngineCore PID from vLLM logs, will use main process PID for GPU memory lookup'
+        )
+      }
+
+      // Parse memory metrics from logs
+      const memoryMetrics = parseMemoryMetrics(logs, instance.maxTokens)
+      if (memoryMetrics) {
+        instance.memoryMetrics = memoryMetrics
+        this.logger.info(
+          { instanceId, modelPath, memoryMetrics },
+          'Parsed memory metrics from vLLM logs'
+        )
+      } else {
+        this.logger.warn(
+          { instanceId, modelPath },
+          'Could not parse memory metrics from vLLM logs'
+        )
+      }
+
       // Get actual GPU memory usage from nvidia-smi process list
-      // vLLM uses multiprocessing/Ray, so we need to find all descendant processes
+      // Use EngineCore PID if available (it's the one that allocates GPU VRAM)
       try {
         const gpuInfo = await getNvidiaSmiInfo()
 
-        // Get all descendant PIDs of the vLLM process (child workers use the GPU)
-        const descendantPids = await getDescendantPids(instance.processId)
-        const allPids = new Set([instance.processId, ...descendantPids])
+        // Use EngineCore PID if available, otherwise fall back to main process + descendants
+        const primaryPid = instance.engineCorePid ?? instance.processId
+        const descendantPids = await getDescendantPids(primaryPid)
+        const allPids = new Set([primaryPid, ...descendantPids])
 
-        // Sum GPU memory from all descendant processes
+        // If we have EngineCore PID, also include main process ID and its descendants
+        if (instance.engineCorePid) {
+          allPids.add(instance.processId)
+          const apiServerDescendants = await getDescendantPids(instance.processId)
+          for (const pid of apiServerDescendants) {
+            allPids.add(pid)
+          }
+        }
+
+        // Sum GPU memory from all matching processes
         let totalGpuMemoryMB = 0
         for (const proc of gpuInfo.processes) {
           if (allPids.has(proc.pid)) {
@@ -211,17 +318,18 @@ export class ModelManager extends EventEmitter {
             {
               modelPath,
               instanceId,
+              engineCorePid: instance.engineCorePid,
               processId: instance.processId,
-              descendantPids,
+              matchedPids: Array.from(allPids),
               totalGpuMemoryMB,
               gpuTotalMB,
               gpuUtilization: instance.gpuMemoryUtilization,
             },
-            'Got GPU memory usage from nvidia-smi (including child processes)'
+            'Got GPU memory usage from nvidia-smi'
           )
         } else {
           this.logger.warn(
-            { modelPath, instanceId, processId: instance.processId, descendantPids },
+            { modelPath, instanceId, engineCorePid: instance.engineCorePid, processId: instance.processId, searchedPids: Array.from(allPids) },
             'No matching processes found in nvidia-smi output'
           )
         }
@@ -229,14 +337,56 @@ export class ModelManager extends EventEmitter {
         this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
       }
 
+      // Test if model supports chat templates
+      try {
+        const testRequest = {
+          model: modelPath,
+          messages: [{ role: 'user', content: 'what is the color of the sky?' }],
+          max_tokens: 10,
+        }
+
+        const testResponse = await fetch(`http://localhost:${port}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(testRequest),
+        })
+
+        // If we get any response (even error), check the status
+        if (testResponse.status === 400) {
+          const errorData = await testResponse.json()
+          const errorMsg = JSON.stringify(errorData).toLowerCase()
+
+          // Check if error is about missing chat template
+          if (errorMsg.includes('chat template') || errorMsg.includes('chat_template')) {
+            instance.hasChatTemplate = false
+            this.logger.info({ modelPath, instanceId }, 'Model does not support chat templates (will need manual wrapping)')
+          } else {
+            // Different 400 error, assume templates work
+            instance.hasChatTemplate = true
+            this.logger.info({ modelPath, instanceId }, 'Model supports chat templates')
+          }
+        } else {
+          // Success or other error status, assume templates work
+          instance.hasChatTemplate = true
+          this.logger.info({ modelPath, instanceId }, 'Model supports chat templates')
+        }
+      } catch (err) {
+        // Network error or other issue, assume templates work (we'll find out later)
+        instance.hasChatTemplate = true
+        this.logger.warn(
+          { modelPath, instanceId, err },
+          'Failed to test chat template support, assuming true'
+        )
+      }
+
       modelStore.set(instance)
 
-      // Emit status event for active state
+      // Emit status event for running state
       eventBus.emitEvent(
         eventBus.createStatusEvent(
           instanceId,
           'starting' as ModelStatus,
-          'active' as ModelStatus,
+          'running' as ModelStatus,
           'Model ready for inference'
         )
       )
@@ -300,8 +450,7 @@ export class ModelManager extends EventEmitter {
     if (!proc) {
       this.logger.info({ instanceId: instance.id }, 'No process to kill, cleaning up store entry')
 
-      // Clean up IPC segment (may not exist, but try anyway)
-      await this.deleteIpcSegment(instance.ipcSegmentName)
+      // Note: We don't delete the IPC segment here - it's shared by all models
 
       // Clean up logs
       processLogBuffer.clear(instance.id)
@@ -319,11 +468,12 @@ export class ModelManager extends EventEmitter {
     modelStore.set(instance)
 
     try {
-      // Graceful shutdown with timeout
-      await killProcessGracefully(proc, 30000)
+      // Use SIGKILL to bypass Python signal handlers that would delete
+      // the shared KVCached IPC segment (kvcached_mem_info)
+      await killProcessImmediate(proc)
 
-      // Clean up IPC segment via kvctl
-      await this.deleteIpcSegment(instance.ipcSegmentName)
+      // Note: We intentionally do NOT delete the IPC segment here.
+      // All models share 'kvcached_mem_info' - it's only deleted on server shutdown.
 
       // Remove from stores
       modelStore.delete(instance.id)
@@ -421,18 +571,21 @@ export class ModelManager extends EventEmitter {
   }
 
   /**
-   * Delete IPC segment via kvctl
+   * Delete the shared KVCached IPC segment
+   * Called only during server shutdown when all models are unloaded
    */
-  private async deleteIpcSegment(segmentName: string): Promise<void> {
+  private async deleteSharedIpcSegment(): Promise<void> {
+    const segmentName = 'kvcached_mem_info'
     try {
       const proc = spawn('kvctl', ['delete', segmentName])
       await new Promise<void>((resolve) => {
         proc.on('exit', () => resolve())
         proc.on('error', () => resolve()) // Ignore errors
       })
+      this.logger.info('Deleted shared KVCached IPC segment')
     } catch {
-      // Non-critical, segment may have been auto-cleaned
-      this.logger.debug({ segmentName }, 'Failed to delete IPC segment (non-critical)')
+      // Non-critical, segment may not exist
+      this.logger.debug({ segmentName }, 'Failed to delete shared IPC segment (non-critical)')
     }
   }
 
@@ -532,6 +685,9 @@ export class ModelManager extends EventEmitter {
 
     // Clean up log buffer
     processLogBuffer.cleanup()
+
+    // Delete the shared KVCached IPC segment now that all models are unloaded
+    await this.deleteSharedIpcSegment()
   }
 
   /**

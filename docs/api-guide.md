@@ -193,6 +193,13 @@ curl -H "Authorization: Bearer $TOKEN" \
   "gpuMemoryLimit": 4.0,
   "createdAt": "2025-11-11T10:30:00Z",
   "startedAt": "2025-11-11T10:31:15Z",
+  "memory_metrics": {
+    "weights_memory_gib": 0.67,
+    "cuda_graph_memory_gib": 0.55,
+    "kv_cache_available_gib": 5.70,
+    "kv_cache_per_request_mib": 156.23,
+    "max_model_len": 4096
+  },
   "metrics": {
     "requestCount": 1523,
     "activeConnections": 3,
@@ -332,7 +339,9 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### Health Check
 
-**Endpoint:** `GET /health`
+**Endpoint:** `GET /api/health`
+
+> **Note:** Health check endpoints (`/api/health`, `/api/health/ready`, `/api/health/live`) have quiet logging enabled. Successful requests (2xx) are logged at debug level only to reduce log noise from frequent polling. Errors (4xx/5xx) are always logged at warn/error levels.
 
 **Response (200 OK):**
 ```json
@@ -340,19 +349,105 @@ curl -H "Authorization: Bearer $TOKEN" \
   "status": "healthy",
   "timestamp": "2025-11-11T10:45:00Z",
   "uptime": 3600,
-  "models": {
-    "total": 2,
-    "active": 2,
-    "starting": 0,
-    "stopping": 0,
-    "failed": 0
-  }
+  "version": "0.1.0"
 }
 ```
 
+**Additional Health Endpoints:**
+- `GET /api/health/ready` - Readiness probe (returns `{"status": "ready", "timestamp": "..."}`)
+- `GET /api/health/live` - Liveness probe (returns `{"status": "alive", "timestamp": "..."}`)
+
 **Example (curl):**
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:3000/api/health
+```
+
+### Get Memory Usage
+
+**Endpoint:** `GET /api/memory/usage`
+
+Returns GPU and KVCache memory usage with per-model breakdown for visualization (used by the GPU Memory Overview panel in the dashboard).
+
+**Response (200 OK):**
+```json
+{
+  "kvcache": {
+    "total_gb": 12.5,
+    "prealloc_gb": 6.2,
+    "used_gb": 3.8,
+    "free_gb": 2.5
+  },
+  "gpu": {
+    "total_gb": 24.0,
+    "used_gb": 18.5,
+    "free_gb": 5.5,
+    "utilization_percent": 77.0
+  },
+  "models": [
+    {
+      "model_path": "meta-llama/Llama-3.2-1B",
+      "instance_id": "llama-3-2-1b-abc123",
+      "display_name": "Llama-3.2-1B",
+      "gpu_memory_gb": 1.22,
+      "color": "#0066CC"
+    },
+    {
+      "model_path": "meta-llama/Llama-3.2-1B",
+      "instance_id": "llama-3-2-1b-def456",
+      "display_name": "Llama-3.2-1B (2)",
+      "gpu_memory_gb": 1.22,
+      "color": "#5752D1"
+    },
+    {
+      "model_path": "mistralai/Mistral-7B-v0.1",
+      "instance_id": "mistral-7b-ghi789",
+      "display_name": "Mistral-7B-v0.1",
+      "gpu_memory_gb": 5.45,
+      "color": "#009596"
+    }
+  ]
+}
+```
+
+**Field Descriptions:**
+
+| Field | Description |
+|-------|-------------|
+| `kvcache.total_gb` | Total KVCache pool size (shared across all models) |
+| `kvcache.prealloc_gb` | Pre-allocated but not actively used KVCache memory |
+| `kvcache.used_gb` | Currently active KVCache memory |
+| `kvcache.free_gb` | Available KVCache memory |
+| `gpu.total_gb` | Total GPU memory |
+| `gpu.used_gb` | Used GPU memory (all processes) |
+| `gpu.free_gb` | Free GPU memory |
+| `gpu.utilization_percent` | GPU utilization percentage |
+| `models[].model_path` | Full model path/identifier |
+| `models[].instance_id` | Unique instance identifier (stable across API calls) |
+| `models[].display_name` | Short display name, unique per instance. For duplicate models, includes suffix: "Model", "Model (2)", etc. |
+| `models[].gpu_memory_gb` | Model's GPU footprint (weights + CUDA graphs) |
+| `models[].color` | Hex color for visualization (unique per instance, based on instance_id hash) |
+
+**Example (curl):**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/memory/usage
+```
+
+**Example (JavaScript):**
+```javascript
+const response = await fetch('http://localhost:3000/api/memory/usage', {
+  headers: { 'Authorization': `Bearer ${token}` },
+});
+const memoryData = await response.json();
+
+// KVCache metrics (shared pool)
+console.log(`KVCache: ${memoryData.kvcache.used_gb}/${memoryData.kvcache.total_gb} GB`);
+
+// GPU metrics with per-model breakdown
+console.log(`GPU: ${memoryData.gpu.used_gb}/${memoryData.gpu.total_gb} GB`);
+memoryData.models.forEach(model => {
+  console.log(`  ${model.display_name}: ${model.gpu_memory_gb} GB`);
+});
 ```
 
 ## Proxy API

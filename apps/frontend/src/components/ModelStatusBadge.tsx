@@ -10,10 +10,12 @@ interface ModelStatusBadgeProps {
  * following PatternFly 6 design patterns.
  */
 export function ModelStatusBadge({ status }: ModelStatusBadgeProps) {
-  const getColor = (): 'green' | 'orange' | 'grey' | 'red' | 'blue' => {
+  const getColor = (): 'green' | 'orange' | 'grey' | 'red' | 'blue' | 'purple' => {
     switch (status) {
-      case 'active':
+      case 'running':
         return 'green'
+      case 'sleeping':
+        return 'purple'
       case 'starting':
         return 'blue'
       case 'stopping':
