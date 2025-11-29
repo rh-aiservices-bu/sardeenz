@@ -10,6 +10,8 @@ This guide provides practical examples for using the Sardeenz APIs.
 - [Proxy API](#proxy-api)
 - [Error Handling](#error-handling)
 - [Code Examples](#code-examples)
+- [Benchmark API](#benchmark-api)
+- [Memory Profile API](#memory-profile-api)
 
 ## Overview
 
@@ -896,6 +898,384 @@ client.wait_for_model(model_id)
 response = client.chat(model_id, [{"role": "user", "content": "Hello!"}])
 print(response)
 client.unload_model(model_id)
+```
+
+## Benchmark API
+
+The Benchmark API allows you to run performance tests on loaded models, measuring latency, throughput, and other metrics.
+
+### Create a Benchmark Run
+
+**Endpoint:** `POST /api/benchmarks`
+
+**Request Body:**
+```json
+{
+  "name": "SmolLM Performance Test",
+  "mode": "isolated",
+  "scenarios": [
+    {
+      "instanceId": "smollm2-135m-abc123",
+      "routingMode": "direct",
+      "inputTokens": 100,
+      "outputTokens": 50,
+      "concurrency": 4,
+      "warmupRequests": 3,
+      "totalRequests": 20,
+      "slaThresholdMs": 500
+    }
+  ]
+}
+```
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Human-readable name for the benchmark run |
+| `mode` | string | Yes | `isolated` (run scenarios sequentially) or `contention` (run all simultaneously) |
+| `scenarios` | array | Yes | One or more scenarios to benchmark |
+| `scenarios[].instanceId` | string | Yes | Model instance ID to benchmark |
+| `scenarios[].routingMode` | string | No | `direct` (to vLLM) or `proxy` (through unified endpoint). Default: `direct` |
+| `scenarios[].inputTokens` | number | Yes | Target input token count |
+| `scenarios[].outputTokens` | number | Yes | Max tokens for response |
+| `scenarios[].concurrency` | number | Yes | Number of parallel requests |
+| `scenarios[].warmupRequests` | number | Yes | Unmeasured warmup requests |
+| `scenarios[].totalRequests` | number | Yes | Measured requests |
+| `scenarios[].slaThresholdMs` | number | No | SLA threshold for goodput calculation |
+
+**Response (201 Created):**
+```json
+{
+  "benchmark": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "SmolLM Performance Test",
+    "status": "pending",
+    "mode": "isolated",
+    "kvcached_enabled": true,
+    "created_at": "2025-11-29T12:00:00Z",
+    "scenarios": [
+      {
+        "id": "scenario-uuid",
+        "instance_id": "smollm2-135m-abc123",
+        "routing_mode": "direct",
+        "model_path": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "model_name": "SmolLM2-135M-Instruct",
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "concurrency": 4,
+        "warmup_requests": 3,
+        "total_requests": 20,
+        "sla_threshold_ms": 500,
+        "status": "pending"
+      }
+    ]
+  }
+}
+```
+
+### List Benchmark Runs
+
+**Endpoint:** `GET /api/benchmarks`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | number | 1 | Page number |
+| `limit` | number | 20 | Results per page (max 100) |
+| `status` | string | all | Filter by status: `pending`, `running`, `completed`, `cancelled`, `failed` |
+
+**Response (200 OK):**
+```json
+{
+  "benchmarks": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "SmolLM Performance Test",
+      "status": "completed",
+      "mode": "isolated",
+      "kvcached_enabled": true,
+      "created_at": "2025-11-29T12:00:00Z",
+      "started_at": "2025-11-29T12:00:01Z",
+      "completed_at": "2025-11-29T12:02:30Z",
+      "total_requests": 20,
+      "successful_requests": 20,
+      "failed_requests": 0,
+      "duration_seconds": 149.5
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
+
+### Get Benchmark Details
+
+**Endpoint:** `GET /api/benchmarks/{id}`
+
+Returns full benchmark details including scenarios and aggregated metrics.
+
+**Response (200 OK):**
+```json
+{
+  "benchmark": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "SmolLM Performance Test",
+    "status": "completed",
+    "mode": "isolated",
+    "kvcached_enabled": true,
+    "created_at": "2025-11-29T12:00:00Z",
+    "completed_at": "2025-11-29T12:02:30Z",
+    "total_requests": 20,
+    "successful_requests": 20,
+    "failed_requests": 0,
+    "duration_seconds": 149.5,
+    "scenarios": [
+      {
+        "id": "scenario-uuid",
+        "instance_id": "smollm2-135m-abc123",
+        "routing_mode": "direct",
+        "model_path": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "model_name": "SmolLM2-135M-Instruct",
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "concurrency": 4,
+        "status": "completed",
+        "metrics": {
+          "ttft_avg": 45.2,
+          "ttft_p50": 42.1,
+          "ttft_p90": 68.3,
+          "ttft_p95": 78.5,
+          "ttft_p99": 95.2,
+          "tps_avg": 156.8,
+          "tps_p50": 158.2,
+          "tps_p90": 142.3,
+          "tps_p95": 138.5,
+          "e2e_avg": 320.5,
+          "e2e_p50": 315.2,
+          "e2e_p90": 385.3,
+          "e2e_p95": 412.1,
+          "e2e_p99": 478.5,
+          "goodput_count": 18,
+          "goodput_percent": 90.0,
+          "requests_per_second": 12.5,
+          "tokens_per_second_total": 1960.0,
+          "total_requests": 20,
+          "successful_requests": 20,
+          "failed_requests": 0
+        }
+      }
+    ]
+  }
+}
+```
+
+### Subscribe to Benchmark Events (SSE)
+
+**Endpoint:** `GET /api/benchmarks/{id}/events`
+
+Real-time progress updates via Server-Sent Events.
+
+**Event Types:**
+
+| Event | Description |
+|-------|-------------|
+| `benchmark:started` | Benchmark run has started |
+| `scenario:started` | A scenario has started |
+| `scenario:warmup` | Warmup phase progress |
+| `scenario:progress` | Measured request progress |
+| `scenario:completed` | Scenario finished with metrics |
+| `benchmark:completed` | All scenarios complete |
+| `benchmark:failed` | Benchmark run failed |
+
+**Example SSE Event:**
+```
+event: scenario:progress
+data: {"scenario_id":"uuid","completed":10,"total":20,"success_count":10,"error_count":0}
+
+event: scenario:completed
+data: {"scenario_id":"uuid","metrics":{"ttft_avg":45.2,"tps_avg":156.8,...}}
+```
+
+**Example (JavaScript):**
+```javascript
+const eventSource = new EventSource('/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events');
+
+eventSource.addEventListener('scenario:progress', (event) => {
+  const data = JSON.parse(event.data);
+  console.log(`Progress: ${data.completed}/${data.total}`);
+});
+
+eventSource.addEventListener('benchmark:completed', (event) => {
+  console.log('Benchmark complete!');
+  eventSource.close();
+});
+```
+
+### Delete a Benchmark Run
+
+**Endpoint:** `DELETE /api/benchmarks/{id}`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Benchmark run deleted"
+}
+```
+
+## Memory Profile API
+
+The Memory Profile API allows you to save and retrieve GPU memory footprints for capacity planning.
+
+### List Memory Profiles
+
+**Endpoint:** `GET /api/memory/profiles`
+
+**Response (200 OK):**
+```json
+{
+  "profiles": [
+    {
+      "id": "profile-uuid",
+      "profile_name": "SmolLM2-135M @ 2048 tokens",
+      "model_path": "HuggingFaceTB/SmolLM2-135M-Instruct",
+      "max_tokens": 2048,
+      "total_gpu_memory_gib": 1.22,
+      "weights_memory_gib": 0.27,
+      "cuda_graphs_gib": 0.55,
+      "overhead_memory_gib": 0.40,
+      "kv_cache_available_gib": 5.70,
+      "gpu_name": "NVIDIA GeForce RTX 4090",
+      "gpu_total_memory_gib": 24.0,
+      "created_at": "2025-11-29T12:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Create a Memory Profile
+
+**Endpoint:** `POST /api/memory/profiles`
+
+Create a profile from a running model instance:
+
+**Request Body:**
+```json
+{
+  "instanceId": "smollm2-135m-abc123",
+  "profileName": "SmolLM2-135M @ 2048 tokens",
+  "comments": "Baseline profile for capacity planning"
+}
+```
+
+Or create manually with explicit values:
+
+```json
+{
+  "profileName": "SmolLM2-135M @ 2048 tokens",
+  "modelPath": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "maxTokens": 2048,
+  "totalGpuMemoryGib": 1.22,
+  "weightsMemoryGib": 0.27,
+  "cudaGraphsGib": 0.55,
+  "gpuName": "NVIDIA GeForce RTX 4090",
+  "gpuTotalMemoryGib": 24.0
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "profile": {
+    "id": "new-profile-uuid",
+    "profile_name": "SmolLM2-135M @ 2048 tokens",
+    "model_path": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "max_tokens": 2048,
+    "total_gpu_memory_gib": 1.22,
+    "weights_memory_gib": 0.27,
+    "cuda_graphs_gib": 0.55,
+    "overhead_memory_gib": 0.40,
+    "kv_cache_available_gib": 5.70,
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "gpu_total_memory_gib": 24.0,
+    "created_at": "2025-11-29T12:00:00Z"
+  }
+}
+```
+
+### Lookup a Memory Profile
+
+**Endpoint:** `GET /api/memory/profiles/lookup`
+
+Find a profile by model configuration (useful before loading a model).
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `model_path` | string | Yes | Model path to lookup |
+| `max_tokens` | number | Yes | Max tokens configuration |
+| `gpu_name` | string | Yes | GPU name (e.g., "NVIDIA GeForce RTX 4090") |
+
+**Example:**
+```bash
+curl "http://localhost:3000/api/memory/profiles/lookup?model_path=HuggingFaceTB/SmolLM2-135M-Instruct&max_tokens=2048&gpu_name=NVIDIA%20GeForce%20RTX%204090"
+```
+
+**Response (200 OK):** Same as single profile response
+
+**Response (404 Not Found):** If no matching profile exists
+
+### Pre-Load Memory Check
+
+**Endpoint:** `POST /api/memory/profiles/check`
+
+Check if a model will fit in available GPU memory before loading.
+
+**Request Body:**
+```json
+{
+  "modelPath": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "maxTokens": 2048
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "warning_level": "ok",
+  "message": "Model should fit with 5.2 GiB headroom",
+  "profile_found": true,
+  "estimated_memory_gib": 1.22,
+  "available_memory_gib": 6.42,
+  "gpu_name": "NVIDIA GeForce RTX 4090",
+  "gpu_total_memory_gib": 24.0
+}
+```
+
+**Warning Levels:**
+
+| Level | Description |
+|-------|-------------|
+| `ok` | Model should fit with comfortable headroom |
+| `caution` | Memory is tight, model may succeed but is close to limits |
+| `danger` | Model will not fit in available GPU memory |
+| `info` | No profile found for this configuration |
+
+### Delete a Memory Profile
+
+**Endpoint:** `DELETE /api/memory/profiles/{id}`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Memory profile deleted"
+}
 ```
 
 ---

@@ -6,7 +6,7 @@
 
 Fastify backend providing Controller API and Unified Proxy for multi-model LLM management. Manages vLLM subprocess lifecycle with real-time event streaming.
 
-**Technology Stack**: Node.js 22.x, TypeScript 5.7+ (strict mode), Fastify 5.1+
+**Technology Stack**: Node.js 22.x, TypeScript 5.7+ (strict mode), Fastify 5.1+, SQLite (better-sqlite3)
 
 ## Key Components
 
@@ -49,6 +49,30 @@ Intelligent extraction of meaningful errors from vLLM output:
 - **CUDA/PyTorch mismatch**: Version compatibility issues
 - **Fallback**: Last stderr lines with exit code if no pattern matches
 
+### BenchmarkRunner (`src/services/benchmark-runner.ts`)
+
+Executes benchmark runs with real-time progress via SSE:
+- **Execution modes**: `isolated` (sequential) or `contention` (parallel)
+- **Warmup phase**: Configurable warmup requests (not measured)
+- **Concurrent requests**: Configurable concurrency per scenario
+- **Metrics collection**: TTFT, TPS, E2E latency with percentiles
+- **Progress events**: Real-time SSE updates during execution
+- **Cancellation**: Supports mid-run cancellation via API
+
+### Prompt Generator (`src/utils/prompt-generator.ts`)
+
+Generates prompts with target token counts for benchmarks:
+- **Token estimation**: Approximates input token count
+- **Repeatable patterns**: Uses system prompts and user messages
+- **Configurable**: Target input and output tokens per scenario
+
+### Database Layer (`src/db/`)
+
+SQLite persistence for benchmarks and memory profiles:
+- **Connection** (`connection.ts`): Singleton database connection
+- **Migrations** (`migrate.ts`): Automatic migration runner on startup
+- **Migration files** (`migrations/*.sql`): Schema evolution
+
 ## API Routes
 
 | Route File | Purpose |
@@ -58,16 +82,27 @@ Intelligent extraction of meaningful errors from vLLM output:
 | `src/routes/health.ts` | Backend health checks (`/api/health`, `/api/health/ready`, `/api/health/live`) |
 | `src/routes/proxy.ts` | OpenAI-compatible inference proxy |
 | `src/routes/memory.ts` | GPU memory info via kvctl |
+| `src/routes/memory-profiles.ts` | Memory profile CRUD, lookup, pre-load checks |
+| `src/routes/benchmarks.ts` | Benchmark run CRUD, SSE progress, results |
 | `src/routes/orphans.ts` | Orphan process detection |
 | `src/routes/settings.ts` | Application settings (HF token) |
 
-## Stores (In-Memory)
+## Stores
+
+### In-Memory Stores
 
 | Store | Purpose |
 |-------|---------|
 | `src/stores/model-store.ts` | ModelInstance tracking by ID/path |
 | `src/stores/operation-store.ts` | ControllerOperation audit trail |
 | `src/stores/runtime-settings.ts` | Runtime settings (HF token) |
+
+### SQLite-Backed Stores
+
+| Store | Purpose |
+|-------|---------|
+| `src/stores/benchmark-store.ts` | BenchmarkRun, Scenario, Results, Metrics persistence |
+| `src/stores/memory-profile-store.ts` | MemoryProfile storage and lookup |
 
 ## Model Loading Flow
 
@@ -212,6 +247,7 @@ See `apps/backend/.env.example` for a complete reference.
 | `LOG_LEVEL` | info | Pino log level |
 | `LOG_ALL_REQUESTS` | false | Force all routes to log at info level (debugging) |
 | `HF_TOKEN` | (none) | HuggingFace token for gated models |
+| `DB_PATH` | `./data/sardeenz.db` | SQLite database file path |
 
 ## Testing Notes
 

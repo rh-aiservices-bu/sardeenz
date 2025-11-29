@@ -78,6 +78,7 @@ Sardeenz is a multi-model management platform designed to:
 | **Runtime** | Node.js | 22.x | Server-side JavaScript execution |
 | **Language** | TypeScript | 5.7+ | Type-safe development (strict mode) |
 | **Framework** | Fastify | 5.1+ | High-performance HTTP server |
+| **Database** | SQLite | 3.x | Benchmark/profile persistence (better-sqlite3) |
 | **Auth** | @fastify/oauth2 | Latest | OAuth 2.0 / OIDC integration |
 | **Metrics** | fastify-metrics | Latest | Prometheus-format metrics |
 | **API Docs** | @fastify/swagger | Latest | OpenAPI 3.1 specification |
@@ -110,10 +111,14 @@ sardeenz/
 ├── apps/
 │   ├── backend/              # Fastify backend
 │   │   ├── src/
-│   │   │   ├── controllers/  # Request handlers
+│   │   │   ├── db/           # SQLite database layer
+│   │   │   │   ├── connection.ts    # Database connection
+│   │   │   │   ├── migrate.ts       # Migration runner
+│   │   │   │   └── migrations/      # SQL migration files
 │   │   │   ├── services/     # Business logic
+│   │   │   ├── stores/       # Data stores (in-memory + SQLite)
 │   │   │   ├── routes/       # API routes
-│   │   │   └── index.ts      # Entry point
+│   │   │   └── server.ts     # Entry point
 │   │   └── package.json
 │   └── frontend/             # React frontend
 │       ├── src/
@@ -145,6 +150,23 @@ sardeenz/
 - `GET /api/health` - Health check endpoint
 - `GET /api/health/ready` - Readiness probe endpoint
 - `GET /api/health/live` - Liveness probe endpoint
+
+**Benchmarking Endpoints:**
+
+- `POST /api/benchmarks` - Create and start a benchmark run
+- `GET /api/benchmarks` - List all benchmark runs
+- `GET /api/benchmarks/{id}` - Get benchmark run details with scenarios
+- `GET /api/benchmarks/{id}/events` - SSE stream for real-time progress
+- `DELETE /api/benchmarks/{id}` - Delete a benchmark run
+
+**Memory Profile Endpoints:**
+
+- `GET /api/memory/profiles` - List all saved memory profiles
+- `POST /api/memory/profiles` - Create a memory profile from running model
+- `GET /api/memory/profiles/lookup` - Find profile by model_path + max_tokens + gpu_name
+- `POST /api/memory/profiles/check` - Pre-load memory check (will model fit?)
+- `GET /api/memory/profiles/{id}` - Get a specific profile
+- `DELETE /api/memory/profiles/{id}` - Delete a profile
 
 **Authentication:** OAuth 2.0 / OIDC with RBAC
 - `admin` role: Full control (load/unload)
@@ -359,6 +381,91 @@ interface ResourceMetrics {
   activeConnections: number;       // Current connections
   avgResponseTime: number;         // ms (p50)
   p95ResponseTime: number;         // ms (p95)
+}
+```
+
+#### BenchmarkRun (SQLite Persisted)
+
+```typescript
+interface BenchmarkRun {
+  id: string;                      // UUID
+  name?: string;                   // Optional run name
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
+  mode: 'isolated' | 'contention'; // Execution mode
+  kvcachedEnabled: boolean;        // System KVCached status
+  createdAt: string;               // ISO timestamp
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  totalRequests: number;           // Sum across scenarios
+  successfulRequests: number;
+  failedRequests: number;
+  durationSeconds?: number;
+  scenarios: BenchmarkScenario[];  // Child scenarios
+}
+
+interface BenchmarkScenario {
+  id: string;
+  runId: string;
+  instanceId: string;              // Model instance being tested
+  routingMode: 'direct' | 'proxy'; // Route to vLLM or through proxy
+  modelPath: string;
+  modelName: string;
+  inputTokens: number;             // Target input token count
+  outputTokens: number;            // Target max_tokens
+  concurrency: number;             // Parallel requests
+  warmupRequests: number;          // Unmeasured warmup
+  totalRequests: number;           // Measured requests
+  slaThresholdMs?: number;         // For goodput calculation
+  status: 'pending' | 'running' | 'completed' | 'failed';
+}
+
+interface BenchmarkMetrics {
+  scenarioId: string;
+  // TTFT (Time To First Token) in ms
+  ttftMin: number; ttftMax: number; ttftAvg: number;
+  ttftP50: number; ttftP90: number; ttftP95: number; ttftP99: number;
+  // TPS (Tokens Per Second)
+  tpsMin: number; tpsMax: number; tpsAvg: number;
+  tpsP50: number; tpsP90: number; tpsP95: number; tpsP99: number;
+  // E2E Latency in ms
+  e2eMin: number; e2eMax: number; e2eAvg: number;
+  e2eP50: number; e2eP90: number; e2eP95: number; e2eP99: number;
+  // Goodput
+  goodputCount: number;            // Requests under SLA
+  goodputPercent: number;
+  // Throughput
+  requestsPerSecond: number;
+  tokensPerSecondTotal: number;
+}
+```
+
+#### MemoryProfile (SQLite Persisted)
+
+```typescript
+interface MemoryProfile {
+  id: string;                      // UUID
+  profileName: string;             // Human-readable name
+  modelPath: string;               // Model identifier
+  maxTokens: number;               // Context length when profiled
+
+  // Memory breakdown (GiB)
+  totalGpuMemoryGib: number;       // Total GPU memory consumed
+  weightsMemoryGib: number;        // Model weights
+  cudaGraphsGib: number;           // CUDA graph capture
+  overheadMemoryGib: number;       // Other overhead
+  kvCacheAvailableGib: number;     // Available KV cache (deprecated with KVCached)
+  kvCachePerRequestMib?: number;   // Estimated per-request KV cache
+
+  // GPU context
+  gpuName?: string;                // GPU where profiled
+  gpuTotalMemoryGib?: number;      // Total GPU memory
+
+  // Metadata
+  comments?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 ```
 

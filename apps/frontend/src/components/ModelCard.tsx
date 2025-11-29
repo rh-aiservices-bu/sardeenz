@@ -230,9 +230,9 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
       <MemoryDetailsModal
         isOpen={memoryModalOpen}
         onClose={() => setMemoryModalOpen(false)}
+        instanceId={model.id}
         modelPath={model.model_path}
         memoryMetrics={model.memory_metrics ?? null}
-        gpuMemoryUtilization={model.gpu_memory_utilization}
       />
     </Card>
   )

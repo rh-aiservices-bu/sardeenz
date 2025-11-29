@@ -31,11 +31,15 @@ export enum OperationType {
 
 /** Memory metrics parsed from vLLM logs after model loading */
 export interface ModelMemoryMetrics {
+  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  totalGpuMemoryGiB: number
   /** Model weights memory in GiB */
   weightsMemoryGiB: number
   /** CUDA graph capture memory in GiB */
   cudaGraphMemoryGiB: number
-  /** Total available KV cache memory in GiB */
+  /** Overhead memory (total - weights - CUDA graphs) in GiB */
+  overheadMemoryGiB: number
+  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
   kvCacheAvailableGiB: number
   /** KV cache memory per max-size request in MiB */
   kvCachePerRequestMiB: number

@@ -29,8 +29,13 @@ export interface ListModelsResponse {
 
 /** Memory metrics in API response (snake_case) */
 export interface ModelMemoryMetricsDTO {
+  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  total_gpu_memory_gib: number
   weights_memory_gib: number
   cuda_graph_memory_gib: number
+  /** Overhead memory (total - weights - CUDA graphs) in GiB */
+  overhead_memory_gib: number
+  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
   kv_cache_available_gib: number
   kv_cache_per_request_mib: number
   max_model_len: number

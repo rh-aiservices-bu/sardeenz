@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
 import { detectGpuInfo } from './utils/gpu-info.js'
+import { initializeDatabase, closeDb } from './db/index.js'
 
 // Create logger
 const logger = createLogger({
@@ -47,12 +48,13 @@ await fastify.register(import('@fastify/swagger'), {
     tags: [
       { name: 'models', description: 'Model lifecycle management endpoints' },
       { name: 'events', description: 'Real-time event streaming (SSE) endpoints' },
-      { name: 'memory', description: 'GPU memory management endpoints' },
+      { name: 'memory', description: 'GPU memory management and profiling endpoints' },
       { name: 'gpu', description: 'GPU information and monitoring endpoints' },
       { name: 'proxy', description: 'Inference proxy endpoints' },
       { name: 'health', description: 'Health check endpoints' },
       { name: 'orphans', description: 'Orphan process detection and cleanup (FR-027)' },
       { name: 'settings', description: 'Application settings endpoints' },
+      { name: 'benchmarks', description: 'LLM performance benchmarking endpoints' },
     ],
   },
 })
@@ -73,6 +75,9 @@ if (config.oidcIssuerUrl) {
   await fastify.register(import('./plugins/auth.js'))
 }
 
+// Register global error handler (must be before routes)
+await fastify.register(import('./plugins/error-handler.js'))
+
 // Register routes
 await fastify.register(import('./routes/health.js'))
 await fastify.register(import('./routes/models.js'))
@@ -82,6 +87,8 @@ await fastify.register(import('./routes/gpu.js'))
 await fastify.register(import('./routes/proxy.js'))
 await fastify.register(import('./routes/orphans.js'))
 await fastify.register(import('./routes/settings.js'))
+await fastify.register(import('./routes/benchmarks.js'))
+await fastify.register(import('./routes/memory-profiles.js'))
 
 // Root endpoint
 fastify.get('/', async () => {
@@ -96,6 +103,11 @@ fastify.get('/', async () => {
 // Start server
 async function start() {
   try {
+    // Initialize database and run migrations
+    logger.info('Initializing database...')
+    initializeDatabase()
+    logger.info('Database initialized')
+
     // Detect GPU info at startup (cache result for later use)
     const gpuInfo = await detectGpuInfo()
     if (gpuInfo.length > 0) {
@@ -129,6 +141,7 @@ async function start() {
 async function shutdown() {
   logger.info('Shutting down server...')
   await fastify.close()
+  closeDb()
   logger.info('Server shut down')
   process.exit(0)
 }

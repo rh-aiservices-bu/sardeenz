@@ -40,8 +40,10 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       error_message: instance.errorMessage,
       memory_metrics: instance.memoryMetrics
         ? {
+            total_gpu_memory_gib: instance.memoryMetrics.totalGpuMemoryGiB,
             weights_memory_gib: instance.memoryMetrics.weightsMemoryGiB,
             cuda_graph_memory_gib: instance.memoryMetrics.cudaGraphMemoryGiB,
+            overhead_memory_gib: instance.memoryMetrics.overheadMemoryGiB,
             kv_cache_available_gib: instance.memoryMetrics.kvCacheAvailableGiB,
             kv_cache_per_request_mib: instance.memoryMetrics.kvCachePerRequestMiB,
             max_model_len: instance.memoryMetrics.maxModelLen,

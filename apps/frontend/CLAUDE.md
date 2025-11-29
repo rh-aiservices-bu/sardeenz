@@ -2,17 +2,6 @@
 
 > **Note for AI Assistants**: This is a frontend-specific context file for the **sardeenz** application. For project overview, see root [CLAUDE.md](../../CLAUDE.md). For backend context, see [backend/CLAUDE.md](../backend/CLAUDE.md).
 
-## ⚠️ PROJECT STATUS
-
-**🚧 PLANNING PHASE - No Code Implementation Yet**
-
-This document describes the **planned frontend architecture** for sardeenz. The `apps/frontend/` directory currently contains only this specification file. When you begin implementation:
-
-1. Initialize the workspace with `npm init` in `apps/frontend/`
-2. Install dependencies as specified in [Technology Stack](#-technology-stack)
-3. Set up the project structure as defined in [Project Structure](#-project-structure)
-4. Follow all patterns and guidelines described below
-
 ## 🎯 Frontend Overview
 
 **sardeenz** - React 18 admin dashboard for managing multiple vLLM model instances on shared GPU infrastructure.
@@ -22,6 +11,8 @@ This document describes the **planned frontend architecture** for sardeenz. The 
 - Load and unload LLM instances dynamically
 - Monitor GPU memory usage and inference metrics
 - Manage model configurations via Controller API
+- Run performance benchmarks on loaded models
+- Manage memory profiles for capacity planning
 
 **Technology Stack**: React 18.3+, PatternFly 6.x, React Router 7, TypeScript 5.7+, Vite 6.0+
 **Development**: Port 5173 with Vite HMR (Hot Module Replacement)
@@ -201,26 +192,26 @@ frontend/
 │   │   ├── ModelCard.tsx
 │   │   ├── MemoryChart.tsx
 │   │   ├── LoadModelDialog.tsx
+│   │   ├── MemoryDetailsModal.tsx
+│   │   ├── benchmark/           # Benchmark-related components
+│   │   │   ├── BenchmarkConfigForm.tsx    # Benchmark configuration UI
+│   │   │   ├── BenchmarkHistoryTable.tsx  # List of past benchmark runs
+│   │   │   ├── BenchmarkProgress.tsx      # Real-time progress display
+│   │   │   ├── BenchmarkResultsPanel.tsx  # Metrics visualization
+│   │   │   ├── CreateProfileCard.tsx      # Create memory profile from model
+│   │   │   ├── MemoryProfilesTab.tsx      # Memory profiles management tab
+│   │   │   ├── ProfilesTable.tsx          # List of saved profiles
+│   │   │   └── index.ts
 │   │   └── Layout/
 │   │       ├── AppLayout.tsx
 │   │       └── NavSidebar.tsx
 │   ├── pages/           # Route-specific page components
-│   │   ├── Dashboard.tsx
 │   │   ├── ModelManagement.tsx
-│   │   ├── ModelDetails.tsx
-│   │   └── Metrics.tsx
-│   ├── hooks/           # Custom React hooks
-│   │   ├── useAuth.ts
-│   │   ├── useModels.ts
-│   │   └── useMetrics.ts
-│   ├── api/             # API client layer
-│   │   ├── client.ts    # Axios instance
-│   │   ├── models.ts    # Model endpoints
-│   │   └── metrics.ts   # Metrics endpoints
-│   ├── context/         # React Context providers
-│   │   └── AuthContext.tsx
-│   ├── types/           # Frontend-specific types
-│   │   └── index.ts
+│   │   ├── ModelBenchmark.tsx   # Benchmark page with tabs
+│   │   ├── GpuInfo.tsx
+│   │   └── Settings.tsx
+│   ├── services/        # API client layer
+│   │   └── api.ts       # All API calls (models, benchmarks, profiles)
 │   ├── App.tsx          # Root component with routing
 │   └── main.tsx         # Entry point
 ├── dist/                # Vite build output
@@ -613,7 +604,88 @@ Status indicator with color-coding.
 
 **PatternFly Components:** Badge, Spinner, Tooltip
 
-## 🔧 Known Limitations (Planning Phase)
+## 📊 Benchmark Components
+
+### 5. BenchmarkConfigForm Component
+
+Form for configuring benchmark parameters before running.
+
+**Key Fields:**
+- Benchmark name (optional)
+- Execution mode: `isolated` or `contention`
+- Model instance selection (multi-select for contention mode)
+- Input/output token targets
+- Concurrency level
+- Warmup and total request counts
+- SLA threshold (optional, for goodput)
+
+**PatternFly Components:** Form, FormGroup, TextInput, Select, NumberInput, Switch
+
+### 6. BenchmarkProgress Component
+
+Real-time display of benchmark execution progress.
+
+**Features:**
+- Phase indicator (warmup vs measured)
+- Progress bar per scenario
+- Live request count updates
+- Error count display
+- SSE connection for real-time updates
+
+**PatternFly Components:** Progress, Card, DescriptionList
+
+### 7. BenchmarkResultsPanel Component
+
+Displays benchmark metrics after completion.
+
+**Metrics Displayed:**
+- TTFT (Time To First Token): min, max, avg, p50, p90, p95, p99
+- TPS (Tokens Per Second): distribution with percentiles
+- E2E Latency: distribution with percentiles
+- Goodput percentage (requests under SLA)
+- Requests per second throughput
+
+**PatternFly Components:** Card, Table, DescriptionList
+
+### 8. BenchmarkHistoryTable Component
+
+Paginated table of past benchmark runs.
+
+**Columns:**
+- Name/ID
+- Status (pending, running, completed, failed)
+- Mode (isolated/contention)
+- Created timestamp
+- Duration
+- Request counts (total/success/failed)
+
+**PatternFly Components:** Table, Pagination, Label, Timestamp
+
+### 9. MemoryProfilesTab Component
+
+Tab content for memory profile management.
+
+**Features:**
+- List saved profiles in a table
+- Create profile from running model instance
+- Delete profiles
+- Profile lookup by model/tokens/GPU
+
+**PatternFly Components:** Tabs, Table, Button, Modal
+
+### 10. CreateProfileCard Component
+
+Card for creating a memory profile from a loaded model.
+
+**Features:**
+- Model instance selector
+- Auto-populated memory metrics from model
+- Custom profile name input
+- Comments field
+
+**PatternFly Components:** Card, Form, Select, TextInput, TextArea
+
+## 🔧 Known Limitations
 
 - No internationalization (i18n) - English only for MVP
 - No offline support or service worker
@@ -641,20 +713,3 @@ Status indicator with color-coding.
 - Root [CLAUDE.md](../../CLAUDE.md) - Project overview
 - Backend [CLAUDE.md](../backend/CLAUDE.md) - Backend API context
 
-## 🚦 Getting Started Checklist
-
-When beginning frontend implementation:
-
-- [ ] Initialize npm workspace in `apps/frontend/`
-- [ ] Install dependencies (React 18.3+, PatternFly 6.x, Vite 6.0+, React Router 7)
-- [ ] Set up TypeScript config with strict mode
-- [ ] Configure Vite with HMR and proxy to backend (port 3000)
-- [ ] Create basic project structure (components, pages, hooks, api)
-- [ ] Implement AuthContext and OAuth integration
-- [ ] Create AppLayout with PatternFly Page component
-- [ ] Set up React Router with protected routes
-- [ ] Implement axios client with auth interceptor
-- [ ] Create ModelList component (first feature)
-- [ ] Set up Vitest and write first tests
-- [ ] Configure ESLint and Prettier
-- [ ] Test in both light and dark themes
