@@ -120,7 +120,6 @@ export class ModelManager extends EventEmitter {
       const baseArgs = [
         'serve',
         modelPath,
-        '--disable-log-requests',
         '--disable-log-stats',
         '--no-enable-prefix-caching', // Required for KVCached
         `--port=${port}`,
@@ -268,23 +267,9 @@ export class ModelManager extends EventEmitter {
         )
       }
 
-      // Parse memory metrics from logs
-      const memoryMetrics = parseMemoryMetrics(logs, instance.maxTokens)
-      if (memoryMetrics) {
-        instance.memoryMetrics = memoryMetrics
-        this.logger.info(
-          { instanceId, modelPath, memoryMetrics },
-          'Parsed memory metrics from vLLM logs'
-        )
-      } else {
-        this.logger.warn(
-          { instanceId, modelPath },
-          'Could not parse memory metrics from vLLM logs'
-        )
-      }
-
-      // Get actual GPU memory usage from nvidia-smi process list
-      // Use EngineCore PID if available (it's the one that allocates GPU VRAM)
+      // Get actual GPU memory usage from nvidia-smi FIRST
+      // This is the source of truth for total GPU memory consumption
+      let actualGpuMemoryGiB: number | undefined
       try {
         const gpuInfo = await getNvidiaSmiInfo()
 
@@ -313,6 +298,7 @@ export class ModelManager extends EventEmitter {
         if (totalGpuMemoryMB > 0 && gpuInfo.gpus.length > 0) {
           const gpuTotalMB = gpuInfo.gpus[0].memoryTotalMB
           instance.gpuMemoryUtilization = gpuTotalMB > 0 ? totalGpuMemoryMB / gpuTotalMB : 0
+          actualGpuMemoryGiB = totalGpuMemoryMB / 1024
 
           this.logger.info(
             {
@@ -322,10 +308,11 @@ export class ModelManager extends EventEmitter {
               processId: instance.processId,
               matchedPids: Array.from(allPids),
               totalGpuMemoryMB,
+              actualGpuMemoryGiB,
               gpuTotalMB,
               gpuUtilization: instance.gpuMemoryUtilization,
             },
-            'Got GPU memory usage from nvidia-smi'
+            'Got actual GPU memory usage from nvidia-smi'
           )
         } else {
           this.logger.warn(
@@ -335,6 +322,21 @@ export class ModelManager extends EventEmitter {
         }
       } catch (err) {
         this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
+      }
+
+      // Parse memory metrics from logs, passing actual GPU memory for total/overhead calculation
+      const memoryMetrics = parseMemoryMetrics(logs, instance.maxTokens, actualGpuMemoryGiB)
+      if (memoryMetrics) {
+        instance.memoryMetrics = memoryMetrics
+        this.logger.info(
+          { instanceId, modelPath, memoryMetrics },
+          'Parsed memory metrics from vLLM logs'
+        )
+      } else {
+        this.logger.warn(
+          { instanceId, modelPath },
+          'Could not parse memory metrics from vLLM logs'
+        )
       }
 
       // Test if model supports chat templates

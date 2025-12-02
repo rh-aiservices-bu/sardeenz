@@ -26,6 +26,7 @@ const GpuMetricsSchema = Type.Object({
 
 const ModelGpuMemorySchema = Type.Object({
   model_path: Type.String(),
+  instance_id: Type.String(),
   display_name: Type.String(),
   gpu_memory_gb: Type.Number(),
   color: Type.String(),

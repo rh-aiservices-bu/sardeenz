@@ -156,11 +156,13 @@ export function calculateGpuUtilization(
  *
  * @param logs - Array of log entries from the process buffer
  * @param fallbackMaxTokens - Fallback max tokens value if not found in logs
+ * @param actualGpuMemoryGiB - Actual GPU memory from nvidia-smi (optional, used for total and overhead)
  * @returns Parsed memory metrics or null if insufficient data
  */
 export function parseMemoryMetrics(
   logs: LogEntry[],
-  fallbackMaxTokens: number
+  fallbackMaxTokens: number,
+  actualGpuMemoryGiB?: number
 ): ModelMemoryMetrics | null {
   let weightsMemoryGiB: number | undefined
   let cudaGraphMemoryGiB: number | undefined
@@ -236,9 +238,20 @@ export function parseMemoryMetrics(
     kvCachePerRequestMiB = perTokenMiB * finalMaxModelLen
   }
 
+  // Calculate total and overhead
+  // If actualGpuMemoryGiB is provided (from nvidia-smi), use it as the source of truth
+  // Otherwise, fallback to sum of weights + CUDA graphs (underestimate)
+  const totalGpuMemoryGiB = actualGpuMemoryGiB ?? weightsMemoryGiB + cudaGraphMemoryGiB
+  const overheadMemoryGiB =
+    actualGpuMemoryGiB !== undefined
+      ? Math.max(0, actualGpuMemoryGiB - weightsMemoryGiB - cudaGraphMemoryGiB)
+      : 0
+
   return {
+    totalGpuMemoryGiB: Math.round(totalGpuMemoryGiB * 1000) / 1000, // Round to 3 decimals
     weightsMemoryGiB,
     cudaGraphMemoryGiB,
+    overheadMemoryGiB: Math.round(overheadMemoryGiB * 1000) / 1000, // Round to 3 decimals
     kvCacheAvailableGiB,
     kvCachePerRequestMiB: Math.round(kvCachePerRequestMiB * 100) / 100, // Round to 2 decimals
     maxModelLen: finalMaxModelLen,

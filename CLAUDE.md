@@ -10,8 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Controller API**: Dynamically load/unload models, query status, manage GPU memory (Fastify + TypeScript)
   - Real-time model load progress via SSE events
   - Intelligent error extraction from vLLM logs
+  - LLM benchmarking with latency/throughput metrics
+  - Memory profiling for capacity planning
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
-- **Admin Dashboard**: React + PatternFly 6 web interface for model management and monitoring
+- **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
 - **Container Deployment**: Unified CUDA + Node.js container image for OpenShift/Kubernetes
 
 **Documentation:** See [`docs/`](./docs/) for detailed architecture, API guides, and deployment instructions.
@@ -45,7 +47,7 @@ This project uses an npm workspace monorepo structure:
 
 **Key Design Decisions:**
 - Direct vLLM subprocess management (no Docker-in-Docker) for zero-downtime model loading
-- Stateless architecture (in-memory storage for PoC phase)
+- Hybrid storage: in-memory for runtime state, SQLite for benchmarks/profiles persistence
 - OpenAI-compatible API via vLLM native format
 - Performance-first proxy with TCP passthrough (<50ms routing overhead)
 
@@ -82,8 +84,10 @@ docker run --gpus all -p 3000:3000 sardeenz
 
 ## Active Technologies
 
-- TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target (001-multi-model-platform)
-- In-memory storage for PoC phase (Map data structures for ModelInstance, ResourceMetrics, InferenceRequest logs, ControllerOperation audit trail). Future: Config file for ModelConfiguration catalog, optional database for persistence. (001-multi-model-platform)
+- TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target
+- Hybrid storage architecture:
+  - In-memory (Map data structures): ModelInstance runtime state, ResourceMetrics, ControllerOperation audit trail
+  - SQLite (better-sqlite3): BenchmarkRun/Scenario/Results persistence, MemoryProfile storage
 
 ## Component-Specific Context
 
@@ -104,6 +108,20 @@ Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI devel
 
 ## Recent Changes
 
+- 002-benchmarking: Added LLM benchmarking system with performance metrics
+  - Benchmark API: `/api/benchmarks/*` for creating/running benchmarks, viewing results
+  - Metrics: TTFT (time to first token), TPS (tokens/second), E2E latency with percentiles (p50/p90/p95/p99)
+  - Two execution modes: `isolated` (sequential) and `contention` (parallel stress testing)
+  - Real-time progress via SSE events during benchmark execution
+  - SQLite persistence for benchmark history and results
+- 002-benchmarking: Added memory profiling for capacity planning
+  - Memory Profile API: `/api/memory/profiles/*` for storing/retrieving model memory footprints
+  - Pre-load memory check: `/api/memory/profiles/check` to predict if model will fit
+  - Captures weights, CUDA graphs, overhead, and KV cache metrics per model/GPU configuration
+- 002-benchmarking: Added SQLite database layer with migrations
+  - `apps/backend/src/db/` - Connection handling, migration runner
+  - Automatic migration on startup
+  - Stores: `benchmark-store.ts`, `memory-profile-store.ts`
 - 001-multi-model-platform: Fixed GPU memory visualization for duplicate model instances
   - Added `instance_id` field to `/api/memory/usage` response for unique identification
   - Display names now include suffix for duplicates: "SmolLM2-135M", "SmolLM2-135M (2)", etc.

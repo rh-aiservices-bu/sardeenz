@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Modal,
   ModalVariant,
@@ -21,6 +21,7 @@ import {
 import type { LoadModelRequest, ModelStatus } from '@sardeenz/types'
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
+import { apiClient, type MemoryCheckResponse } from '../services/api'
 
 /** Dialog phase state machine */
 type DialogPhase = 'form' | 'loading' | 'success' | 'failed'
@@ -58,6 +59,14 @@ export function LoadModelDialog({
   const [extraArgs, setExtraArgs] = useState('')
   const [validated, setValidated] = useState<'default' | 'error'>('default')
 
+  // Memory check state
+  const [memoryCheck, setMemoryCheck] = useState<MemoryCheckResponse | null>(null)
+  const [isCheckingMemory, setIsCheckingMemory] = useState(false)
+  const memoryCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // GPU info state (needed for memory check)
+  const [gpuName, setGpuName] = useState<string | null>(null)
+
   // Loading state
   const [phase, setPhase] = useState<DialogPhase>('form')
   const [instanceId, setInstanceId] = useState<string | null>(null)
@@ -82,6 +91,59 @@ export function LoadModelDialog({
       }
     },
   })
+
+  // Fetch GPU info when dialog opens (needed for memory check)
+  useEffect(() => {
+    if (isOpen && !gpuName) {
+      apiClient
+        .getGpuInfo()
+        .then((info) => {
+          if (info.gpus.length > 0) {
+            setGpuName(info.gpus[0].name)
+          }
+        })
+        .catch((err) => console.error('Failed to fetch GPU info:', err))
+    }
+  }, [isOpen, gpuName])
+
+  // Debounced memory check when model path or max tokens changes
+  useEffect(() => {
+    // Clear previous timeout
+    if (memoryCheckTimeoutRef.current) {
+      clearTimeout(memoryCheckTimeoutRef.current)
+    }
+
+    // Only check if we have a valid model path, GPU name, and dialog is in form phase
+    if (!modelPath.trim() || !gpuName || phase !== 'form') {
+      setMemoryCheck(null)
+      return
+    }
+
+    // Debounce the API call by 500ms
+    setIsCheckingMemory(true)
+    memoryCheckTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await apiClient.checkBeforeLoad({
+          model_path: modelPath.trim(),
+          max_tokens: maxTokens,
+          gpu_name: gpuName,
+        })
+        setMemoryCheck(result)
+      } catch (err) {
+        console.error('Failed to check memory:', err)
+        // Don't show error - just clear the check
+        setMemoryCheck(null)
+      } finally {
+        setIsCheckingMemory(false)
+      }
+    }, 500)
+
+    return () => {
+      if (memoryCheckTimeoutRef.current) {
+        clearTimeout(memoryCheckTimeoutRef.current)
+      }
+    }
+  }, [modelPath, maxTokens, gpuName, phase])
 
   /** Parse extra args textarea into array, filtering empty lines */
   const parseExtraArgs = (text: string): string[] => {
@@ -125,6 +187,8 @@ export function LoadModelDialog({
     setPhase('form')
     setInstanceId(null)
     setErrorMessage(null)
+    setMemoryCheck(null)
+    setIsCheckingMemory(false)
     onClose()
   }, [onClose])
 
@@ -164,63 +228,102 @@ export function LoadModelDialog({
       <ModalHeader title={getTitle()} />
       <ModalBody>
         {phase === 'form' && (
-          <Form>
-            <FormGroup label="Model Path" isRequired fieldId="model-path">
-              <TextInput
-                id="model-path"
-                value={modelPath}
-                onChange={handleModelPathChange}
-                placeholder="e.g., meta-llama/Llama-3.2-1B"
-                validated={validated}
-                aria-describedby="model-path-helper"
-              />
-              {validated === 'error' && (
+          <>
+            <Form>
+              <FormGroup label="Model Path" isRequired fieldId="model-path">
+                <TextInput
+                  id="model-path"
+                  value={modelPath}
+                  onChange={handleModelPathChange}
+                  placeholder="e.g., meta-llama/Llama-3.2-1B"
+                  validated={validated}
+                  aria-describedby="model-path-helper"
+                />
+                {validated === 'error' && (
+                  <FormHelperText>
+                    <HelperText>
+                      <HelperTextItem variant="error">Model path is required</HelperTextItem>
+                    </HelperText>
+                  </FormHelperText>
+                )}
+              </FormGroup>
+
+              <FormGroup label="Max Tokens" fieldId="max-tokens">
+                <NumberInput
+                  value={maxTokens}
+                  onMinus={() => setMaxTokens(Math.max(512, maxTokens - 512))}
+                  onPlus={() => setMaxTokens(Math.min(32768, maxTokens + 512))}
+                  onChange={(event) => {
+                    const value = Number((event.target as HTMLInputElement).value)
+                    if (!isNaN(value) && value >= 512 && value <= 32768) {
+                      setMaxTokens(value)
+                    }
+                  }}
+                  min={512}
+                  max={32768}
+                  inputName="max-tokens"
+                  inputAriaLabel="Max tokens"
+                />
+              </FormGroup>
+
+              <FormGroup label="Additional vLLM Arguments" fieldId="extra-args">
+                <TextArea
+                  id="extra-args"
+                  value={extraArgs}
+                  onChange={(_event, value) => setExtraArgs(value)}
+                  placeholder={`--served-model-name=MyModel\n--tensor-parallel-size=2\n--max-num-seqs=256\n--trust-remote-code`}
+                  aria-label="Additional vLLM CLI arguments, one per line"
+                  rows={4}
+                  resizeOrientation="vertical"
+                />
                 <FormHelperText>
                   <HelperText>
-                    <HelperTextItem variant="error">Model path is required</HelperTextItem>
+                    <HelperTextItem>
+                      Enter one argument per line. Some arguments like --gpu-memory-utilization are
+                      managed by the system and will be ignored.
+                    </HelperTextItem>
                   </HelperText>
                 </FormHelperText>
-              )}
-            </FormGroup>
+              </FormGroup>
+            </Form>
 
-            <FormGroup label="Max Tokens" fieldId="max-tokens">
-              <NumberInput
-                value={maxTokens}
-                onMinus={() => setMaxTokens(Math.max(512, maxTokens - 512))}
-                onPlus={() => setMaxTokens(Math.min(32768, maxTokens + 512))}
-                onChange={(event) => {
-                  const value = Number((event.target as HTMLInputElement).value)
-                  if (!isNaN(value) && value >= 512 && value <= 32768) {
-                    setMaxTokens(value)
-                  }
+            {/* Memory check warning */}
+            {memoryCheck && (
+              <Alert
+                variant={
+                  memoryCheck.warning_level === 'danger'
+                    ? 'danger'
+                    : memoryCheck.warning_level === 'caution'
+                      ? 'warning'
+                      : 'info'
+                }
+                isInline
+                title={
+                  memoryCheck.warning_level === 'danger'
+                    ? 'Memory Warning'
+                    : memoryCheck.warning_level === 'caution'
+                      ? 'Memory Caution'
+                      : memoryCheck.has_profile
+                        ? 'Memory OK'
+                        : 'No Memory Profile'
+                }
+                style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}
+              >
+                {memoryCheck.message}
+              </Alert>
+            )}
+            {isCheckingMemory && modelPath.trim() && (
+              <div
+                style={{
+                  marginTop: 'var(--pf-t--global--spacer--md)',
+                  color: 'var(--pf-t--global--text--color--subtle)',
+                  fontSize: 'var(--pf-t--global--font--size--sm)',
                 }}
-                min={512}
-                max={32768}
-                inputName="max-tokens"
-                inputAriaLabel="Max tokens"
-              />
-            </FormGroup>
-
-            <FormGroup label="Additional vLLM Arguments" fieldId="extra-args">
-              <TextArea
-                id="extra-args"
-                value={extraArgs}
-                onChange={(_event, value) => setExtraArgs(value)}
-                placeholder={`--served-model-name=MyModel\n--tensor-parallel-size=2\n--max-num-seqs=256\n--trust-remote-code`}
-                aria-label="Additional vLLM CLI arguments, one per line"
-                rows={4}
-                resizeOrientation="vertical"
-              />
-              <FormHelperText>
-                <HelperText>
-                  <HelperTextItem>
-                    Enter one argument per line. Some arguments like --gpu-memory-utilization are
-                    managed by the system and will be ignored.
-                  </HelperTextItem>
-                </HelperText>
-              </FormHelperText>
-            </FormGroup>
-          </Form>
+              >
+                Checking memory requirements...
+              </div>
+            )}
+          </>
         )}
 
         {(phase === 'loading' || phase === 'failed') && (
