@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
 import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
-import { ErrorResponseSchema } from '@sardeenz/types'
+import { ErrorResponseSchema, GpuAvailabilityResponseSchema } from '@sardeenz/types'
+import { GpuSelector } from '../services/gpu-selector.js'
 
 // Response schemas
 const DriverInfoSchema = Type.Object({
@@ -50,6 +51,8 @@ const NvidiaSmiInfoSchema = Type.Object({
 })
 
 export default async function gpuRoutes(fastify: FastifyInstance) {
+  const gpuSelector = new GpuSelector(fastify.log)
+
   /**
    * GET /api/gpu/info - Get complete nvidia-smi information
    */
@@ -76,6 +79,37 @@ export default async function gpuRoutes(fastify: FastifyInstance) {
         return reply.send({
           error: {
             message: err instanceof Error ? err.message : 'Failed to get GPU info',
+            type: 'internal_error',
+          },
+        })
+      }
+    }
+  )
+
+  /**
+   * GET /api/gpu/available - Get available GPUs with selection recommendations
+   */
+  fastify.get(
+    '/api/gpu/available',
+    {
+      schema: {
+        tags: ['gpu'],
+        description: 'Get available GPUs with selection recommendations for model loading',
+        response: {
+          200: GpuAvailabilityResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (_request, reply) => {
+      try {
+        const availability = await gpuSelector.getGpuAvailability()
+        return availability
+      } catch (err) {
+        reply.status(500)
+        return reply.send({
+          error: {
+            message: err instanceof Error ? err.message : 'Failed to get GPU availability',
             type: 'internal_error',
           },
         })

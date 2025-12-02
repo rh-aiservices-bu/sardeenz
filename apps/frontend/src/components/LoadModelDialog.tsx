@@ -17,8 +17,13 @@ import {
   Alert,
   Progress,
   ProgressMeasureLocation,
+  Radio,
+  Checkbox,
+  Flex,
+  FlexItem,
+  Spinner,
 } from '@patternfly/react-core'
-import type { LoadModelRequest, ModelStatus } from '@sardeenz/types'
+import type { LoadModelRequest, ModelStatus, GpuAvailabilityResponse } from '@sardeenz/types'
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
 import { apiClient, type MemoryCheckResponse } from '../services/api'
@@ -59,6 +64,13 @@ export function LoadModelDialog({
   const [extraArgs, setExtraArgs] = useState('')
   const [validated, setValidated] = useState<'default' | 'error'>('default')
 
+  // GPU selection state
+  const [gpuAvailability, setGpuAvailability] = useState<GpuAvailabilityResponse | null>(null)
+  const [isLoadingGpus, setIsLoadingGpus] = useState(false)
+  const [gpuSelectionMode, setGpuSelectionMode] = useState<'auto' | 'manual'>('auto')
+  const [selectedGpuIds, setSelectedGpuIds] = useState<number[]>([])
+  const [tensorParallelSize, setTensorParallelSize] = useState(1)
+
   // Memory check state
   const [memoryCheck, setMemoryCheck] = useState<MemoryCheckResponse | null>(null)
   const [isCheckingMemory, setIsCheckingMemory] = useState(false)
@@ -92,19 +104,26 @@ export function LoadModelDialog({
     },
   })
 
-  // Fetch GPU info when dialog opens (needed for memory check)
+  // Fetch GPU info and availability when dialog opens
   useEffect(() => {
-    if (isOpen && !gpuName) {
-      apiClient
-        .getGpuInfo()
-        .then((info) => {
-          if (info.gpus.length > 0) {
-            setGpuName(info.gpus[0].name)
-          }
-        })
-        .catch((err) => console.error('Failed to fetch GPU info:', err))
+    if (isOpen) {
+      // Fetch GPU availability for selection UI
+      if (!gpuAvailability) {
+        setIsLoadingGpus(true)
+        apiClient
+          .getAvailableGpus()
+          .then((availability) => {
+            setGpuAvailability(availability)
+            // Set GPU name for memory check from first GPU
+            if (availability.gpus.length > 0) {
+              setGpuName(availability.gpus[0].name)
+            }
+          })
+          .catch((err) => console.error('Failed to fetch GPU availability:', err))
+          .finally(() => setIsLoadingGpus(false))
+      }
     }
-  }, [isOpen, gpuName])
+  }, [isOpen, gpuAvailability])
 
   // Debounced memory check when model path or max tokens changes
   useEffect(() => {
@@ -153,6 +172,25 @@ export function LoadModelDialog({
       .filter((line) => line.length > 0)
   }
 
+  /** Handle GPU checkbox toggle */
+  const handleGpuToggle = (gpuId: number, checked: boolean) => {
+    if (checked) {
+      const newSelected = [...selectedGpuIds, gpuId].sort((a, b) => a - b)
+      setSelectedGpuIds(newSelected)
+      // Auto-set tensor parallel size to match GPU count
+      setTensorParallelSize(newSelected.length)
+    } else {
+      const newSelected = selectedGpuIds.filter((id) => id !== gpuId)
+      setSelectedGpuIds(newSelected)
+      // Reset tensor parallel size if fewer than 2 GPUs selected
+      if (newSelected.length < 2) {
+        setTensorParallelSize(1)
+      } else {
+        setTensorParallelSize(newSelected.length)
+      }
+    }
+  }
+
   const handleSubmit = async () => {
     if (!modelPath.trim()) {
       setValidated('error')
@@ -164,11 +202,23 @@ export function LoadModelDialog({
 
     try {
       const parsedArgs = parseExtraArgs(extraArgs)
-      const result = await onLoad({
+
+      // Build the request with GPU selection
+      const request: LoadModelRequest = {
         model_path: modelPath.trim(),
         max_tokens: maxTokens,
         extra_args: parsedArgs.length > 0 ? parsedArgs : undefined,
-      })
+      }
+
+      // Include GPU selection if manual mode
+      if (gpuSelectionMode === 'manual' && selectedGpuIds.length > 0) {
+        request.gpu_ids = selectedGpuIds
+        if (selectedGpuIds.length > 1) {
+          request.tensor_parallel_size = tensorParallelSize
+        }
+      }
+
+      const result = await onLoad(request)
 
       // Start listening for events from this instance
       setInstanceId(result.instance_id)
@@ -189,6 +239,11 @@ export function LoadModelDialog({
     setErrorMessage(null)
     setMemoryCheck(null)
     setIsCheckingMemory(false)
+    // Reset GPU selection state
+    setGpuAvailability(null)
+    setGpuSelectionMode('auto')
+    setSelectedGpuIds([])
+    setTensorParallelSize(1)
     onClose()
   }, [onClose])
 
@@ -264,6 +319,120 @@ export function LoadModelDialog({
                   inputName="max-tokens"
                   inputAriaLabel="Max tokens"
                 />
+              </FormGroup>
+
+              {/* GPU Selection */}
+              <FormGroup label="GPU Selection" fieldId="gpu-selection">
+                {isLoadingGpus ? (
+                  <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+                    <FlexItem>
+                      <Spinner size="md" />
+                    </FlexItem>
+                    <FlexItem>Loading GPU information...</FlexItem>
+                  </Flex>
+                ) : gpuAvailability && gpuAvailability.gpus.length > 1 ? (
+                  <>
+                    <Flex direction={{ default: 'column' }} gap={{ default: 'gapSm' }}>
+                      <FlexItem>
+                        <Radio
+                          id="gpu-auto"
+                          name="gpu-selection-mode"
+                          label={`Auto (recommended: GPU ${gpuAvailability.recommendation.gpu_id} - ${gpuAvailability.recommendation.free_memory_gb.toFixed(1)} GB free)`}
+                          isChecked={gpuSelectionMode === 'auto'}
+                          onChange={() => {
+                            setGpuSelectionMode('auto')
+                            setSelectedGpuIds([])
+                            setTensorParallelSize(1)
+                          }}
+                        />
+                      </FlexItem>
+                      <FlexItem>
+                        <Radio
+                          id="gpu-manual"
+                          name="gpu-selection-mode"
+                          label="Manual selection"
+                          isChecked={gpuSelectionMode === 'manual'}
+                          onChange={() => setGpuSelectionMode('manual')}
+                        />
+                      </FlexItem>
+                    </Flex>
+
+                    {gpuSelectionMode === 'manual' && (
+                      <div style={{ marginTop: 'var(--pf-t--global--spacer--sm)', marginLeft: 'var(--pf-t--global--spacer--lg)' }}>
+                        <Flex direction={{ default: 'column' }} gap={{ default: 'gapXs' }}>
+                          {gpuAvailability.gpus.map((gpu) => (
+                            <FlexItem key={gpu.index}>
+                              <Checkbox
+                                id={`gpu-${gpu.index}`}
+                                label={
+                                  <span>
+                                    GPU {gpu.index}: {gpu.name}
+                                    <span style={{ color: 'var(--pf-t--global--text--color--subtle)', marginLeft: 'var(--pf-t--global--spacer--sm)' }}>
+                                      ({(gpu.memory_free_mb / 1024).toFixed(1)} GB free of {(gpu.memory_total_mb / 1024).toFixed(0)} GB)
+                                    </span>
+                                    {gpu.recommended && (
+                                      <span style={{ color: 'var(--pf-t--global--color--status--success--default)', marginLeft: 'var(--pf-t--global--spacer--sm)' }}>
+                                        (recommended)
+                                      </span>
+                                    )}
+                                  </span>
+                                }
+                                isChecked={selectedGpuIds.includes(gpu.index)}
+                                onChange={(_event, checked) => handleGpuToggle(gpu.index, checked)}
+                              />
+                            </FlexItem>
+                          ))}
+                        </Flex>
+
+                        {selectedGpuIds.length > 1 && (
+                          <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+                            <FormGroup label="Tensor Parallel Size" fieldId="tensor-parallel-size">
+                              <NumberInput
+                                value={tensorParallelSize}
+                                onMinus={() => setTensorParallelSize(Math.max(1, tensorParallelSize - 1))}
+                                onPlus={() => setTensorParallelSize(Math.min(selectedGpuIds.length, tensorParallelSize + 1))}
+                                onChange={(event) => {
+                                  const value = Number((event.target as HTMLInputElement).value)
+                                  if (!isNaN(value) && value >= 1 && value <= selectedGpuIds.length) {
+                                    setTensorParallelSize(value)
+                                  }
+                                }}
+                                min={1}
+                                max={selectedGpuIds.length}
+                                inputName="tensor-parallel-size"
+                                inputAriaLabel="Tensor parallel size"
+                              />
+                              <FormHelperText>
+                                <HelperText>
+                                  <HelperTextItem>
+                                    Number of GPUs to split the model across. Usually equals the number of selected GPUs.
+                                  </HelperTextItem>
+                                </HelperText>
+                              </FormHelperText>
+                            </FormGroup>
+
+                            <Alert
+                              variant="warning"
+                              isInline
+                              title="KVCached Disabled"
+                              style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
+                            >
+                              Tensor parallelism across multiple GPUs disables KVCached memory sharing. Each GPU will use independent memory pools.
+                            </Alert>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : gpuAvailability ? (
+                  <FormHelperText>
+                    <HelperText>
+                      <HelperTextItem>
+                        Single GPU detected: {gpuAvailability.gpus[0]?.name} ({((gpuAvailability.gpus[0]?.memory_free_mb ?? 0) / 1024).toFixed(1)} GB free)
+                      </HelperTextItem>
+                    </HelperText>
+                  </FormHelperText>
+                ) : null}
               </FormGroup>
 
               <FormGroup label="Additional vLLM Arguments" fieldId="extra-args">

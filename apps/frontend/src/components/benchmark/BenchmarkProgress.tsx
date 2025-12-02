@@ -96,7 +96,7 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
   }
 
   const connectToSSE = useCallback(() => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
     const eventSource = new EventSource(`${baseUrl}/api/benchmarks/${benchmarkId}/events`)
 
     eventSource.onopen = () => {

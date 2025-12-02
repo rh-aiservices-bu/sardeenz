@@ -12,9 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Intelligent error extraction from vLLM logs
   - LLM benchmarking with latency/throughput metrics
   - Memory profiling for capacity planning
+  - Multi-GPU support with tensor parallelism and intelligent GPU selection
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
 - **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
-- **Container Deployment**: Unified CUDA + Node.js container image for OpenShift/Kubernetes
+- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes
 
 **Documentation:** See [`docs/`](./docs/) for detailed architecture, API guides, and deployment instructions.
 
@@ -108,6 +109,21 @@ Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI devel
 
 ## Recent Changes
 
+- **Multi-GPU Support**: Added intelligent GPU selection and tensor parallel support
+  - GPU Selector service (`apps/backend/src/services/gpu-selector.ts`) auto-selects GPUs with most free memory
+  - `GET /api/gpu/available` - Returns GPUs with availability info and recommendation
+  - `GET /api/memory/usage/multi-gpu` - Per-GPU memory breakdown for multi-GPU systems
+  - Models can span multiple GPUs via `tensor_parallel_size` parameter (KVCached disabled for tensor parallel)
+  - New fields in `LoadModelRequest`: `gpu_ids`, `tensor_parallel_size`
+  - New fields in `ModelInstanceDTO`: `gpu_ids`, `tensor_parallel_size`, `kvcached_enabled`
+- **Simplified Container Architecture**: Removed NGINX, unified single-process container
+  - Fastify now serves frontend static files directly (no NGINX proxy)
+  - Single port (3000) for Controller API, Inference Proxy, and Frontend
+  - Simplified `docker/entrypoint.sh` - just starts Node.js
+  - Deleted `docker/nginx.conf`
+- **Direct Proxy**: Added port-based proxy for testing (`/api/direct/:port/*`)
+  - Bypasses model routing layer, forwards directly to vLLM instance port
+  - Useful for debugging and performance testing
 - 002-benchmarking: Added LLM benchmarking system with performance metrics
   - Benchmark API: `/api/benchmarks/*` for creating/running benchmarks, viewing results
   - Metrics: TTFT (time to first token), TPS (tokens/second), E2E latency with percentiles (p50/p90/p95/p99)

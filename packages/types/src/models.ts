@@ -81,6 +81,12 @@ export interface ModelInstance {
   hasChatTemplate?: boolean
   /** Full vLLM launch command for debugging/reproduction */
   launchCommand?: string
+  /** GPU indices this model is running on (single GPU: [0], tensor parallel: [0,1]) */
+  gpuIds: number[]
+  /** Tensor parallel size (1 = single GPU, >1 = spanning multiple GPUs) */
+  tensorParallelSize: number
+  /** Whether KVCached is enabled for this instance (disabled for tensor parallel) */
+  kvcachedEnabled: boolean
 }
 
 export interface InferenceRequest {

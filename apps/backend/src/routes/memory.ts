@@ -4,6 +4,7 @@ import {
   SetMemoryLimitsRequestSchema,
   SetMemoryLimitsResponseSchema,
   ErrorResponseSchema,
+  MultiGpuMemoryUsageResponseSchema,
   type SetMemoryLimitsRequestType,
 } from '@sardeenz/types'
 import { MemoryMonitor } from '../services/memory-monitor.js'
@@ -62,6 +63,43 @@ export default async function memoryRoutes(fastify: FastifyInstance) {
     async (_request, reply) => {
       try {
         const usage = await memoryMonitor.getMemoryUsage()
+        return usage
+      } catch (err) {
+        if (err instanceof AppError) {
+          reply.status(err.statusCode as 500)
+          return reply.send(err.toJSON())
+        }
+
+        reply.status(500)
+        return reply.send({
+          error: {
+            message: err instanceof Error ? err.message : 'Unknown error',
+            type: 'internal_error',
+          },
+        })
+      }
+    }
+  )
+
+  /**
+   * GET /api/memory/usage/multi-gpu - Get per-GPU memory breakdown for multi-GPU systems
+   */
+  fastify.get(
+    '/api/memory/usage/multi-gpu',
+    {
+      schema: {
+        tags: ['memory'],
+        description: 'Get per-GPU memory usage with per-model breakdown for multi-GPU visualization',
+        response: {
+          200: MultiGpuMemoryUsageResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      config: { logRequests: false },
+    },
+    async (_request, reply) => {
+      try {
+        const usage = await memoryMonitor.getMultiGpuMemoryUsage()
         return usage
       } catch (err) {
         if (err instanceof AppError) {

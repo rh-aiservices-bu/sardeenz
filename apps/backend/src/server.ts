@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { config } from './config.js'
@@ -85,20 +87,45 @@ await fastify.register(import('./routes/events.js'))
 await fastify.register(import('./routes/memory.js'))
 await fastify.register(import('./routes/gpu.js'))
 await fastify.register(import('./routes/proxy.js'))
+await fastify.register(import('./routes/direct-proxy.js'))
 await fastify.register(import('./routes/orphans.js'))
 await fastify.register(import('./routes/settings.js'))
 await fastify.register(import('./routes/benchmarks.js'))
 await fastify.register(import('./routes/memory-profiles.js'))
 
-// Root endpoint
-fastify.get('/', async () => {
-  return {
-    name: 'Sardeenz',
-    version: '0.1.0',
-    status: 'running',
-    documentation: '/docs',
-  }
-})
+// Static file serving for frontend (production only)
+if (config.nodeEnv === 'production') {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  const frontendPath = path.resolve(__dirname, '../../frontend/dist')
+
+  await fastify.register(import('@fastify/static'), {
+    root: frontendPath,
+    prefix: '/',
+  })
+
+  // SPA fallback: serve index.html for non-API routes
+  fastify.setNotFoundHandler(async (request, reply) => {
+    if (
+      !request.url.startsWith('/api/') &&
+      !request.url.startsWith('/v1/') &&
+      !request.url.startsWith('/docs') &&
+      !request.url.startsWith('/metrics')
+    ) {
+      return reply.sendFile('index.html')
+    }
+    return reply.code(404).send({ error: 'Not Found' })
+  })
+} else {
+  // Development: show API info at root
+  fastify.get('/', async () => {
+    return {
+      name: 'Sardeenz',
+      version: '0.1.0',
+      status: 'running',
+      documentation: '/docs',
+    }
+  })
+}
 
 // Start server
 async function start() {

@@ -51,6 +51,9 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         : undefined,
       has_chat_template: instance.hasChatTemplate,
       launch_command: instance.launchCommand,
+      gpu_ids: instance.gpuIds,
+      tensor_parallel_size: instance.tensorParallelSize,
+      kvcached_enabled: instance.kvcachedEnabled,
     }
   }
 
@@ -74,7 +77,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       // onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
-      const { model_path, max_tokens, extra_args } = request.body
+      const { model_path, max_tokens, extra_args, gpu_ids, tensor_parallel_size } = request.body
 
       const operationId = randomUUID()
       const operation: ControllerOperation = {
@@ -84,7 +87,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         initiatedBy: 'system', // TODO: Get from auth context
         initiatedAt: new Date(),
         status: OperationStatus.InProgress,
-        parameters: { max_tokens, extra_args },
+        parameters: { max_tokens, extra_args, gpu_ids, tensor_parallel_size },
       }
 
       operationStore.add(operation)
@@ -98,6 +101,8 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           modelPath: model_path,
           maxTokens: max_tokens,
           extraArgs: extra_args,
+          gpuIds: gpu_ids,
+          tensorParallelSize: tensor_parallel_size,
         })
 
         // Operation stays InProgress - will be updated when model finishes loading

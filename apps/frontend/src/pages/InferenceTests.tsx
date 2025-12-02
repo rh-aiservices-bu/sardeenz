@@ -265,11 +265,11 @@ function InferenceTests() {
                       <FormGroup>
                         <Checkbox
                           id={`direct-call-${model.id}`}
-                          label="Call model directly (bypass proxy)"
+                          label="Direct port-based routing"
                           description={
                             state.useDirectCall
-                              ? `Will call http://localhost:${model.port}/v1/chat/completions`
-                              : 'Will call backend proxy at http://localhost:3000/v1/chat/completions'
+                              ? `Direct routing to port ${model.port} (bypasses model name lookup)`
+                              : 'Routes via model name lookup in proxy'
                           }
                           isChecked={state.useDirectCall}
                           onChange={(_event, checked) =>

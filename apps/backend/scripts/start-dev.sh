@@ -62,43 +62,19 @@ check_venv_valid() {
     return $?
 }
 
-# Install vLLM package
-install_vllm() {
-    echo "Installing vLLM..."
-    uv pip install vllm==0.11.0
-}
-
-# Install KVCached package
-install_kvcached() {
-    echo "Installing KVCached..."
-    uv pip install kvcached --no-build-isolation
-}
-
-# Check and install missing packages
-install_missing() {
-    echo "Checking for missing packages..."
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-
-    if ! python -c "import vllm" 2>/dev/null; then
-        install_vllm
-    else
-        echo "vLLM is already installed."
-    fi
-
-    if ! python -c "import kvcached" 2>/dev/null; then
-        install_kvcached
-    else
-        echo "KVCached is already installed."
-    fi
-
+# Sync dependencies using uv (installs missing packages only)
+sync_dependencies() {
+    echo "Syncing Python dependencies..."
+    cd "$BACKEND_DIR"
+    # --group dev includes vLLM for local development
+    uv sync --locked --group dev
     echo ""
-    echo "Missing packages installed!"
+    echo "Dependencies synced!"
 }
 
-# Create a fresh virtual environment
+# Create a fresh virtual environment using pyproject.toml
 create_fresh_venv() {
-    echo "Creating fresh Python virtual environment with vLLM and KVCached..."
+    echo "Creating Python virtual environment and installing dependencies..."
     echo "This may take a few minutes."
     echo ""
 
@@ -110,17 +86,9 @@ create_fresh_venv() {
         rm -rf "$VENV_DIR"
     fi
 
-    # Ensure Python 3.12 is available (uv will download if needed)
-    echo "Ensuring Python 3.12 is available..."
-    uv python install 3.12
-
-    uv venv .venv --python 3.12
-
-    # Activate and install dependencies
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-    install_vllm
-    install_kvcached
+    # uv sync creates venv and installs deps in one step
+    # --group dev includes vLLM for local development
+    uv sync --locked --group dev
 
     echo ""
     echo "Python environment setup complete!"
@@ -152,7 +120,7 @@ prompt_user_action() {
 
     echo "What would you like to do?"
     echo ""
-    echo "  1) Install missing - Install only missing packages"
+    echo "  1) Sync deps       - Install/sync packages from pyproject.toml"
     echo "  2) Reinstall all   - Remove venv and reinstall everything"
     echo "  3) Skip venv       - Continue without Python environment"
     echo "  4) Stop            - Exit the script"
@@ -161,7 +129,7 @@ prompt_user_action() {
 
     case $choice in
         1)
-            install_missing
+            sync_dependencies
             ;;
         2)
             create_fresh_venv

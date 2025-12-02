@@ -13,11 +13,14 @@ import type { Logger } from '@sardeenz/utils'
 import { processLogBuffer } from './process-log-buffer.js'
 import { eventBus } from './event-bus.js'
 import { runtimeSettings } from '../stores/runtime-settings.js'
+import { GpuSelector } from './gpu-selector.js'
 
 export interface LaunchModelOptions {
   modelPath: string
   maxTokens?: number
   extraArgs?: string[]
+  gpuIds?: number[] // Optional explicit GPU selection (auto-selects if not provided)
+  tensorParallelSize?: number // For large models spanning multiple GPUs (default: 1)
 }
 
 /** Arguments that are managed by the system and should be filtered out from user input */
@@ -70,10 +73,12 @@ export class ModelManager extends EventEmitter {
   private logger: Logger
   // Keyed by instance ID (UUID) for multi-instance support
   private processes: Map<string, ChildProcess> = new Map()
+  private gpuSelector: GpuSelector
 
   constructor(logger: Logger) {
     super()
     this.logger = logger.child({ component: 'ModelManager' })
+    this.gpuSelector = new GpuSelector(logger)
   }
 
   /**
@@ -82,12 +87,32 @@ export class ModelManager extends EventEmitter {
    * GPU memory is managed by KVCached
    */
   async launchModel(options: LaunchModelOptions): Promise<ModelInstance> {
-    const { modelPath, maxTokens = 4096, extraArgs = [] } = options
+    const { modelPath, maxTokens = 4096, extraArgs = [], gpuIds, tensorParallelSize = 1 } = options
 
     // Sanitize user-provided extra arguments
     const sanitizedExtraArgs = sanitizeVllmArgs(extraArgs)
 
-    this.logger.info({ modelPath, extraArgs: sanitizedExtraArgs }, 'Launching model')
+    // Determine target GPUs (auto-select or validate manual selection)
+    const { gpuIds: targetGpuIds, wasAutoSelected } = await this.gpuSelector.getTargetGpus(
+      gpuIds,
+      tensorParallelSize
+    )
+
+    // Determine KVCached status
+    // Disable KVCached for tensor parallel models (cross-GPU KV sharing not supported)
+    const enableKvcached = config.enableKvcached && tensorParallelSize === 1
+
+    this.logger.info(
+      {
+        modelPath,
+        extraArgs: sanitizedExtraArgs,
+        targetGpuIds,
+        tensorParallelSize,
+        enableKvcached,
+        wasAutoSelected,
+      },
+      'Launching model with GPU selection'
+    )
 
     // Get next available port
     const usedPorts = modelStore.getUsedPorts()
@@ -108,6 +133,9 @@ export class ModelManager extends EventEmitter {
       gpuMemoryUtilization: 0, // Placeholder - will be measured after loading
       loadedAt: new Date(),
       ipcSegmentName: this.getIpcSegmentName(modelPath, instanceId),
+      gpuIds: targetGpuIds,
+      tensorParallelSize,
+      kvcachedEnabled: enableKvcached,
     }
 
     try {
@@ -121,22 +149,32 @@ export class ModelManager extends EventEmitter {
         'serve',
         modelPath,
         '--disable-log-stats',
-        '--no-enable-prefix-caching', // Required for KVCached
         `--port=${port}`,
         `--max-model-len=${maxTokens}`,
       ]
+
+      // Add tensor parallel size if > 1
+      if (tensorParallelSize > 1) {
+        baseArgs.push(`--tensor-parallel-size=${tensorParallelSize}`)
+      }
+
+      // Only add prefix caching flag if KVCached is enabled
+      if (enableKvcached) {
+        baseArgs.push('--no-enable-prefix-caching') // Required for KVCached
+      }
 
       // Append sanitized user-provided extra arguments
       const allArgs = [...baseArgs, ...sanitizedExtraArgs]
 
       // Build and store the full launch command for debugging/reproduction
-      instance.launchCommand = ['vllm', ...allArgs].join(' ')
+      instance.launchCommand = `CUDA_VISIBLE_DEVICES=${targetGpuIds.join(',')} vllm ${allArgs.join(' ')}`
 
       const proc = spawn('vllm', allArgs, {
         env: {
           ...process.env,
-          ENABLE_KVCACHED: config.enableKvcached ? 'true' : 'false',
-          KVCACHED_AUTOPATCH: config.kvcachedAutopatch ? '1' : '0',
+          CUDA_VISIBLE_DEVICES: targetGpuIds.join(','), // GPU restriction
+          ENABLE_KVCACHED: enableKvcached ? 'true' : 'false',
+          KVCACHED_AUTOPATCH: config.kvcachedAutopatch && enableKvcached ? '1' : '0',
           ...(hfToken ? { HF_TOKEN: hfToken } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],

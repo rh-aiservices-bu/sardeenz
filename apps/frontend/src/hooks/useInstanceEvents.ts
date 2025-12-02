@@ -84,7 +84,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     }
 
     // Build URL with query params - use refs to avoid dependency issues
-    const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
     const params = new URLSearchParams()
     const currentEventTypes = eventTypesRef.current
     if (currentEventTypes.length < 5) {
