@@ -174,109 +174,7 @@ sardeenz/
 - In-memory state management (Map data structures)
 - Event-driven architecture for process lifecycle events
 
-#### ProcessLogBuffer
-
-Captures vLLM process stdout/stderr for debugging and real-time streaming:
-
-- **Ring buffer design**: Bounded to 500 lines per instance
-- **Real-time listeners**: Supports SSE push via callback registration
-- **Cleanup policy**:
-  - Immediate clear on successful model unload
-  - 30-minute retention on failure for debugging
-- **Thread-safe**: Handles concurrent writes from stdout/stderr
-
-#### EventBus
-
-Singleton service for SSE event distribution:
-
-- **Event types**: `log`, `status`, `memory`, `progress`, `error`
-- **Per-instance subscriptions**: Connections scoped to model instance ID
-- **Event filtering**: Clients can subscribe to specific event types
-- **Heartbeat**: 30-second keepalive messages
-- **Factory methods**: `createLogEvent()`, `createStatusEvent()` for consistent event structure
-
-#### Error Parser
-
-Extracts meaningful error messages from vLLM process output:
-
-| Error Pattern | Description |
-|---------------|-------------|
-| CUDA OOM | Memory allocation failures with details |
-| Model not found | Missing model paths or files |
-| Port conflict | Address already in use |
-| CUDA/PyTorch mismatch | Version compatibility issues |
-| Generic exception | Python traceback extraction |
-
-Falls back to last stderr lines with exit code if no pattern matches.
-
-#### Memory Parser
-
-Parses vLLM process logs to extract memory metrics and process information after model loading:
-
-**Memory Metrics Patterns:**
-
-| Log Pattern | Extracted Field |
-|-------------|-----------------|
-| `Model loading took X.XX GiB` | `weightsMemoryGiB` |
-| `Graph capturing finished...took X.XX GiB` | `cudaGraphMemoryGiB` |
-| `Available KV cache memory: X.XX GiB` | `kvCacheAvailableGiB` |
-| `GPU KV cache size: N tokens` | Used for per-request calculation |
-| `Using max model len N` | `maxModelLen` |
-
-The `kvCachePerRequestMiB` is calculated as: `(kvCacheAvailableGiB * 1024) / totalTokens * maxModelLen`
-
-**Process ID Patterns:**
-
-| Log Pattern | Extracted Field | Description |
-|-------------|-----------------|-------------|
-| `EngineCore_DP0 pid=N` | `engineCorePid` | The vLLM EngineCore process that allocates GPU VRAM |
-| `APIServer pid=N` | `processId` | The main API server process (from spawn) |
-
-Metrics are parsed once when the model transitions to `active` status and stored in the `ModelInstance` fields. Returns `null` if critical metrics cannot be parsed.
-
-#### GPU Memory Tracking
-
-vLLM spawns multiple processes internally. The process returned by `spawn()` is the **API Server**, but GPU memory is allocated by the **EngineCore** process:
-
-```
-vLLM Process Architecture:
-┌─────────────────────────────────────┐
-│  APIServer (pid from spawn)         │ ◄── No GPU memory
-│    └── EngineCore_DP0 (child)       │ ◄── Allocates GPU VRAM
-│          └── (worker processes)     │
-└─────────────────────────────────────┘
-```
-
-**Why this matters:**
-- `nvidia-smi` shows GPU memory by PID
-- Looking up memory by the API Server PID returns 0
-- The EngineCore PID must be extracted from logs for accurate memory tracking
-
-**Implementation:**
-1. Parse vLLM logs for `EngineCore_DP0 pid=N` pattern
-2. Store in `ModelInstance.engineCorePid`
-3. Use `engineCorePid` (falling back to `processId`) for nvidia-smi lookups
-4. Per-model memory breakdown in dashboard uses this PID for accurate reporting
-
-#### GPU Selector
-
-The GPU Selector service (`src/services/gpu-selector.ts`) handles intelligent GPU assignment for model loading:
-
-**Selection Strategies:**
-- **Auto-select (default):** Chooses GPU(s) with most free memory
-- **Manual selection:** User specifies `gpu_ids` in load request
-- **Tensor parallel:** For large models spanning multiple GPUs
-
-**Key Methods:**
-- `getRecommendedGpu(tensorParallelSize)` - Returns GPU(s) with most free memory
-- `validateGpuSelection(gpuIds, tensorParallelSize)` - Validates user-specified GPUs exist
-- `getTargetGpus(gpuIds?, tensorParallelSize)` - Determines final GPU assignment
-- `getGpuAvailability()` - Returns all GPUs with availability info for UI
-
-**Multi-GPU / Tensor Parallel:**
-- For `tensor_parallel_size > 1`, finds contiguous GPUs with most combined free memory
-- KVCached is automatically disabled for tensor parallel models (incompatible)
-- GPU indices are passed to vLLM via `CUDA_VISIBLE_DEVICES` environment variable
+For detailed component documentation (ProcessLogBuffer, EventBus, Error Parser, Memory Parser, GPU Selector), see [Backend Architecture](./architecture/backend-architecture.md).
 
 ### 2. Unified Proxy
 
@@ -316,6 +214,8 @@ For testing and debugging, the `/api/direct/:port/*` endpoint bypasses model rou
 - PatternFly 6 components (Cards, Tables, Charts, Forms)
 - React Query for server state management
 - WebSocket connection for real-time updates
+
+For detailed frontend architecture, see [Frontend Architecture](./architecture/frontend-architecture.md).
 
 ### 4. vLLM Model Instances
 
@@ -668,13 +568,6 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 6. **Observability**: Prometheus metrics, structured logging, health endpoints
 7. **Simplicity & Pragmatism**: YAGNI principle, integration tests mandatory
 
-## Implemented Features (Recent)
-
-- **Multi-GPU Support:** Models can span multiple GPUs via tensor parallelism
-- **GPU Auto-Selection:** Intelligent GPU assignment based on free memory
-- **Direct Proxy:** Port-based proxy for testing (`/api/direct/:port/*`)
-- **Simplified Container:** Single-process Fastify serves both API and frontend (no NGINX)
-
 ## Future Enhancements
 
 - **Persistent State:** Optional database backend (PostgreSQL) for model configuration catalog
@@ -686,6 +579,8 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 ---
 
 **See Also:**
+- [Backend Architecture](./architecture/backend-architecture.md) - Detailed backend component documentation
+- [Frontend Architecture](./architecture/frontend-architecture.md) - Detailed frontend component documentation
 - [API Guide](./api-guide.md) - API usage examples
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
 - [KVCached Documentation](./kvcached/) - GPU memory sharing details
