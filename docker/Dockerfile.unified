@@ -4,18 +4,70 @@
 # =============================================================================
 
 # =============================================================================
-# Stage 1: Builder
+# Stage 0: vLLM Base
 # =============================================================================
-FROM quay.io/vllm/vllm-cuda:0.11.0 AS builder
+FROM quay.io/vllm/vllm-cuda:0.11.0.2 AS vllm-base
 
-# Install Python development headers for C++ extension compilation (UBI/RHEL uses dnf)
-RUN dnf install -y python3-devel && dnf clean all
+USER 0
+
+RUN microdnf -y update \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum/*
+
+# =============================================================================
+# Stage 1: KVCached Builder (vllm-base + CUDA devel + dependencies)
+# =============================================================================
+FROM vllm-base AS kvcached-builder
+
+ENV NV_CUDA_LIB_VERSION=12.8.1-1
+ENV NV_NVPROF_VERSION=12.8.90-1
+ENV NV_NVPROF_DEV_PACKAGE=cuda-nvprof-12-8-${NV_NVPROF_VERSION}
+ENV NV_CUDA_CUDART_DEV_VERSION=12.8.90-1
+ENV NV_NVML_DEV_VERSION=12.8.90-1
+ENV NV_LIBCUBLAS_DEV_VERSION=12.8.4.1-1
+ENV NV_LIBNPP_DEV_VERSION=12.3.3.100-1
+ENV NV_LIBNPP_DEV_PACKAGE=libnpp-devel-12-8-${NV_LIBNPP_DEV_VERSION}
+ENV NV_LIBNCCL_DEV_PACKAGE_NAME=libnccl-devel
+ENV NV_LIBNCCL_DEV_PACKAGE_VERSION=2.25.1-1
+ENV NCCL_VERSION=2.25.1
+ENV NV_LIBNCCL_DEV_PACKAGE=${NV_LIBNCCL_DEV_PACKAGE_NAME}-${NV_LIBNCCL_DEV_PACKAGE_VERSION}+cuda12.8
+ENV NV_CUDA_NSIGHT_COMPUTE_VERSION=12.8.1-1
+ENV NV_CUDA_NSIGHT_COMPUTE_DEV_PACKAGE=cuda-nsight-compute-12-8-${NV_CUDA_NSIGHT_COMPUTE_VERSION}
+
+# Install Python 3.12-devel and build dependencies
+RUN microdnf install -y \
+    cuda-command-line-tools-12-8-${NV_CUDA_LIB_VERSION} \
+    cuda-libraries-devel-12-8-${NV_CUDA_LIB_VERSION} \
+    cuda-minimal-build-12-8-${NV_CUDA_LIB_VERSION} \
+    cuda-cudart-devel-12-8-${NV_CUDA_CUDART_DEV_VERSION} \
+    ${NV_NVPROF_DEV_PACKAGE} \
+    cuda-nvml-devel-12-8-${NV_NVML_DEV_VERSION} \
+    libcublas-devel-12-8-${NV_LIBCUBLAS_DEV_VERSION} \
+    ${NV_LIBNPP_DEV_PACKAGE} \
+    ${NV_LIBNCCL_DEV_PACKAGE} \
+    ${NV_CUDA_NSIGHT_COMPUTE_DEV_PACKAGE} \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum/*
+
+# Build KVCached wheel with CUDA support
+WORKDIR /build
+RUN pip3.12 wheel kvcached==0.1.2 \
+    --no-build-isolation \
+    --wheel-dir /wheels
+
+# =============================================================================
+# Stage 2: App Builder
+# =============================================================================
+FROM vllm-base AS builder
+
+USER 0
 
 # Install Node.js 22 using nvm
 ENV NVM_DIR=/root/.nvm
 ENV NODE_VERSION=22.11.0
 
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash && \
+RUN mkdir -p ${NVM_DIR} && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash && \
     . "$NVM_DIR/nvm.sh" && \
     nvm install ${NODE_VERSION} && \
     nvm use ${NODE_VERSION} && \
@@ -23,8 +75,9 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | b
 
 ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
 
-# Build KVCached (requires python3-devel for C++ extension compilation)
-RUN pip install kvcached==0.1.2 --no-build-isolation
+# Install Python dependencies from pre-built wheel (kvcached only - vLLM is in base image)
+# COPY --from=kvcached-builder /wheels/*.whl /wheels/
+# RUN pip install /wheels/kvcached*.whl nvitop==1.6.0
 
 # Build Node.js application
 WORKDIR /app
@@ -32,6 +85,7 @@ COPY package.json package-lock.json ./
 COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.base.json ./
+COPY assets ./assets
 
 RUN npm ci
 RUN npm run build -w packages/types && \
@@ -40,9 +94,13 @@ RUN npm run build -w apps/backend
 RUN npm run build -w apps/frontend
 
 # =============================================================================
-# Stage 2: Runtime
+# Stage 3: Runtime
 # =============================================================================
-FROM quay.io/vllm/vllm-cuda:0.11.0 AS runtime
+FROM vllm-base AS runtime
+
+# Install Python dependencies from pre-built wheel (kvcached only - vLLM is in base image)
+COPY --from=kvcached-builder /wheels/*.whl /wheels/
+RUN pip install /wheels/kvcached*.whl nvitop==1.6.0
 
 # Install Node.js (copy from builder)
 ENV NVM_DIR=/root/.nvm
@@ -50,13 +108,13 @@ ENV NODE_VERSION=22.11.0
 COPY --from=builder $NVM_DIR $NVM_DIR
 ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
 
-# Copy kvcached installation (Python 3.12, site-packages)
-# Includes: kvcached/ directory, vmm_ops.cpython-312-x86_64-linux-gnu.so, kvcached_autopatch.pth
-COPY --from=builder /usr/local/lib/python3.12/site-packages/kvcached /usr/local/lib/python3.12/site-packages/kvcached
-COPY --from=builder /usr/local/lib/python3.12/site-packages/kvcached_autopatch.pth /usr/local/lib/python3.12/site-packages/
-
-# Install nginx (UBI/RHEL uses dnf)
-RUN dnf install -y nginx && dnf clean all
+# Copy Python packages installed from pre-built wheel (kvcached and dependencies)
+# vLLM uses /opt/vllm as Python environment
+#COPY --from=kvcached-builder /opt/vllm/lib/python3.12/site-packages/kvcached /opt/vllm/lib/python3.12/site-packages/kvcached
+#COPY --from=kvcached-builder /opt/vllm/lib/python3.12/site-packages/kvcached_autopatch.pth /opt/vllm/lib/python3.12/site-packages/
+#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/nvitop /opt/vllm/lib/python3.12/site-packages/nvitop
+#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/posix_ipc* /opt/vllm/lib/python3.12/site-packages/
+#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/wrapt /opt/vllm/lib/python3.12/site-packages/wrapt
 
 # Copy application
 WORKDIR /app
@@ -64,12 +122,10 @@ COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder /app/apps/backend/src/db/migrations ./apps/backend/dist/db/migrations
+COPY --from=builder /app/apps/backend/scripts ./apps/backend/scripts
 COPY --from=builder /app/apps/backend/package.json ./apps/backend/
 COPY --from=builder /app/apps/frontend/dist ./apps/frontend/dist
-
-# Copy nginx configuration (RHEL/UBI uses conf.d instead of sites-available)
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-RUN cp -r apps/frontend/dist /var/www/html
 
 # Environment variables
 ENV NODE_ENV=production
@@ -79,10 +135,13 @@ ENV LOG_LEVEL=info
 ENV ENABLE_KVCACHED=true
 ENV KVCACHED_AUTOPATCH=1
 
-EXPOSE 3000 80
+# OpenShift arbitrary UID support - redirect cache to writable location
+# vLLM and FlashInfer need writable cache directories; /home/vllm is not writable
+ENV HOME=/opt/app-root/src
+ENV XDG_CACHE_HOME=/opt/app-root/src/.cache
+ENV FLASHINFER_WORKSPACE_DIR=/opt/app-root/src/.cache/flashinfer
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+EXPOSE 3000
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

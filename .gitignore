@@ -5,6 +5,7 @@
 
 # Python virtual environment (for vLLM/KVCached)
 .venv/
+.uv/
 __pycache__/
 *.py[cod]
 
@@ -63,4 +64,6 @@ temp/
 .DS_Store
 Thumbs.db
 
+# dev data
 apps/backend/data
+*.local

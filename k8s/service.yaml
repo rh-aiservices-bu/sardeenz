@@ -16,8 +16,4 @@ spec:
       port: 3000
       targetPort: backend
       protocol: TCP
-    - name: frontend
-      port: 80
-      targetPort: frontend
-      protocol: TCP
   sessionAffinity: None

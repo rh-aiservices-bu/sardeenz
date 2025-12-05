@@ -15,7 +15,7 @@ spec:
     name: sardeenz
     weight: 100
   port:
-    targetPort: frontend
+    targetPort: backend
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

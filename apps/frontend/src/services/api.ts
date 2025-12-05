@@ -15,6 +15,8 @@ import type {
   TestHfTokenResponse,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  GpuAvailabilityResponse,
+  MultiGpuMemoryUsageResponse,
 } from '@sardeenz/types'
 
 // Memory Profile types for API responses
@@ -259,7 +261,7 @@ class ApiClient {
   private client: AxiosInstance
 
   constructor() {
-    const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
 
     this.client = axios.create({
       baseURL,
@@ -375,6 +377,16 @@ class ApiClient {
     return response.data
   }
 
+  async getAvailableGpus(): Promise<GpuAvailabilityResponse> {
+    const response = await this.client.get<GpuAvailabilityResponse>('/api/gpu/available')
+    return response.data
+  }
+
+  async getMultiGpuMemoryUsage(): Promise<MultiGpuMemoryUsageResponse> {
+    const response = await this.client.get<MultiGpuMemoryUsageResponse>('/api/memory/usage/multi-gpu')
+    return response.data
+  }
+
   // Settings endpoints
 
   async getSettings(): Promise<SettingsResponse> {
@@ -410,17 +422,9 @@ class ApiClient {
     port: number,
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
-    // Create a separate axios instance for direct model calls
-    const directClient = axios.create({
-      baseURL: `http://localhost:${port}`,
-      timeout: 180000, // 3 minutes
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const response = await directClient.post<ChatCompletionResponse>(
-      '/v1/chat/completions',
+    // Use backend's direct proxy endpoint (works in deployment)
+    const response = await this.client.post<ChatCompletionResponse>(
+      `/api/direct/${port}/v1/chat/completions`,
       request
     )
     return response.data

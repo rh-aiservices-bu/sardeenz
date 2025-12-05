@@ -7,6 +7,8 @@ This guide provides practical examples for using the Sardeenz APIs.
 - [Overview](#overview)
 - [Authentication](#authentication)
 - [Controller API](#controller-api)
+- [GPU API](#gpu-api)
+- [Direct Proxy API](#direct-proxy-api)
 - [Proxy API](#proxy-api)
 - [Error Handling](#error-handling)
 - [Code Examples](#code-examples)
@@ -15,17 +17,19 @@ This guide provides practical examples for using the Sardeenz APIs.
 
 ## Overview
 
-Sardeenz provides two main APIs:
+Sardeenz provides a unified API on a single port:
 
-1. **Controller API** (`http://localhost:3000/api/v1/`) - Manage model lifecycle
-2. **Proxy API** (`http://localhost:8000/v1/`) - OpenAI-compatible inference endpoint
+1. **Controller API** (`/api/*`) - Manage model lifecycle, GPU selection, memory monitoring
+2. **Inference Proxy** (`/v1/*`) - OpenAI-compatible inference endpoint
+3. **GPU API** (`/api/gpu/*`) - GPU availability and recommendations
+4. **Direct Proxy** (`/api/direct/:port/*`) - Port-based proxy for testing
 
 ### Base URLs
 
-| Environment | Controller API | Proxy API |
-|-------------|---------------|-----------|
-| Development | `http://localhost:3000/api/v1` | `http://localhost:8000/v1` |
-| Production | `https://your-domain.com/api/v1` | `https://your-domain.com/v1` |
+| Environment | Base URL | Example Endpoints |
+|-------------|----------|-------------------|
+| Development | `http://localhost:3000` | `/api/v1/models`, `/v1/chat/completions` |
+| Production | `https://your-domain.com` | `/api/v1/models`, `/v1/chat/completions` |
 
 ### API Versioning
 
@@ -86,23 +90,32 @@ For development/testing, the proxy may run without authentication.
 **Request Body:**
 ```json
 {
-  "modelPath": "/models/meta-llama/Llama-3.2-1B",
-  "displayName": "Llama 3.2 1B",
-  "gpuMemoryLimit": 4.0,
-  "port": 5001
+  "model_path": "meta-llama/Llama-3.2-1B",
+  "max_tokens": 4096,
+  "gpu_ids": [0],
+  "tensor_parallel_size": 1,
+  "extra_args": ["--trust-remote-code"]
 }
 ```
+
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model_path` | string | Yes | Model identifier (HuggingFace path or local path) |
+| `max_tokens` | number | No | Maximum context length (default: model's max) |
+| `gpu_ids` | number[] | No | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory |
+| `tensor_parallel_size` | number | No | Number of GPUs for tensor parallelism (default: 1). KVCached is disabled when >1 |
+| `extra_args` | string[] | No | Additional vLLM CLI arguments |
 
 **Response (202 Accepted):**
 ```json
 {
-  "id": "llama-3-2-1b-abc123",
-  "modelPath": "/models/meta-llama/Llama-3.2-1B",
-  "displayName": "Llama 3.2 1B",
-  "status": "starting",
+  "status": "success",
+  "model": "meta-llama/Llama-3.2-1B",
   "port": 5001,
-  "gpuMemoryLimit": 4.0,
-  "createdAt": "2025-11-11T10:30:00Z"
+  "loaded_at": "2025-11-11T10:30:00Z",
+  "instance_id": "llama-3-2-1b-abc123"
 }
 ```
 
@@ -112,10 +125,21 @@ curl -X POST http://localhost:3000/api/v1/models/load \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "modelPath": "/models/meta-llama/Llama-3.2-1B",
-    "displayName": "Llama 3.2 1B",
-    "gpuMemoryLimit": 4.0,
-    "port": 5001
+    "model_path": "meta-llama/Llama-3.2-1B",
+    "max_tokens": 4096
+  }'
+```
+
+**Example with tensor parallelism (2 GPUs):**
+```bash
+curl -X POST http://localhost:3000/api/v1/models/load \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_path": "meta-llama/Llama-3.1-70B",
+    "max_tokens": 8192,
+    "gpu_ids": [0, 1],
+    "tensor_parallel_size": 2
   }'
 ```
 
@@ -128,15 +152,13 @@ const response = await fetch('http://localhost:3000/api/v1/models/load', {
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    modelPath: '/models/meta-llama/Llama-3.2-1B',
-    displayName: 'Llama 3.2 1B',
-    gpuMemoryLimit: 4.0,
-    port: 5001,
+    model_path: 'meta-llama/Llama-3.2-1B',
+    max_tokens: 4096,
   }),
 });
 
-const model = await response.json();
-console.log('Model loading:', model.id);
+const result = await response.json();
+console.log('Model loading:', result.instance_id);
 ```
 
 ### List Models
@@ -149,27 +171,36 @@ console.log('Model loading:', model.id);
   "models": [
     {
       "id": "llama-3-2-1b-abc123",
-      "modelPath": "/models/meta-llama/Llama-3.2-1B",
-      "displayName": "Llama 3.2 1B",
+      "model_path": "meta-llama/Llama-3.2-1B",
+      "model_name": "Llama-3.2-1B",
       "status": "active",
       "port": 5001,
-      "pid": 12345,
-      "gpuMemoryLimit": 4.0,
-      "createdAt": "2025-11-11T10:30:00Z",
-      "startedAt": "2025-11-11T10:31:15Z"
+      "process_id": 12345,
+      "max_tokens": 4096,
+      "gpu_memory_utilization": 0.9,
+      "gpu_ids": [0],
+      "tensor_parallel_size": 1,
+      "kvcached_enabled": true,
+      "loaded_at": "2025-11-11T10:30:00Z",
+      "ready_at": "2025-11-11T10:31:15Z"
     },
     {
-      "id": "mistral-7b-def456",
-      "modelPath": "/models/mistralai/Mistral-7B-v0.1",
-      "displayName": "Mistral 7B",
+      "id": "llama-70b-def456",
+      "model_path": "meta-llama/Llama-3.1-70B",
+      "model_name": "Llama-3.1-70B",
       "status": "active",
       "port": 5002,
-      "pid": 12346,
-      "gpuMemoryLimit": 8.0,
-      "createdAt": "2025-11-11T10:35:00Z",
-      "startedAt": "2025-11-11T10:36:20Z"
+      "process_id": 12346,
+      "max_tokens": 8192,
+      "gpu_memory_utilization": 0.9,
+      "gpu_ids": [0, 1],
+      "tensor_parallel_size": 2,
+      "kvcached_enabled": false,
+      "loaded_at": "2025-11-11T10:35:00Z",
+      "ready_at": "2025-11-11T10:36:20Z"
     }
-  ]
+  ],
+  "total": 2
 }
 ```
 
@@ -186,28 +217,30 @@ curl -H "Authorization: Bearer $TOKEN" \
 **Response (200 OK):**
 ```json
 {
-  "id": "llama-3-2-1b-abc123",
-  "modelPath": "/models/meta-llama/Llama-3.2-1B",
-  "displayName": "Llama 3.2 1B",
-  "status": "active",
-  "port": 5001,
-  "pid": 12345,
-  "gpuMemoryLimit": 4.0,
-  "createdAt": "2025-11-11T10:30:00Z",
-  "startedAt": "2025-11-11T10:31:15Z",
-  "memory_metrics": {
-    "weights_memory_gib": 0.67,
-    "cuda_graph_memory_gib": 0.55,
-    "kv_cache_available_gib": 5.70,
-    "kv_cache_per_request_mib": 156.23,
-    "max_model_len": 4096
-  },
-  "metrics": {
-    "requestCount": 1523,
-    "activeConnections": 3,
-    "gpuMemoryUsed": 3.8,
-    "avgResponseTime": 234,
-    "p95ResponseTime": 456
+  "model": {
+    "id": "llama-3-2-1b-abc123",
+    "model_path": "meta-llama/Llama-3.2-1B",
+    "model_name": "Llama-3.2-1B",
+    "status": "active",
+    "port": 5001,
+    "process_id": 12345,
+    "max_tokens": 4096,
+    "gpu_memory_utilization": 0.9,
+    "gpu_ids": [0],
+    "tensor_parallel_size": 1,
+    "kvcached_enabled": true,
+    "loaded_at": "2025-11-11T10:30:00Z",
+    "ready_at": "2025-11-11T10:31:15Z",
+    "memory_metrics": {
+      "total_gpu_memory_gib": 1.22,
+      "weights_memory_gib": 0.67,
+      "cuda_graph_memory_gib": 0.55,
+      "overhead_memory_gib": 0.40,
+      "kv_cache_available_gib": 5.70,
+      "kv_cache_per_request_mib": 156.23,
+      "max_model_len": 4096
+    },
+    "launch_command": "python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3.2-1B --port 5001 ..."
   }
 }
 ```
@@ -451,6 +484,134 @@ memoryData.models.forEach(model => {
   console.log(`  ${model.display_name}: ${model.gpu_memory_gb} GB`);
 });
 ```
+
+### Get Multi-GPU Memory Usage
+
+**Endpoint:** `GET /api/memory/usage/multi-gpu`
+
+Returns per-GPU memory breakdown for multi-GPU systems.
+
+**Response (200 OK):**
+```json
+{
+  "gpus": [
+    {
+      "gpu_index": 0,
+      "name": "NVIDIA GeForce RTX 4090",
+      "total_gb": 24.0,
+      "used_gb": 8.5,
+      "free_gb": 15.5,
+      "utilization_percent": 35.0,
+      "models": [
+        {
+          "model_path": "meta-llama/Llama-3.2-1B",
+          "instance_id": "abc123",
+          "display_name": "Llama-3.2-1B",
+          "gpu_memory_gb": 1.22,
+          "color": "#0066CC"
+        }
+      ]
+    },
+    {
+      "gpu_index": 1,
+      "name": "NVIDIA GeForce RTX 4090",
+      "total_gb": 24.0,
+      "used_gb": 12.0,
+      "free_gb": 12.0,
+      "utilization_percent": 50.0,
+      "models": []
+    }
+  ],
+  "kvcache": {
+    "total_gb": 12.5,
+    "prealloc_gb": 6.2,
+    "used_gb": 3.8,
+    "free_gb": 2.5
+  },
+  "total_system_free_gb": 27.5
+}
+```
+
+## GPU API
+
+### Get Available GPUs
+
+**Endpoint:** `GET /api/gpu/available`
+
+Returns all GPUs with availability information and a recommendation for the next model load.
+
+**Response (200 OK):**
+```json
+{
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 4090",
+      "memory_total_mb": 24564,
+      "memory_used_mb": 8500,
+      "memory_free_mb": 16064,
+      "utilization_percent": 35,
+      "models_loaded": 2,
+      "recommended": true
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA GeForce RTX 4090",
+      "memory_total_mb": 24564,
+      "memory_used_mb": 12000,
+      "memory_free_mb": 12564,
+      "utilization_percent": 50,
+      "models_loaded": 1,
+      "recommended": false
+    }
+  ],
+  "recommendation": {
+    "gpu_id": 0,
+    "free_memory_gb": 15.69,
+    "reason": "GPU 0 has most free memory (15.7 GB)"
+  }
+}
+```
+
+**Example (curl):**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/gpu/available
+```
+
+## Direct Proxy API
+
+The Direct Proxy provides a lightweight, port-based proxy for testing and debugging. It bypasses the model routing layer and forwards requests directly to a specific vLLM instance port.
+
+### Forward Request to Port
+
+**Endpoint:** `ALL /api/direct/:port/*`
+
+Forwards any request directly to `http://localhost:{port}/{path}`.
+
+**Parameters:**
+- `port` - The vLLM instance port (e.g., 5001)
+- `*` - The path to forward (e.g., `v1/chat/completions`)
+
+**Example (curl):**
+```bash
+# Chat completion via direct proxy to port 5001
+curl -X POST http://localhost:3000/api/direct/5001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 50
+  }'
+```
+
+**Supported Responses:**
+- JSON responses are returned directly
+- SSE/streaming responses are piped through
+
+**Use Cases:**
+- Testing a specific model instance without model routing
+- Debugging inference issues
+- Bypassing the proxy layer for performance testing
 
 ## Proxy API
 

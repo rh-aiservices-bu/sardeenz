@@ -11,9 +11,12 @@ import {
   Spinner,
   Content,
   Alert,
+  Tabs,
+  Tab,
+  TabTitleText,
 } from '@patternfly/react-core'
 import { ResponsiveBar } from '@nivo/bar'
-import type { MemoryUsageResponse } from '@sardeenz/types'
+import type { MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient } from '../services/api'
 
 // Refresh interval options
@@ -57,20 +60,22 @@ interface GpuMemoryPanelProps {
 
 /**
  * Panel displaying GPU and KVCache memory usage with Nivo bar charts.
+ * Supports multiple GPUs with tabs for switching between them.
  * Shows two horizontal stacked bars:
  * - KVCache: shared pool (Prealloc / Used / Free)
  * - GPU: per-model breakdown with colors
  */
 export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanelProps) {
-  const [memoryData, setMemoryData] = useState<MemoryUsageResponse | null>(null)
+  const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshInterval, setRefreshInterval] = useState<number | null>(defaultRefreshInterval)
   const [isSelectOpen, setIsSelectOpen] = useState(false)
+  const [activeGpuIndex, setActiveGpuIndex] = useState(0)
 
   const fetchMemoryUsage = useCallback(async () => {
     try {
-      const data = await apiClient.getMemoryUsage()
+      const data = await apiClient.getMultiGpuMemoryUsage()
       setMemoryData(data)
       setError(null)
     } catch (err) {
@@ -90,6 +95,14 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     return () => clearInterval(interval)
   }, [fetchMemoryUsage, refreshInterval])
 
+  // Get the currently selected GPU data
+  const selectedGpu: PerGpuMetrics | null = useMemo(() => {
+    if (!memoryData || memoryData.gpus.length === 0) return null
+    // Find GPU by index or fallback to first
+    const gpu = memoryData.gpus.find((g) => g.gpu_index === activeGpuIndex)
+    return gpu || memoryData.gpus[0]
+  }, [memoryData, activeGpuIndex])
+
   // Build KVCache bar data
   const kvcacheData = useMemo(() => {
     if (!memoryData) return []
@@ -104,14 +117,14 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     ]
   }, [memoryData])
 
-  // Build GPU bar data with per-model breakdown
+  // Build GPU bar data with per-model breakdown for selected GPU
   const gpuData = useMemo(() => {
-    if (!memoryData) return { data: [], keys: [], colors: {} as Record<string, string> }
+    if (!selectedGpu) return { data: [], keys: [], colors: {} as Record<string, string> }
 
-    const { gpu, models } = memoryData
+    const { models } = selectedGpu
     const modelsMemory = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
-    const otherMemory = Math.max(0, gpu.used_gb - modelsMemory)
-    const freeMemory = gpu.free_gb
+    const otherMemory = Math.max(0, selectedGpu.used_gb - modelsMemory)
+    const freeMemory = selectedGpu.free_gb
 
     // Build data object dynamically
     const dataObj: Record<string, number | string> = { id: 'GPU' }
@@ -139,7 +152,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     colors['Free'] = FREE_COLOR
 
     return { data: [dataObj], keys, colors }
-  }, [memoryData])
+  }, [selectedGpu])
 
   const formatGb = (value: number) => `${value.toFixed(2)} GB`
 
@@ -216,13 +229,33 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
         <Content component="h2">GPU Memory Overview</Content>
       </CardHeader>
       <CardBody>
+        {/* GPU Tabs for multi-GPU systems */}
+        {memoryData && memoryData.gpus.length > 1 && (
+          <Tabs
+            activeKey={activeGpuIndex}
+            onSelect={(_event, tabIndex) => setActiveGpuIndex(tabIndex as number)}
+            aria-label="GPU selection tabs"
+            style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+          >
+            {memoryData.gpus.map((gpu) => (
+              <Tab
+                key={gpu.gpu_index}
+                eventKey={gpu.gpu_index}
+                title={<TabTitleText>GPU {gpu.gpu_index}: {gpu.name}</TabTitleText>}
+              />
+            ))}
+          </Tabs>
+        )}
+
         <Flex direction={{ default: 'row' }} gap={{ default: 'gapLg' }}>
           {/* GPU Memory Bar - Column 1 */}
           <FlexItem flex={{ default: 'flex_1' }}>
             <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-              GPU Memory —{' '}
-              {formatGb(memoryData?.gpu.used_gb ?? 0)} / {formatGb(memoryData?.gpu.total_gb ?? 0)}{' '}
-              ({memoryData?.gpu.utilization_percent.toFixed(0)}% utilized)
+              {memoryData && memoryData.gpus.length === 1 && selectedGpu && (
+                <>{selectedGpu.name} — </>
+              )}
+              {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}{' '}
+              ({selectedGpu?.utilization_percent.toFixed(0) ?? 0}% utilized)
             </Content>
             <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
               <ResponsiveBar
@@ -245,8 +278,8 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
               />
             </div>
             <Flex gap={{ default: 'gapSm' }} flexWrap={{ default: 'wrap' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
-              {memoryData?.models.map((model) => (
-                <FlexItem key={model.model_path}>
+              {selectedGpu?.models.map((model) => (
+                <FlexItem key={`${model.instance_id}-${model.model_path}`}>
                   <span style={{ color: model.color }}>●</span>{' '}
                   <Content component="small">{model.display_name} ({formatGb(model.gpu_memory_gb)})</Content>
                 </FlexItem>
@@ -259,7 +292,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
               )}
               <FlexItem>
                 <span style={{ color: FREE_COLOR }}>●</span>{' '}
-                <Content component="small">Free ({formatGb(memoryData?.gpu.free_gb ?? 0)})</Content>
+                <Content component="small">Free ({formatGb(selectedGpu?.free_gb ?? 0)})</Content>
               </FlexItem>
             </Flex>
           </FlexItem>
@@ -306,6 +339,15 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
             </Flex>
           </FlexItem>
         </Flex>
+
+        {/* Total system memory summary for multi-GPU */}
+        {memoryData && memoryData.gpus.length > 1 && (
+          <div style={{ marginTop: 'var(--pf-t--global--spacer--md)', paddingTop: 'var(--pf-t--global--spacer--sm)', borderTop: '1px solid var(--pf-t--global--border--color--default)' }}>
+            <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+              Total system free GPU memory: {formatGb(memoryData.total_system_free_gb)} across {memoryData.gpus.length} GPUs
+            </Content>
+          </div>
+        )}
       </CardBody>
     </Card>
   )

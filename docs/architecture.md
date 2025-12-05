@@ -27,15 +27,18 @@ Sardeenz is a multi-model management platform designed to:
 ┌─────────────────────────────────────────────────────────────┐
 │                      Admin Dashboard                        │
 │              (React + PatternFly 6 UI)                      │
+│                  (served on Port 3000)                      │
 └────────────────┬────────────────────────────────────────────┘
                  │ HTTPS (OAuth/OIDC)
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Controller API                           │
-│              (Fastify Backend - Port 3000)                  │
-│  • Model lifecycle (load/unload)                            │
-│  • Status & metrics endpoints                               │
-│  • Resource management                                      │
+│              Fastify Backend (Port 3000)                    │
+├─────────────────────────────────────────────────────────────┤
+│  Controller API (/api/*)           Inference Proxy (/v1/*) │
+│  • Model lifecycle (load/unload)   • OpenAI-compatible API  │
+│  • Status & metrics endpoints      • Model routing          │
+│  • GPU selection & management      • Streaming support (SSE)│
+│  • Static file serving (frontend)  • <50ms routing overhead │
 └────────────────┬────────────────────────────────────────────┘
                  │ subprocess management
                  ▼
@@ -45,24 +48,17 @@ Sardeenz is a multi-model management platform designed to:
 │  │   Model A    │  │   Model B    │  │   Model C    │      │
 │  │  (Port 5001) │  │  (Port 5002) │  │  (Port 5003) │      │
 │  │   OpenAI API │  │   OpenAI API │  │   OpenAI API │      │
+│  │   GPU 0      │  │   GPU 0      │  │  GPU 0-1 TP  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └───────────┬─────────────────────────────────────────────────┘
-            │ KVCached IPC shared memory
+            │ KVCached IPC shared memory (single-GPU models)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   GPU Memory (CUDA)                         │
-│  • Shared KV cache segments                                 │
-│  • Model weights                                            │
+│  • Shared KV cache segments (via KVCached)                  │
+│  • Model weights (per-GPU or tensor parallel)               │
 │  • Compute kernels                                          │
 └─────────────────────────────────────────────────────────────┘
-
-         ┌──────────────────────────────────────┐
-         │      Unified Proxy (Port 8000)       │
-         │  • OpenAI-compatible API             │
-         │  • Model routing by identifier       │
-         │  • Streaming support (SSE)           │
-         │  • <50ms routing overhead            │
-         └──────────────────────────────────────┘
                      ▲
                      │ HTTPS
                      │
@@ -262,6 +258,26 @@ vLLM Process Architecture:
 3. Use `engineCorePid` (falling back to `processId`) for nvidia-smi lookups
 4. Per-model memory breakdown in dashboard uses this PID for accurate reporting
 
+#### GPU Selector
+
+The GPU Selector service (`src/services/gpu-selector.ts`) handles intelligent GPU assignment for model loading:
+
+**Selection Strategies:**
+- **Auto-select (default):** Chooses GPU(s) with most free memory
+- **Manual selection:** User specifies `gpu_ids` in load request
+- **Tensor parallel:** For large models spanning multiple GPUs
+
+**Key Methods:**
+- `getRecommendedGpu(tensorParallelSize)` - Returns GPU(s) with most free memory
+- `validateGpuSelection(gpuIds, tensorParallelSize)` - Validates user-specified GPUs exist
+- `getTargetGpus(gpuIds?, tensorParallelSize)` - Determines final GPU assignment
+- `getGpuAvailability()` - Returns all GPUs with availability info for UI
+
+**Multi-GPU / Tensor Parallel:**
+- For `tensor_parallel_size > 1`, finds contiguous GPUs with most combined free memory
+- KVCached is automatically disabled for tensor parallel models (incompatible)
+- GPU indices are passed to vLLM via `CUDA_VISIBLE_DEVICES` environment variable
+
 ### 2. Unified Proxy
 
 **Responsibility:** Route inference requests to correct model instances.
@@ -271,15 +287,20 @@ vLLM Process Architecture:
 - Model identification via `model` field in request body
 - Streaming support using Server-Sent Events (SSE)
 - Connection pooling to vLLM backends
-- TCP passthrough using Fastify `reply.hijack()` for minimal latency
+- Round-robin load balancing for multiple instances of same model
+- Direct port-based proxy (`/api/direct/:port/*`) for testing
 
 **Performance Target:** <50ms routing overhead (p95)
 
 **Routing Logic:**
 1. Parse incoming request to extract model identifier
 2. Lookup model instance in registry (Map lookup: O(1))
-3. Forward request to vLLM instance port
-4. Stream response back to client
+3. For multiple instances: round-robin load balancing
+4. Forward request to vLLM instance port
+5. Stream response back to client
+
+**Direct Proxy Mode:**
+For testing and debugging, the `/api/direct/:port/*` endpoint bypasses model routing and forwards requests directly to a specific port. Example: `POST /api/direct/5001/v1/chat/completions`
 
 ### 3. Admin Dashboard
 
@@ -354,6 +375,9 @@ interface ModelInstance {
   processId: number;               // API Server PID (from spawn)
   engineCorePid?: number;          // EngineCore PID (allocates GPU VRAM)
   gpuMemoryLimit: number;          // GB allocated
+  gpuIds: number[];                // GPU indices this model runs on
+  tensorParallelSize: number;      // 1 = single GPU, >1 = spanning multiple GPUs
+  kvcachedEnabled: boolean;        // False for tensor parallel models
   createdAt: Date;
   startedAt?: Date;
   stoppedAt?: Date;
@@ -644,13 +668,19 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 6. **Observability**: Prometheus metrics, structured logging, health endpoints
 7. **Simplicity & Pragmatism**: YAGNI principle, integration tests mandatory
 
+## Implemented Features (Recent)
+
+- **Multi-GPU Support:** Models can span multiple GPUs via tensor parallelism
+- **GPU Auto-Selection:** Intelligent GPU assignment based on free memory
+- **Direct Proxy:** Port-based proxy for testing (`/api/direct/:port/*`)
+- **Simplified Container:** Single-process Fastify serves both API and frontend (no NGINX)
+
 ## Future Enhancements
 
 - **Persistent State:** Optional database backend (PostgreSQL) for model configuration catalog
 - **Autoscaling:** Dynamic model loading based on request patterns
 - **A/B Testing:** Traffic splitting between model versions
 - **Request Queueing:** Priority queue for high-demand models
-- **Multi-GPU Support:** Distribute models across multiple GPUs
 - **LoRA Adapter Support:** Dynamic adapter loading for fine-tuned models
 
 ---

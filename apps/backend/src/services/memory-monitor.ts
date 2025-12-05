@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import type { ResourceMetrics, MemoryUsageResponse, KVCacheMetrics, GpuMetrics, ModelGpuMemory } from '@sardeenz/types'
+import type { ResourceMetrics, MemoryUsageResponse, KVCacheMetrics, GpuMetrics, ModelGpuMemory, MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import type { Logger } from '@sardeenz/utils'
 import { InternalError } from '../utils/errors.js'
@@ -136,6 +136,122 @@ export class MemoryMonitor {
     } catch (err) {
       this.logger.error({ err }, 'Failed to get memory usage')
       throw new InternalError(`Failed to get memory usage: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Get GPU memory usage for all GPUs with per-model breakdown (multi-GPU support)
+   */
+  async getMultiGpuMemoryUsage(): Promise<MultiGpuMemoryUsageResponse> {
+    try {
+      // Get KVCache segments and GPU info from nvidia-smi in parallel
+      const [kvcacheSegments, nvidiaSmiInfo] = await Promise.all([
+        this.runKvcacheStats(),
+        getNvidiaSmiInfo(),
+      ])
+
+      // Build PID -> (GPU index, memory) mapping from nvidia-smi processes
+      const pidToGpuMemory = new Map<number, { gpuIndex: number; memoryMB: number }>()
+      for (const proc of nvidiaSmiInfo.processes) {
+        pidToGpuMemory.set(proc.pid, { gpuIndex: proc.gpu, memoryMB: proc.gpuMemoryMB })
+      }
+
+      // Get all running model instances
+      const allInstances = modelStore.getAll()
+      const runningInstances = allInstances.filter((i) => i.status === 'running')
+
+      // Group models by GPU with display name management
+      const modelsByGpu = new Map<number, ModelGpuMemory[]>()
+      const displayNameCounts = new Map<string, number>()
+
+      for (let index = 0; index < runningInstances.length; index++) {
+        const instance = runningInstances[index]
+        const gpuPid = instance.engineCorePid ?? instance.processId
+        const baseName = getDisplayName(instance.modelPath)
+        const count = (displayNameCounts.get(baseName) ?? 0) + 1
+        displayNameCounts.set(baseName, count)
+        const displayName = count === 1 ? baseName : `${baseName} (${count})`
+
+        // For tensor parallel models, distribute across their GPUs
+        if (instance.tensorParallelSize > 1 && instance.gpuIds.length > 1) {
+          // Get total memory from nvidia-smi processes for this model
+          // Sum up memory from all GPUs the model uses
+          let totalMemoryMB = 0
+          for (const gpuId of instance.gpuIds) {
+            for (const [, info] of pidToGpuMemory) {
+              if (info.gpuIndex === gpuId) {
+                totalMemoryMB += info.memoryMB
+              }
+            }
+          }
+
+          const perGpuMemoryGb = totalMemoryMB > 0
+            ? (totalMemoryMB / instance.gpuIds.length) / 1024
+            : 0
+
+          for (const gpuId of instance.gpuIds) {
+            if (!modelsByGpu.has(gpuId)) {
+              modelsByGpu.set(gpuId, [])
+            }
+            modelsByGpu.get(gpuId)!.push({
+              model_path: instance.modelPath,
+              instance_id: instance.id,
+              display_name: `${displayName} (TP)`,
+              gpu_memory_gb: perGpuMemoryGb,
+              color: getModelColor(instance.id, index),
+            })
+          }
+        } else {
+          // Single GPU model
+          const gpuInfo = pidToGpuMemory.get(gpuPid)
+          const gpuIndex = gpuInfo?.gpuIndex ?? instance.gpuIds[0] ?? 0
+          const memoryGb = (gpuInfo?.memoryMB ?? 0) / 1024
+
+          if (!modelsByGpu.has(gpuIndex)) {
+            modelsByGpu.set(gpuIndex, [])
+          }
+          modelsByGpu.get(gpuIndex)!.push({
+            model_path: instance.modelPath,
+            instance_id: instance.id,
+            display_name: displayName,
+            gpu_memory_gb: memoryGb,
+            color: getModelColor(instance.id, index),
+          })
+        }
+      }
+
+      // Build per-GPU response
+      const gpus: PerGpuMetrics[] = nvidiaSmiInfo.gpus.map((gpu) => ({
+        gpu_index: gpu.index,
+        name: gpu.name,
+        total_gb: gpu.memoryTotalMB / 1024,
+        used_gb: gpu.memoryUsedMB / 1024,
+        free_gb: (gpu.memoryTotalMB - gpu.memoryUsedMB) / 1024,
+        utilization_percent: parseFloat(gpu.gpuUtilization.replace('%', '')) || 0,
+        models: modelsByGpu.get(gpu.index) ?? [],
+      }))
+
+      // Aggregate KVCache metrics
+      const kvcacheTotalBytes = kvcacheSegments.reduce((sum, s) => sum + s.total_size, 0)
+      const kvcacheUsedBytes = kvcacheSegments.reduce((sum, s) => sum + s.used_size, 0)
+      const kvcachePreallocBytes = kvcacheSegments.reduce((sum, s) => sum + s.prealloc_size, 0)
+      const kvcacheFreeBytes = Math.max(0, kvcacheTotalBytes - kvcacheUsedBytes - kvcachePreallocBytes)
+
+      const kvcache: KVCacheMetrics = {
+        total_gb: kvcacheTotalBytes / 1024 ** 3,
+        prealloc_gb: kvcachePreallocBytes / 1024 ** 3,
+        used_gb: kvcacheUsedBytes / 1024 ** 3,
+        free_gb: kvcacheFreeBytes / 1024 ** 3,
+      }
+
+      return {
+        gpus,
+        kvcache,
+        total_system_free_gb: gpus.reduce((sum, g) => sum + g.free_gb, 0),
+      }
+    } catch (err) {
+      this.logger.error({ err }, 'Failed to get multi-GPU memory usage')
+      throw new InternalError(`Failed to get multi-GPU memory usage: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 

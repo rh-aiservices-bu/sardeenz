@@ -17,7 +17,8 @@ Core service managing vLLM subprocess lifecycle:
 - **Background monitoring**: Polls health endpoint every 2s, times out after 3 minutes
 - **Status transitions**: `starting` → `active` (success) or `failed` (error/timeout)
 - **Multi-instance support**: Multiple instances of same model via unique instance IDs
-- **KVCached integration**: All models share single `kvcached_mem_info` IPC segment
+- **Multi-GPU support**: GPU selection via `gpu_ids` and `tensor_parallel_size` parameters
+- **KVCached integration**: All single-GPU models share `kvcached_mem_info` IPC segment (disabled for tensor parallel)
 - **SIGKILL unload**: Uses SIGKILL (not SIGTERM) to bypass Python cleanup that would delete shared IPC
 - **EngineCore PID tracking**: Extracts GPU-using process PID from logs for accurate memory monitoring
 
@@ -73,6 +74,29 @@ SQLite persistence for benchmarks and memory profiles:
 - **Migrations** (`migrate.ts`): Automatic migration runner on startup
 - **Migration files** (`migrations/*.sql`): Schema evolution
 
+### GpuSelector (`src/services/gpu-selector.ts`)
+
+Intelligent GPU selection for model loading:
+- **Auto-selection**: Picks GPU(s) with most free memory
+- **Manual selection**: Validates user-specified `gpu_ids`
+- **Tensor parallel**: Finds contiguous GPUs for multi-GPU models
+- **Key methods**:
+  - `getRecommendedGpu(tensorParallelSize)` - Returns best GPU(s) for loading
+  - `validateGpuSelection(gpuIds, tensorParallelSize)` - Validates GPU exists
+  - `getTargetGpus(gpuIds?, tensorParallelSize)` - Determines final GPU assignment
+  - `getGpuAvailability()` - Returns all GPUs with availability info for UI
+- **Tensor parallel rules**:
+  - `tensor_parallel_size > 1` requires that many contiguous GPUs
+  - KVCached is automatically disabled for tensor parallel models
+  - GPUs passed to vLLM via `CUDA_VISIBLE_DEVICES` environment variable
+
+### ProxyRouter (`src/services/proxy-router.ts`)
+
+Request routing for inference proxy:
+- **Model lookup**: Resolves model name to running instance
+- **Round-robin**: Load balances across multiple instances of same model
+- **Metrics tracking**: Records request latency and counts
+
 ## API Routes
 
 | Route File | Purpose |
@@ -80,8 +104,10 @@ SQLite persistence for benchmarks and memory profiles:
 | `src/routes/models.ts` | Model CRUD: load, unload, list, get, health check, logs |
 | `src/routes/events.ts` | SSE event streaming endpoint |
 | `src/routes/health.ts` | Backend health checks (`/api/health`, `/api/health/ready`, `/api/health/live`) |
-| `src/routes/proxy.ts` | OpenAI-compatible inference proxy |
-| `src/routes/memory.ts` | GPU memory info via kvctl |
+| `src/routes/proxy.ts` | OpenAI-compatible inference proxy (`/v1/*`) with round-robin load balancing |
+| `src/routes/direct-proxy.ts` | Port-based direct proxy (`/api/direct/:port/*`) - bypasses model routing |
+| `src/routes/gpu.ts` | GPU info and availability (`/api/gpu/info`, `/api/gpu/available`) |
+| `src/routes/memory.ts` | GPU memory info (`/api/memory/usage`, `/api/memory/usage/multi-gpu`) |
 | `src/routes/memory-profiles.ts` | Memory profile CRUD, lookup, pre-load checks |
 | `src/routes/benchmarks.ts` | Benchmark run CRUD, SSE progress, results |
 | `src/routes/orphans.ts` | Orphan process detection |

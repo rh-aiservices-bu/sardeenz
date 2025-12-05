@@ -136,8 +136,8 @@ COPY --from=backend-builder /app/apps/backend/dist ./backend
 COPY --from=backend-builder /app/node_modules ./node_modules
 COPY --from=frontend-builder /app/apps/frontend/dist ./frontend
 
-# Expose ports
-EXPOSE 3000 8000
+# Expose port (unified API - Controller + Proxy + Frontend)
+EXPOSE 3000
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -165,17 +165,16 @@ services:
   vllm-stacker:
     image: sardeenz:latest
     ports:
-      - "3000:3000"  # Controller API
-      - "8000:8000"  # Proxy API
+      - "3000:3000"  # Unified API (Controller + Proxy + Frontend)
     environment:
       - NODE_ENV=development
       - ENABLE_KVCACHED=true
       - KVCACHED_AUTOPATCH=1
       - LOG_LEVEL=debug
-      - MODELS_PATH=/models
+      - HF_HOME=/opt/app-root/models
       - OAUTH_ENABLED=false  # Disable auth for local dev
     volumes:
-      - ./models:/models  # Mount local models directory
+      - ./models:/opt/app-root/models  # Mount local models directory for HF cache
       - /tmp/kvcached:/tmp/kvcached  # KVCached IPC directory
     deploy:
       resources:
@@ -210,11 +209,10 @@ docker run -d \
   --name vllm-stacker \
   --gpus all \
   -p 3000:3000 \
-  -p 8000:8000 \
   -e ENABLE_KVCACHED=true \
   -e KVCACHED_AUTOPATCH=1 \
-  -e MODELS_PATH=/models \
-  -v /path/to/models:/models \
+  -e HF_HOME=/opt/app-root/models \
+  -v /path/to/models:/opt/app-root/models \
   -v /tmp/kvcached:/tmp/kvcached \
   sardeenz:latest
 ```
@@ -263,10 +261,7 @@ spec:
         image: quay.io/your-org/sardeenz:latest
         ports:
         - containerPort: 3000
-          name: controller
-          protocol: TCP
-        - containerPort: 8000
-          name: proxy
+          name: http
           protocol: TCP
         env:
         - name: NODE_ENV
@@ -275,8 +270,16 @@ spec:
           value: "true"
         - name: KVCACHED_AUTOPATCH
           value: "1"
-        - name: MODELS_PATH
-          value: "/models"
+        - name: HF_HOME
+          value: "/opt/app-root/models"
+        - name: SARDEENZ_DB_PATH
+          value: "/opt/app-root/src/data/sardeenz.db"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+              optional: true
         - name: LOG_LEVEL
           value: "info"
         - name: OAUTH_ISSUER_URL
@@ -304,9 +307,10 @@ spec:
             cpu: "8"
             nvidia.com/gpu: "1"
         volumeMounts:
-        - name: models
-          mountPath: /models
-          readOnly: true
+        - name: model-cache
+          mountPath: /opt/app-root/models
+        - name: app-data
+          mountPath: /opt/app-root/src
         - name: kvcached-ipc
           mountPath: /tmp/kvcached
         livenessProbe:
@@ -326,12 +330,18 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
       volumes:
-      - name: models
+      - name: model-cache
         persistentVolumeClaim:
-          claimName: models-pvc
+          claimName: model-cache-pvc
+      - name: app-data
+        persistentVolumeClaim:
+          claimName: sardeenz-app-data
       - name: kvcached-ipc
         emptyDir:
           medium: Memory
+      securityContext:
+        fsGroup: 0
+        runAsNonRoot: true
       nodeSelector:
         nvidia.com/gpu.present: "true"
       tolerations:
@@ -348,96 +358,97 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-stacker-controller
+  name: vllm-stacker
   namespace: vllm-stacker
 spec:
   selector:
     app: vllm-stacker
   ports:
-  - name: controller
+  - name: http
     port: 3000
     targetPort: 3000
     protocol: TCP
   type: ClusterIP
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vllm-stacker-proxy
-  namespace: vllm-stacker
-spec:
-  selector:
-    app: vllm-stacker
-  ports:
-  - name: proxy
-    port: 8000
-    targetPort: 8000
-    protocol: TCP
-  type: ClusterIP
 ```
 
-**4. Create Routes:**
+**4. Create Route:**
 
-**`routes.yaml`:**
+**`route.yaml`:**
 
 ```yaml
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: vllm-stacker-controller
+  name: vllm-stacker
   namespace: vllm-stacker
 spec:
-  host: controller.vllm-stacker.apps.your-cluster.com
+  host: vllm-stacker.apps.your-cluster.com
   to:
     kind: Service
-    name: vllm-stacker-controller
+    name: vllm-stacker
   port:
-    targetPort: controller
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
-
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: vllm-stacker-proxy
-  namespace: vllm-stacker
-spec:
-  host: proxy.vllm-stacker.apps.your-cluster.com
-  to:
-    kind: Service
-    name: vllm-stacker-proxy
-  port:
-    targetPort: proxy
+    targetPort: http
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 ```
 
-**5. Create PersistentVolumeClaim for Models:**
+**5. Create PersistentVolumeClaims:**
 
-**`pvc.yaml`:**
+Two PVCs are required:
+- **Model Cache PVC** (`model-cache-pvc`): Stores downloaded HuggingFace models
+- **App Data PVC** (`sardeenz-app-data`): Stores SQLite database and other persistent app data
+
+**Model Cache PVC (`pvc-model-cache.yaml`):**
+
+Models are downloaded from HuggingFace Hub on first load and cached to the PVC. The `HF_HOME` environment variable controls where models are stored.
 
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: models-pvc
+  name: model-cache-pvc
   namespace: vllm-stacker
 spec:
   accessModes:
-  - ReadOnlyMany
+  - ReadWriteOnce
   resources:
     requests:
       storage: 100Gi
-  storageClassName: ocs-storagecluster-cephfs
+  # storageClassName: ocs-storagecluster-cephfs
 ```
 
-**6. Create OAuth Secret:**
+> **Note:** Use `ReadWriteOnce` for model caching (models are downloaded on demand). Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
+
+**App Data PVC (`pvc-app-data.yaml`):**
+
+Stores SQLite database (benchmarks, memory profiles) and other persistent application data. The `SARDEENZ_DB_PATH` environment variable controls where the database is stored.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sardeenz-app-data
+  namespace: vllm-stacker
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi  # Small - just for SQLite database
+```
+
+> **Note:** 1Gi is sufficient for the SQLite database which stores benchmark results and memory profiles.
+
+**6. Create Secrets:**
 
 ```bash
+# HuggingFace token (optional, for gated models like Llama, Mistral)
+oc create secret generic hf-token \
+  --from-literal=token=hf_your_token_here \
+  -n vllm-stacker
+
+# OAuth configuration (optional)
 oc create secret generic oauth-config \
   --from-literal=issuer-url=https://your-keycloak.com/auth/realms/vllm \
   --from-literal=client-id=vllm-stacker \
@@ -448,10 +459,11 @@ oc create secret generic oauth-config \
 **7. Deploy:**
 
 ```bash
-oc apply -f pvc.yaml
+oc apply -f pvc-model-cache.yaml
+oc apply -f pvc-app-data.yaml
 oc apply -f deployment.yaml
 oc apply -f service.yaml
-oc apply -f routes.yaml
+oc apply -f route.yaml
 
 # Check deployment status
 oc get pods -n vllm-stacker -w
@@ -479,9 +491,10 @@ oc logs -f deployment/vllm-stacker -n vllm-stacker
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `NODE_ENV` | No | `development` | Environment mode (`development`, `production`) |
-| `PORT` | No | `3000` | Controller API port |
-| `PROXY_PORT` | No | `8000` | Proxy API port |
-| `MODELS_PATH` | Yes | - | Path to model files directory |
+| `PORT` | No | `3000` | Unified API port (Controller + Proxy + Frontend) |
+| `HF_HOME` | Yes | - | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`) |
+| `HF_TOKEN` | No | - | HuggingFace token for accessing gated models (e.g., Llama, Mistral) |
+| `SARDEENZ_DB_PATH` | No | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`) |
 | `ENABLE_KVCACHED` | Yes | `true` | Enable KVCached memory sharing |
 | `KVCACHED_AUTOPATCH` | No | `1` | Auto-patch vLLM for KVCached |
 | `LOG_LEVEL` | No | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
@@ -501,11 +514,8 @@ oc logs -f deployment/vllm-stacker -n vllm-stacker
 
 ```yaml
 server:
-  controller:
-    port: 3000
-  proxy:
-    port: 8000
-    routingOverheadTarget: 50  # ms (p95)
+  port: 3000  # Unified API port
+  routingOverheadTarget: 50  # ms (p95) for proxy routing
 
 auth:
   enabled: true

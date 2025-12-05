@@ -6,6 +6,8 @@ export interface LoadModelRequest {
   model_path: string
   max_tokens?: number
   extra_args?: string[] // Additional vLLM CLI arguments
+  gpu_ids?: number[] // Optional explicit GPU selection (auto-selects if not provided)
+  tensor_parallel_size?: number // For large models spanning multiple GPUs (default: 1)
 }
 
 export interface LoadModelResponse {
@@ -57,6 +59,9 @@ export interface ModelInstanceDTO {
   memory_metrics?: ModelMemoryMetricsDTO
   has_chat_template?: boolean
   launch_command?: string // Full vLLM command for debugging/reproduction
+  gpu_ids: number[] // GPU indices this model is running on
+  tensor_parallel_size: number // 1 = single GPU, >1 = spanning multiple GPUs
+  kvcached_enabled: boolean // Whether KVCached is enabled (false for tensor parallel)
 }
 
 export interface GetModelResponse {
@@ -99,6 +104,51 @@ export interface MemoryUsageResponse {
   kvcache: KVCacheMetrics
   gpu: GpuMetrics
   models: ModelGpuMemory[]
+}
+
+// Multi-GPU support types
+
+/** Per-GPU metrics with model breakdown for multi-GPU systems */
+export interface PerGpuMetrics {
+  gpu_index: number
+  name: string
+  total_gb: number
+  used_gb: number
+  free_gb: number
+  utilization_percent: number
+  models: ModelGpuMemory[]
+}
+
+/** Multi-GPU memory usage response */
+export interface MultiGpuMemoryUsageResponse {
+  gpus: PerGpuMetrics[]
+  kvcache: KVCacheMetrics
+  total_system_free_gb: number
+}
+
+/** Individual GPU info for availability response */
+export interface GpuInfo {
+  index: number
+  name: string
+  memory_total_mb: number
+  memory_used_mb: number
+  memory_free_mb: number
+  utilization_percent: number
+  models_loaded: number
+  recommended: boolean
+}
+
+/** GPU recommendation for auto-selection */
+export interface GpuRecommendation {
+  gpu_id: number
+  free_memory_gb: number
+  reason: string
+}
+
+/** Available GPUs with selection recommendation */
+export interface GpuAvailabilityResponse {
+  gpus: GpuInfo[]
+  recommendation: GpuRecommendation
 }
 
 /** Legacy model memory usage (for backward compatibility) */

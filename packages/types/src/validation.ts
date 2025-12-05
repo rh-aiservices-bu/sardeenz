@@ -52,6 +52,8 @@ export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
   max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
   extra_args: Type.Optional(Type.Array(Type.String())),
+  gpu_ids: Type.Optional(Type.Array(Type.Integer({ minimum: 0, maximum: 15 }))),
+  tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
 })
 
 export const LoadModelResponseSchema = Type.Object({
@@ -91,6 +93,9 @@ export const ModelInstanceDTOSchema = Type.Object({
   memory_metrics: Type.Optional(ModelMemoryMetricsDTOSchema),
   has_chat_template: Type.Optional(Type.Boolean()),
   launch_command: Type.Optional(Type.String()),
+  gpu_ids: Type.Array(Type.Integer()),
+  tensor_parallel_size: Type.Integer(),
+  kvcached_enabled: Type.Boolean(),
 })
 
 export const ListModelsResponseSchema = Type.Object({
@@ -178,6 +183,61 @@ export const ErrorResponseSchema = Type.Object({
   }),
 })
 
+// Multi-GPU schemas
+
+export const ModelGpuMemorySchema = Type.Object({
+  model_path: Type.String(),
+  instance_id: Type.String(),
+  display_name: Type.String(),
+  gpu_memory_gb: Type.Number(),
+  color: Type.String(),
+})
+
+export const PerGpuMetricsSchema = Type.Object({
+  gpu_index: Type.Integer(),
+  name: Type.String(),
+  total_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+  utilization_percent: Type.Number(),
+  models: Type.Array(ModelGpuMemorySchema),
+})
+
+export const KVCacheMetricsSchema = Type.Object({
+  total_gb: Type.Number(),
+  prealloc_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+})
+
+export const MultiGpuMemoryUsageResponseSchema = Type.Object({
+  gpus: Type.Array(PerGpuMetricsSchema),
+  kvcache: KVCacheMetricsSchema,
+  total_system_free_gb: Type.Number(),
+})
+
+export const GpuInfoSchema = Type.Object({
+  index: Type.Integer(),
+  name: Type.String(),
+  memory_total_mb: Type.Integer(),
+  memory_used_mb: Type.Integer(),
+  memory_free_mb: Type.Integer(),
+  utilization_percent: Type.Number(),
+  models_loaded: Type.Integer(),
+  recommended: Type.Boolean(),
+})
+
+export const GpuRecommendationSchema = Type.Object({
+  gpu_id: Type.Integer(),
+  free_memory_gb: Type.Number(),
+  reason: Type.String(),
+})
+
+export const GpuAvailabilityResponseSchema = Type.Object({
+  gpus: Type.Array(GpuInfoSchema),
+  recommendation: GpuRecommendationSchema,
+})
+
 // Settings schemas
 export const HfTokenSourceSchema = Type.Union([
   Type.Literal('env'),
@@ -223,3 +283,8 @@ export type SettingsResponseType = Static<typeof SettingsResponseSchema>
 export type UpdateSettingsRequestType = Static<typeof UpdateSettingsRequestSchema>
 export type TestHfTokenRequestType = Static<typeof TestHfTokenRequestSchema>
 export type TestHfTokenResponseType = Static<typeof TestHfTokenResponseSchema>
+export type MultiGpuMemoryUsageResponseType = Static<typeof MultiGpuMemoryUsageResponseSchema>
+export type GpuAvailabilityResponseType = Static<typeof GpuAvailabilityResponseSchema>
+export type PerGpuMetricsType = Static<typeof PerGpuMetricsSchema>
+export type GpuInfoType = Static<typeof GpuInfoSchema>
+export type GpuRecommendationType = Static<typeof GpuRecommendationSchema>
