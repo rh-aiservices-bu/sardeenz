@@ -21,6 +21,8 @@ export interface LaunchModelOptions {
   extraArgs?: string[]
   gpuIds?: number[] // Optional explicit GPU selection (auto-selects if not provided)
   tensorParallelSize?: number // For large models spanning multiple GPUs (default: 1)
+  sourceType?: 'huggingface' | 'local' // Model source type (default: 'huggingface')
+  servedModelName?: string // Name for vLLM --served-model-name (default: modelPath)
 }
 
 /** Arguments that are managed by the system and should be filtered out from user input */
@@ -30,14 +32,13 @@ const FORBIDDEN_ARGS = [
   '--no-enable-prefix-caching',
   '--disable-log-requests',
   '--disable-log-stats',
-  '--max-model-len',
 ]
 
 /**
  * Sanitize user-provided vLLM arguments:
  * - Filter out empty lines
  * - Ensure args start with - or --
- * - Remove system-managed arguments
+ * - Remove system-managed arguments (but allow overridable ones)
  */
 function sanitizeVllmArgs(args: string[]): string[] {
   return args
@@ -51,22 +52,11 @@ function sanitizeVllmArgs(args: string[]): string[] {
 }
 
 /**
- * Extract --served-model-name from vLLM arguments if present
- * Supports both formats: --served-model-name=value and --served-model-name value
+ * Check if a specific argument is present in the args list
  */
-function extractServedModelName(args: string[], defaultName: string): string {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    // Handle --served-model-name=value format
-    if (arg.startsWith('--served-model-name=')) {
-      return arg.split('=')[1]
-    }
-    // Handle --served-model-name value format
-    if (arg === '--served-model-name' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
-      return args[i + 1]
-    }
-  }
-  return defaultName
+function hasArg(args: string[], argName: string): boolean {
+  const lowerArgName = argName.toLowerCase()
+  return args.some((arg) => arg.split('=')[0].toLowerCase() === lowerArgName)
 }
 
 export class ModelManager extends EventEmitter {
@@ -87,7 +77,17 @@ export class ModelManager extends EventEmitter {
    * GPU memory is managed by KVCached
    */
   async launchModel(options: LaunchModelOptions): Promise<ModelInstance> {
-    const { modelPath, maxTokens = 4096, extraArgs = [], gpuIds, tensorParallelSize = 1 } = options
+    const {
+      modelPath,
+      maxTokens = 4096,
+      extraArgs = [],
+      gpuIds,
+      tensorParallelSize = 1,
+      servedModelName,
+    } = options
+
+    // Use explicit servedModelName if provided, otherwise fall back to modelPath
+    const effectiveModelName = servedModelName?.trim() || modelPath
 
     // Sanitize user-provided extra arguments
     const sanitizedExtraArgs = sanitizeVllmArgs(extraArgs)
@@ -120,12 +120,10 @@ export class ModelManager extends EventEmitter {
 
     // Create instance record with unique ID
     const instanceId = randomUUID()
-    // Extract model name from --served-model-name arg if provided, otherwise use modelPath
-    const modelName = extractServedModelName(sanitizedExtraArgs, modelPath)
     const instance: ModelInstance = {
       id: instanceId,
       modelPath,
-      modelName,
+      modelName: effectiveModelName,
       status: 'starting' as ModelStatus,
       port,
       processId: 0, // Will be set after spawn
@@ -150,8 +148,17 @@ export class ModelManager extends EventEmitter {
         modelPath,
         '--disable-log-stats',
         `--port=${port}`,
-        `--max-model-len=${maxTokens}`,
       ]
+
+      // Add --served-model-name only if not overridden in extra args
+      if (!hasArg(sanitizedExtraArgs, '--served-model-name')) {
+        baseArgs.push(`--served-model-name=${effectiveModelName}`)
+      }
+
+      // Add --max-model-len only if not overridden in extra args
+      if (!hasArg(sanitizedExtraArgs, '--max-model-len')) {
+        baseArgs.push(`--max-model-len=${maxTokens}`)
+      }
 
       // Add tensor parallel size if > 1
       if (tensorParallelSize > 1) {
@@ -163,7 +170,7 @@ export class ModelManager extends EventEmitter {
         baseArgs.push('--no-enable-prefix-caching') // Required for KVCached
       }
 
-      // Append sanitized user-provided extra arguments
+      // Append sanitized user-provided extra arguments (may include overrides)
       const allArgs = [...baseArgs, ...sanitizedExtraArgs]
 
       // Build and store the full launch command for debugging/reproduction
@@ -272,8 +279,8 @@ export class ModelManager extends EventEmitter {
    */
   private async monitorModelStartup(instanceId: string, port: number, modelPath: string): Promise<void> {
     try {
-      // Wait for model to be ready (up to 3 minutes)
-      await this.waitForReady(port, modelPath, 180000)
+      // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
+      await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
 
       // Get current instance state
       const instance = modelStore.get(instanceId)

@@ -57,6 +57,7 @@ await fastify.register(import('@fastify/swagger'), {
       { name: 'orphans', description: 'Orphan process detection and cleanup (FR-027)' },
       { name: 'settings', description: 'Application settings endpoints' },
       { name: 'benchmarks', description: 'LLM performance benchmarking endpoints' },
+      { name: 'local-models', description: 'Local model discovery and browsing' },
     ],
   },
 })
@@ -92,6 +93,7 @@ await fastify.register(import('./routes/orphans.js'))
 await fastify.register(import('./routes/settings.js'))
 await fastify.register(import('./routes/benchmarks.js'))
 await fastify.register(import('./routes/memory-profiles.js'))
+await fastify.register(import('./routes/local-models.js'))
 
 // Static file serving for frontend (production only)
 if (config.nodeEnv === 'production') {

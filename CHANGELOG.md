@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - Models can span multiple GPUs via `tensor_parallel_size` parameter (KVCached disabled for tensor parallel)
 - New fields in `LoadModelRequest`: `gpu_ids`, `tensor_parallel_size`
 - New fields in `ModelInstanceDTO`: `gpu_ids`, `tensor_parallel_size`, `kvcached_enabled`
+- Model Cards now display which GPU(s) each model is loaded on
+- Shows "GPU 0" for single-GPU or "GPU 0, GPU 1 (tensor parallel)" for multi-GPU
 
 ### Simplified Container Architecture
 

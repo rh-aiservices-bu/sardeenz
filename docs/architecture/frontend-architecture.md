@@ -568,38 +568,46 @@ export function useWebSocket(url: string) {
 
 ### 1. ModelCard
 
-**Purpose:** Display a single model instance with status, metrics, and actions.
+**Purpose:** Display a single model instance with status, GPU placement, and actions.
 
 **Props:**
 ```tsx
 interface ModelCardProps {
-  model: ModelInstance;
-  onUnload: (id: string) => void;
-  userRole: 'admin' | 'admin-readonly';
+  model: ModelInstanceDTO;
+  onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void;
+  isUnloading?: boolean;
 }
 ```
 
 **PatternFly Components:**
 - `Card`, `CardTitle`, `CardBody`, `CardFooter`
-- `Badge` (for status)
-- `ProgressBar` (for memory usage)
+- `DescriptionList` (for model details)
+- `Badge` (via `ModelStatusBadge` for status)
 - `Button` (for actions)
+- `ExpandableSection` (for launch command)
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│ llama-2-7b          [Running] badge │
+│ meta-llama/Llama-3.2-1B   [Running] │
 │                                     │
-│ Port: 5001                          │
-│ Memory: 4.2 GB / 6.0 GB             │
-│ [████████████░░░] 70%               │
+│ Served model name: Llama-3.2-1B     │
+│ Port: 8001                          │
+│ Max Tokens: 4096                    │
+│ GPU Memory: 80%             Details │
+│ GPU: 0        (or GPUs: 0, 1 (...)) │
+│ Started at: 12/5/2025, 10:30 AM     │
 │                                     │
-│ Uptime: 2h 15m                      │
-│ Requests: 1,234                     │
+│ ▸ Launch Command                    │
 │                                     │
-│ [View Details] [Unload] (admin only)│
+│ [Unload]                            │
 └─────────────────────────────────────┘
 ```
+
+**GPU Display:**
+- Single GPU: Shows "GPU 0"
+- Multiple GPUs: Shows "GPU 0, GPU 1 (tensor parallel)"
+- The "(tensor parallel)" suffix indicates model is split across GPUs
 
 ### 2. LoadModelDialog
 

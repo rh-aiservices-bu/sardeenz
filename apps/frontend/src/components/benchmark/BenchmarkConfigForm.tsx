@@ -26,6 +26,30 @@ import { CopyIcon } from '@patternfly/react-icons'
 import { apiClient, extractErrorMessage } from '../../services/api'
 import type { ModelInstanceDTO, RoutingMode } from '@sardeenz/types'
 
+/** Token step values for logarithmic-like distribution on sliders */
+const INPUT_TOKEN_STEPS = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+const OUTPUT_TOKEN_STEPS = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
+
+/** Find the closest step index for a given token value */
+const findStepIndex = (value: number, steps: number[]): number => {
+  let closest = 0
+  let minDiff = Math.abs(steps[0] - value)
+  for (let i = 1; i < steps.length; i++) {
+    const diff = Math.abs(steps[i] - value)
+    if (diff < minDiff) {
+      minDiff = diff
+      closest = i
+    }
+  }
+  return closest
+}
+
+/** Format token value for slider label display */
+const formatTokens = (value: number): string => {
+  if (value >= 1024) return `${value / 1024}K`
+  return String(value)
+}
+
 /** Default parameter values for new model selections */
 const DEFAULT_PARAMS = {
   inputTokens: 512,
@@ -203,6 +227,17 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
     return selectedModels.some((m) => m.instanceId === instanceId)
   }
 
+  const getTokenValidationError = (instanceId: string, inputTokens: number, outputTokens: number): string | null => {
+    const instance = runningInstances.find((i) => i.id === instanceId)
+    if (!instance) return null
+
+    const totalTokens = inputTokens + outputTokens
+    if (totalTokens > instance.max_tokens) {
+      return `Combined tokens (${totalTokens.toLocaleString()}) exceeds model max (${instance.max_tokens.toLocaleString()})`
+    }
+    return null
+  }
+
   const getRoutingMode = (instanceId: string): RoutingMode => {
     return selectedModels.find((m) => m.instanceId === instanceId)?.routingMode || 'direct'
   }
@@ -216,7 +251,12 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
     })
   }
 
-  const isValid = selectedModels.length > 0
+  const hasTokenErrors = selectedModels.some((model) => {
+    const instance = runningInstances.find((i) => i.id === model.instanceId)
+    return instance && model.inputTokens + model.outputTokens > instance.max_tokens
+  })
+
+  const isValid = selectedModels.length > 0 && !hasTokenErrors
 
   // Calculate estimated total duration across all models
   const estimatedDurationSeconds = selectedModels.reduce((sum, model) => {
@@ -320,20 +360,17 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                 <FormGroup label="Input Tokens" fieldId={`input-tokens-${instance.id}`}>
                                   <Slider
                                     id={`input-tokens-${instance.id}`}
-                                    value={modelConfig.inputTokens}
-                                    min={64}
-                                    max={4096}
-                                    step={64}
+                                    value={findStepIndex(modelConfig.inputTokens, INPUT_TOKEN_STEPS)}
+                                    min={0}
+                                    max={INPUT_TOKEN_STEPS.length - 1}
+                                    step={1}
                                     showTicks
-                                    customSteps={[
-                                      { value: 64, label: '64' },
-                                      { value: 512, label: '512' },
-                                      { value: 1024, label: '1K' },
-                                      { value: 2048, label: '2K' },
-                                      { value: 4096, label: '4K' },
-                                    ]}
-                                    onChange={(_event: SliderOnChangeEvent, value: number) =>
-                                      handleModelConfigChange(instance.id, { inputTokens: value })
+                                    customSteps={INPUT_TOKEN_STEPS.map((val, idx) => ({
+                                      value: idx,
+                                      label: formatTokens(val),
+                                    }))}
+                                    onChange={(_event: SliderOnChangeEvent, index: number) =>
+                                      handleModelConfigChange(instance.id, { inputTokens: INPUT_TOKEN_STEPS[index] })
                                     }
                                   />
                                 </FormGroup>
@@ -343,22 +380,41 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                 <FormGroup label="Output Tokens" fieldId={`output-tokens-${instance.id}`}>
                                   <Slider
                                     id={`output-tokens-${instance.id}`}
-                                    value={modelConfig.outputTokens}
-                                    min={16}
-                                    max={2048}
-                                    step={16}
+                                    value={findStepIndex(modelConfig.outputTokens, OUTPUT_TOKEN_STEPS)}
+                                    min={0}
+                                    max={OUTPUT_TOKEN_STEPS.length - 1}
+                                    step={1}
                                     showTicks
-                                    customSteps={[
-                                      { value: 16, label: '16' },
-                                      { value: 128, label: '128' },
-                                      { value: 512, label: '512' },
-                                      { value: 1024, label: '1K' },
-                                      { value: 2048, label: '2K' },
-                                    ]}
-                                    onChange={(_event: SliderOnChangeEvent, value: number) =>
-                                      handleModelConfigChange(instance.id, { outputTokens: value })
+                                    customSteps={OUTPUT_TOKEN_STEPS.map((val, idx) => ({
+                                      value: idx,
+                                      label: formatTokens(val),
+                                    }))}
+                                    onChange={(_event: SliderOnChangeEvent, index: number) =>
+                                      handleModelConfigChange(instance.id, { outputTokens: OUTPUT_TOKEN_STEPS[index] })
                                     }
                                   />
+                                  {(() => {
+                                    const tokenError = getTokenValidationError(
+                                      instance.id,
+                                      modelConfig.inputTokens,
+                                      modelConfig.outputTokens
+                                    )
+                                    return tokenError ? (
+                                      <FormHelperText>
+                                        <HelperText>
+                                          <HelperTextItem variant="error">{tokenError}</HelperTextItem>
+                                        </HelperText>
+                                      </FormHelperText>
+                                    ) : (
+                                      <FormHelperText>
+                                        <HelperText>
+                                          <HelperTextItem>
+                                            Total: {(modelConfig.inputTokens + modelConfig.outputTokens).toLocaleString()} / {instance.max_tokens.toLocaleString()} tokens
+                                          </HelperTextItem>
+                                        </HelperText>
+                                      </FormHelperText>
+                                    )
+                                  })()}
                                 </FormGroup>
                               </FlexItem>
 
@@ -383,7 +439,7 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         }
                                         onChange={(event) => {
                                           const value = Number((event.target as HTMLInputElement).value)
-                                          if (!isNaN(value) && value >= 1 && value <= 32) {
+                                          if (!isNaN(value)) {
                                             handleModelConfigChange(instance.id, { concurrency: value })
                                           }
                                         }}
@@ -412,7 +468,7 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         }
                                         onChange={(event) => {
                                           const value = Number((event.target as HTMLInputElement).value)
-                                          if (!isNaN(value) && value >= 10 && value <= 500) {
+                                          if (!isNaN(value)) {
                                             handleModelConfigChange(instance.id, { totalRequests: value })
                                           }
                                         }}
@@ -427,11 +483,11 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                       <NumberInput
                                         id={`warmup-${instance.id}`}
                                         value={modelConfig.warmupRequests}
-                                        min={0}
+                                        min={1}
                                         max={10}
                                         onMinus={() =>
                                           handleModelConfigChange(instance.id, {
-                                            warmupRequests: Math.max(0, modelConfig.warmupRequests - 1),
+                                            warmupRequests: Math.max(1, modelConfig.warmupRequests - 1),
                                           })
                                         }
                                         onPlus={() =>
@@ -441,7 +497,7 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         }
                                         onChange={(event) => {
                                           const value = Number((event.target as HTMLInputElement).value)
-                                          if (!isNaN(value) && value >= 0 && value <= 10) {
+                                          if (!isNaN(value)) {
                                             handleModelConfigChange(instance.id, { warmupRequests: value })
                                           }
                                         }}
@@ -485,7 +541,7 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         <HelperText>
                                           <HelperTextItem>
                                             {modelConfig.slaThresholdMs
-                                              ? `Goodput: requests completing within ${modelConfig.slaThresholdMs}ms`
+                                              ? `Goodput: requests fully completing within ${modelConfig.slaThresholdMs}ms`
                                               : 'Optional: Set to enable goodput metric'}
                                           </HelperTextItem>
                                         </HelperText>

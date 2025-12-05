@@ -2,12 +2,17 @@ import type { ModelStatus } from './models.js'
 
 // Controller API Request/Response types
 
+/** Model source type - HuggingFace ID or local path */
+export type ModelSourceType = 'huggingface' | 'local'
+
 export interface LoadModelRequest {
   model_path: string
   max_tokens?: number
   extra_args?: string[] // Additional vLLM CLI arguments
   gpu_ids?: number[] // Optional explicit GPU selection (auto-selects if not provided)
   tensor_parallel_size?: number // For large models spanning multiple GPUs (default: 1)
+  source_type?: ModelSourceType // Model source type (default: 'huggingface')
+  served_model_name?: string // Name for vLLM --served-model-name (default: model_path)
 }
 
 export interface LoadModelResponse {
@@ -247,6 +252,30 @@ export interface UsageInfo {
   total_tokens: number
 }
 
+// Streaming response types (OpenAI-compatible SSE format)
+
+/** Delta content in streaming chunk */
+export interface ChatCompletionDelta {
+  role?: 'assistant' | 'user' | 'system'
+  content?: string
+}
+
+/** Single streaming chunk choice */
+export interface ChatCompletionStreamChoice {
+  index: number
+  delta: ChatCompletionDelta
+  finish_reason: 'stop' | 'length' | 'content_filter' | null
+}
+
+/** Streaming chunk response */
+export interface ChatCompletionChunk {
+  id: string
+  object: 'chat.completion.chunk'
+  created: number
+  model: string
+  choices: ChatCompletionStreamChoice[]
+}
+
 // Instance-specific responses
 
 export interface ListInstancesResponse {
@@ -296,4 +325,31 @@ export interface TestHfTokenResponse {
   valid: boolean
   username?: string // HF username if valid
   error?: string // Error message if invalid
+}
+
+// Local Models API types
+
+/** Information about a local model available in the configured directory */
+export interface LocalModelInfo {
+  /** Model directory name */
+  name: string
+  /** Full path to model directory */
+  path: string
+  /** Last modified timestamp */
+  modified_at?: string
+  /** Whether config.json exists (indicates valid HF model) */
+  has_config: boolean
+}
+
+/** Response for listing local models */
+export interface ListLocalModelsResponse {
+  models: LocalModelInfo[]
+  total: number
+  base_path: string
+}
+
+/** Response for local models feature status */
+export interface LocalModelsStatusResponse {
+  enabled: boolean
+  path?: string
 }

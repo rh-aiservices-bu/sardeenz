@@ -18,6 +18,7 @@
   "dependencies": {
     "@nivo/bar": "^0.99.0",
     "@nivo/core": "^0.99.0",
+    "@patternfly/chatbot": "^6.4.1",
     "@patternfly/react-core": "^6.0.0",
     "@patternfly/react-icons": "^6.0.0",
     "@patternfly/react-table": "^6.0.0",
