@@ -82,11 +82,16 @@ npm run typecheck
 
 ## Documentation
 
-- [GPU Development Setup](./docs/dev-setup.md) - Local GPU environment with vLLM/KVCached
-- [Architecture](./docs/architecture.md) - System design and key decisions
-- [API Guide](./docs/api-guide.md) - API usage and integration patterns
-- [Deployment](./docs/deployment.md) - Container and OpenShift deployment
-- [KVCached Integration](./docs/kvcached/) - GPU memory sharing documentation
+📖 **[Full Documentation](./docs/README.md)** - Complete documentation index
+
+### Quick Links
+
+| Category | Documents |
+|----------|-----------|
+| **Architecture** | [Overview](./docs/architecture.md) · [Backend](./docs/architecture/backend-architecture.md) · [Frontend](./docs/architecture/frontend-architecture.md) |
+| **Development** | [GPU Setup](./docs/dev-setup.md) · [PatternFly 6 Guide](./docs/development/pf6-guide/README.md) · [API Client](./docs/development/frontend-api-client.md) |
+| **Operations** | [API Guide](./docs/api-guide.md) · [Deployment](./docs/deployment.md) · [KVCached](./docs/kvcached/) |
+| **Project** | [Changelog](./CHANGELOG.md) · [Specifications](./specs/001-multi-model-platform/) |
 
 ## License
 
