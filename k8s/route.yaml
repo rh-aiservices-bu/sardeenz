@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/part-of: sardeenz
   annotations:
     haproxy.router.openshift.io/timeout: 300s  # 5 minute timeout for long-running inference
+    haproxy.router.openshift.io/timeout-tunnel: 300s  # Required for SSE streaming
 spec:
   to:
     kind: Service

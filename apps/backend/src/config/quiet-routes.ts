@@ -11,4 +11,5 @@ export const QUIET_ROUTES = [
   '/api/health', // OpenShift liveness probe
   '/api/health/ready', // OpenShift readiness probe
   '/api/health/live', // OpenShift liveness probe (alternative)
+  '/v1/models', // OpenAI-compatible model list endpoint
 ] as const

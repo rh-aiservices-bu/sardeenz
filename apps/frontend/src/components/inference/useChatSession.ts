@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { apiClient, extractErrorDetails } from '../../services/api'
 import type { ModelInstanceDTO, ChatCompletionRequest } from '@sardeenz/types'
 import type { ChatMessage, ModelChatState } from './types'
@@ -68,12 +69,18 @@ export function useChatSession(model: ModelInstanceDTO) {
           firstTokenTime = performance.now()
         }
 
-        setState((prev) => ({
-          ...prev,
-          messages: prev.messages.map((msg) =>
-            msg.id === botMessageId ? { ...msg, content: msg.content + chunk } : msg
-          ),
-        }))
+        // Use flushSync to force immediate render for each chunk
+        // This prevents React 18's automatic batching from delaying updates
+        flushSync(() => {
+          setState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((msg) =>
+              msg.id === botMessageId
+                ? { ...msg, content: msg.content + chunk, isLoading: false }
+                : msg
+            ),
+          }))
+        })
       }
 
       const onComplete = (fullText: string, tokenCount: number) => {

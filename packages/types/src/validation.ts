@@ -12,7 +12,7 @@ export const ModelConfigurationSchema = Type.Object({
   modelPath: Type.String({ pattern: '^[\\w\\-\\.]+/[\\w\\-\\.]+$' }),
   displayName: Type.Optional(Type.String({ maxLength: 100 })),
   description: Type.Optional(Type.String({ maxLength: 500 })),
-  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
   estimatedMemoryGB: Type.Optional(Type.Number({ minimum: 0 })),
   tags: Type.Optional(Type.Array(Type.String({ maxLength: 50 }), { maxItems: 10 })),
 })
@@ -23,7 +23,7 @@ export const ModelInstanceSchema = Type.Object({
   status: ModelStatusSchema,
   port: Type.Integer({ minimum: 1024, maximum: 65535 }),
   processId: Type.Integer({ minimum: 1 }),
-  maxTokens: Type.Integer({ minimum: 512, maximum: 32768 }),
+  maxTokens: Type.Integer({ minimum: 1, maximum: 1000000 }),
   gpuMemoryUtilization: Type.Number({ minimum: 0.1, maximum: 0.95 }),
   loadedAt: Type.String({ format: 'date-time' }),
   readyAt: Type.Optional(Type.String({ format: 'date-time' })),
@@ -56,7 +56,7 @@ export const ModelSourceTypeSchema = Type.Union([
 // API request/response schemas
 export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
-  max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  max_tokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
   extra_args: Type.Optional(Type.Array(Type.String())),
   gpu_ids: Type.Optional(Type.Array(Type.Integer({ minimum: 0, maximum: 15 }))),
   tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
@@ -191,6 +191,51 @@ export const ErrorResponseSchema = Type.Object({
   }),
 })
 
+// vLLM Proxy API schemas
+
+// Embedding request (OpenAI-compatible)
+export const EmbeddingRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  input: Type.Union([Type.String(), Type.Array(Type.String())]),
+  encoding_format: Type.Optional(Type.Union([Type.Literal('float'), Type.Literal('base64')])),
+  user: Type.Optional(Type.String()),
+})
+
+// Tokenize request (vLLM-specific)
+export const TokenizeRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  prompt: Type.Optional(Type.String()),
+  add_special_tokens: Type.Optional(Type.Boolean()),
+})
+
+// Detokenize request (vLLM-specific)
+export const DetokenizeRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  tokens: Type.Array(Type.Integer()),
+})
+
+// Generic vLLM request with required model field (for pooling, classification, score, re-rank)
+export const VLLMGenericRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+}, { additionalProperties: true })
+
+// vLLM models list response (for aggregation)
+export const VLLMModelSchema = Type.Object({
+  id: Type.String(),
+  object: Type.Literal('model'),
+  created: Type.Integer(),
+  owned_by: Type.String(),
+  root: Type.Optional(Type.String()),
+  parent: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  max_model_len: Type.Optional(Type.Integer()),
+  permission: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }))),
+})
+
+export const VLLMModelsListResponseSchema = Type.Object({
+  object: Type.Literal('list'),
+  data: Type.Array(VLLMModelSchema),
+})
+
 // Multi-GPU schemas
 
 export const ModelGpuMemorySchema = Type.Object({
@@ -319,3 +364,9 @@ export type ModelSourceTypeType = Static<typeof ModelSourceTypeSchema>
 export type LocalModelInfoType = Static<typeof LocalModelInfoSchema>
 export type ListLocalModelsResponseType = Static<typeof ListLocalModelsResponseSchema>
 export type LocalModelsStatusResponseType = Static<typeof LocalModelsStatusResponseSchema>
+export type EmbeddingRequest = Static<typeof EmbeddingRequestSchema>
+export type TokenizeRequest = Static<typeof TokenizeRequestSchema>
+export type DetokenizeRequest = Static<typeof DetokenizeRequestSchema>
+export type VLLMGenericRequest = Static<typeof VLLMGenericRequestSchema>
+export type VLLMModel = Static<typeof VLLMModelSchema>
+export type VLLMModelsListResponse = Static<typeof VLLMModelsListResponseSchema>

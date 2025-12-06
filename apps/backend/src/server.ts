@@ -58,6 +58,7 @@ await fastify.register(import('@fastify/swagger'), {
       { name: 'settings', description: 'Application settings endpoints' },
       { name: 'benchmarks', description: 'LLM performance benchmarking endpoints' },
       { name: 'local-models', description: 'Local model discovery and browsing' },
+      { name: 'configurations', description: 'Model configuration save/load endpoints' },
     ],
   },
 })
@@ -81,6 +82,14 @@ if (config.oidcIssuerUrl) {
 // Register global error handler (must be before routes)
 await fastify.register(import('./plugins/error-handler.js'))
 
+// Register multipart support for audio endpoints
+await fastify.register(import('@fastify/multipart'), {
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB max file size for audio
+    files: 1, // Max 1 file per request
+  },
+})
+
 // Register routes
 await fastify.register(import('./routes/health.js'))
 await fastify.register(import('./routes/models.js'))
@@ -94,6 +103,7 @@ await fastify.register(import('./routes/settings.js'))
 await fastify.register(import('./routes/benchmarks.js'))
 await fastify.register(import('./routes/memory-profiles.js'))
 await fastify.register(import('./routes/local-models.js'))
+await fastify.register(import('./routes/model-configurations.js'))
 
 // Static file serving for frontend (production only)
 if (config.nodeEnv === 'production') {

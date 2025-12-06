@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   PageSection,
   Content,
@@ -14,11 +14,19 @@ import {
   EmptyStateFooter,
   Flex,
   FlexItem,
+  ClipboardCopy,
+  ClipboardCopyVariant,
 } from '@patternfly/react-core'
-import { PlusCircleIcon, CubesIcon } from '@patternfly/react-icons'
+import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import type { ModelInstanceDTO, LoadModelRequest } from '@sardeenz/types'
-import { ModelCard, LoadModelDialog, GpuMemoryPanel } from '../components'
+import {
+  ModelCard,
+  LoadModelDialog,
+  GpuMemoryPanel,
+  SaveConfigurationDialog,
+  LoadConfigurationDialog,
+} from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
 
 function ModelManagement() {
@@ -26,8 +34,18 @@ function ModelManagement() {
   const [loading, setLoading] = useState(true)
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false)
   const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
+  const [isSaveConfigOpen, setIsSaveConfigOpen] = useState(false)
+  const [isLoadConfigOpen, setIsLoadConfigOpen] = useState(false)
 
   const { addNotification } = useNotifications()
+
+  // Count running models for configuration save
+  const runningModelCount = useMemo(
+    () => models.filter((m) => m.status === 'running').length,
+    [models]
+  )
+
+  const inferenceUrl = useMemo(() => `${window.location.origin}/v1`, [])
 
   const fetchModels = useCallback(async () => {
     try {
@@ -92,6 +110,24 @@ function ModelManagement() {
     }
   }
 
+  const handleConfigSaved = () => {
+    addNotification({
+      title: 'Configuration saved',
+      description: 'Model configuration saved successfully',
+      variant: 'success',
+    })
+  }
+
+  const handleConfigLoadStarted = (message: string) => {
+    addNotification({
+      title: 'Loading configuration',
+      description: message,
+      variant: 'info',
+    })
+    // Refresh models list after a delay to show updated state
+    setTimeout(fetchModels, 2000)
+  }
+
   if (loading) {
     return (
       <PageSection>
@@ -113,15 +149,49 @@ function ModelManagement() {
         >
           <FlexItem>
             <Content component="h1">Model Placement Management</Content>
+            <Content component="p" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+              Inference URL:{' '}
+              <ClipboardCopy
+                isReadOnly
+                hoverTip="Copy"
+                clickTip="Copied"
+                variant={ClipboardCopyVariant.inline}
+              >
+                {inferenceUrl}
+              </ClipboardCopy>
+            </Content>
           </FlexItem>
           <FlexItem>
-            <Button
-              variant="primary"
-              icon={<PlusCircleIcon />}
-              onClick={() => setIsLoadModalOpen(true)}
-            >
-              Start Model
-            </Button>
+            <Flex gap={{ default: 'gapSm' }}>
+              <FlexItem>
+                <Button
+                  variant="secondary"
+                  icon={<SaveIcon />}
+                  onClick={() => setIsSaveConfigOpen(true)}
+                  isDisabled={runningModelCount === 0}
+                >
+                  Save Config
+                </Button>
+              </FlexItem>
+              <FlexItem>
+                <Button
+                  variant="secondary"
+                  icon={<UploadIcon />}
+                  onClick={() => setIsLoadConfigOpen(true)}
+                >
+                  Load Config
+                </Button>
+              </FlexItem>
+              <FlexItem>
+                <Button
+                  variant="primary"
+                  icon={<PlusCircleIcon />}
+                  onClick={() => setIsLoadModalOpen(true)}
+                >
+                  Start Model
+                </Button>
+              </FlexItem>
+            </Flex>
           </FlexItem>
         </Flex>
 
@@ -169,6 +239,20 @@ function ModelManagement() {
         onClose={() => setIsLoadModalOpen(false)}
         onLoad={handleLoadModel}
         onSuccess={handleLoadSuccess}
+      />
+
+      <SaveConfigurationDialog
+        isOpen={isSaveConfigOpen}
+        onClose={() => setIsSaveConfigOpen(false)}
+        onSuccess={handleConfigSaved}
+        modelCount={runningModelCount}
+      />
+
+      <LoadConfigurationDialog
+        isOpen={isLoadConfigOpen}
+        onClose={() => setIsLoadConfigOpen(false)}
+        onLoadStarted={handleConfigLoadStarted}
+        currentModelCount={runningModelCount}
       />
     </>
   )

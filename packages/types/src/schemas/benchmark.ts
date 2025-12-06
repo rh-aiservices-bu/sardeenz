@@ -208,7 +208,7 @@ export const CreateMemoryProfileRequestSchema = Type.Object({
 
   // For manual entry
   model_path: Type.Optional(Type.String()),
-  max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768 })),
+  max_tokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000 })),
   total_gpu_memory_gib: Type.Optional(Type.Number({ minimum: 0 })),
   weights_memory_gib: Type.Optional(Type.Number({ minimum: 0 })),
   cuda_graphs_gib: Type.Optional(Type.Number({ minimum: 0 })),
@@ -241,7 +241,7 @@ export const DeleteMemoryProfileResponseSchema = Type.Object({
 
 export const MemoryCheckRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
-  max_tokens: Type.Integer({ minimum: 512, maximum: 32768 }),
+  max_tokens: Type.Integer({ minimum: 1, maximum: 1000000 }),
   gpu_name: Type.String({ minLength: 1 }),
 })
 
@@ -257,7 +257,7 @@ export const MemoryCheckResponseSchema = Type.Object({
 
 export const LookupMemoryProfileQuerySchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
-  max_tokens: Type.Integer({ minimum: 512, maximum: 32768 }),
+  max_tokens: Type.Integer({ minimum: 1, maximum: 1000000 }),
   gpu_name: Type.String({ minLength: 1 }),
 })
 
