@@ -123,6 +123,19 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
             </DescriptionListDescription>
           </DescriptionListGroup>
           <DescriptionListGroup>
+            <DescriptionListTerm>GPU{model.gpu_ids.length > 1 ? 's' : ''}</DescriptionListTerm>
+            <DescriptionListDescription>
+              {model.gpu_ids.length === 1
+                ? `GPU ${model.gpu_ids[0]}`
+                : model.gpu_ids.map(id => `GPU ${id}`).join(', ')}
+              {model.tensor_parallel_size > 1 && (
+                <span style={{ color: 'var(--pf-t--global--text--color--subtle)', marginLeft: 'var(--pf-t--global--spacer--sm)' }}>
+                  (tensor parallel)
+                </span>
+              )}
+            </DescriptionListDescription>
+          </DescriptionListGroup>
+          <DescriptionListGroup>
             <DescriptionListTerm>Started at</DescriptionListTerm>
             <DescriptionListDescription>
               <Flex

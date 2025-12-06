@@ -47,6 +47,12 @@ export const ResourceMetricsSchema = Type.Object({
   lastUpdated: Type.String({ format: 'date-time' }),
 })
 
+// Model source type schema
+export const ModelSourceTypeSchema = Type.Union([
+  Type.Literal('huggingface'),
+  Type.Literal('local'),
+])
+
 // API request/response schemas
 export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
@@ -54,6 +60,8 @@ export const LoadModelRequestSchema = Type.Object({
   extra_args: Type.Optional(Type.Array(Type.String())),
   gpu_ids: Type.Optional(Type.Array(Type.Integer({ minimum: 0, maximum: 15 }))),
   tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+  source_type: Type.Optional(ModelSourceTypeSchema),
+  served_model_name: Type.Optional(Type.String({ minLength: 1 })),
 })
 
 export const LoadModelResponseSchema = Type.Object({
@@ -264,6 +272,25 @@ export const TestHfTokenResponseSchema = Type.Object({
   error: Type.Optional(Type.String()),
 })
 
+// Local models schemas
+export const LocalModelInfoSchema = Type.Object({
+  name: Type.String(),
+  path: Type.String(),
+  modified_at: Type.Optional(Type.String({ format: 'date-time' })),
+  has_config: Type.Boolean(),
+})
+
+export const ListLocalModelsResponseSchema = Type.Object({
+  models: Type.Array(LocalModelInfoSchema),
+  total: Type.Integer(),
+  base_path: Type.String(),
+})
+
+export const LocalModelsStatusResponseSchema = Type.Object({
+  enabled: Type.Boolean(),
+  path: Type.Optional(Type.String()),
+})
+
 // Type exports for TypeScript inference
 export type LoadModelRequestType = Static<typeof LoadModelRequestSchema>
 export type LoadModelResponseType = Static<typeof LoadModelResponseSchema>
@@ -288,3 +315,7 @@ export type GpuAvailabilityResponseType = Static<typeof GpuAvailabilityResponseS
 export type PerGpuMetricsType = Static<typeof PerGpuMetricsSchema>
 export type GpuInfoType = Static<typeof GpuInfoSchema>
 export type GpuRecommendationType = Static<typeof GpuRecommendationSchema>
+export type ModelSourceTypeType = Static<typeof ModelSourceTypeSchema>
+export type LocalModelInfoType = Static<typeof LocalModelInfoSchema>
+export type ListLocalModelsResponseType = Static<typeof ListLocalModelsResponseSchema>
+export type LocalModelsStatusResponseType = Static<typeof LocalModelsStatusResponseSchema>

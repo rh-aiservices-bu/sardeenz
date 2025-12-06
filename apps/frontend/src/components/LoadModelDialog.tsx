@@ -22,8 +22,10 @@ import {
   Flex,
   FlexItem,
   Spinner,
+  Breadcrumb,
+  BreadcrumbItem,
 } from '@patternfly/react-core'
-import type { LoadModelRequest, ModelStatus, GpuAvailabilityResponse } from '@sardeenz/types'
+import type { LoadModelRequest, ModelStatus, GpuAvailabilityResponse, LocalModelInfo, ModelSourceType } from '@sardeenz/types'
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
 import { apiClient, type MemoryCheckResponse } from '../services/api'
@@ -63,6 +65,19 @@ export function LoadModelDialog({
   const [maxTokens, setMaxTokens] = useState(4096)
   const [extraArgs, setExtraArgs] = useState('')
   const [validated, setValidated] = useState<'default' | 'error'>('default')
+
+  // Source type and served model name state
+  const [sourceType, setSourceType] = useState<ModelSourceType>('huggingface')
+  const [servedModelName, setServedModelName] = useState('')
+  const [servedModelNameValidated, setServedModelNameValidated] = useState<'default' | 'error'>('default')
+
+  // Local models state
+  const [localModelsEnabled, setLocalModelsEnabled] = useState(false)
+  const [localModels, setLocalModels] = useState<LocalModelInfo[]>([])
+  const [isLoadingLocalModels, setIsLoadingLocalModels] = useState(false)
+  const [selectedLocalModel, setSelectedLocalModel] = useState<LocalModelInfo | null>(null)
+  const [currentSubpath, setCurrentSubpath] = useState<string>('')
+  const [localModelsBasePath, setLocalModelsBasePath] = useState<string>('')
 
   // GPU selection state
   const [gpuAvailability, setGpuAvailability] = useState<GpuAvailabilityResponse | null>(null)
@@ -124,6 +139,40 @@ export function LoadModelDialog({
       }
     }
   }, [isOpen, gpuAvailability])
+
+  // Check local models availability when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      apiClient
+        .getLocalModelsStatus()
+        .then((status) => {
+          setLocalModelsEnabled(status.enabled)
+        })
+        .catch(() => setLocalModelsEnabled(false))
+    }
+  }, [isOpen])
+
+  // Fetch local models when source type changes to 'local' or when browsing subdirectories
+  useEffect(() => {
+    if (sourceType === 'local' && localModelsEnabled) {
+      setIsLoadingLocalModels(true)
+      apiClient
+        .listLocalModels(currentSubpath || undefined)
+        .then((response) => {
+          setLocalModels(response.models)
+          setLocalModelsBasePath(response.base_path)
+        })
+        .catch((err) => console.error('Failed to fetch local models:', err))
+        .finally(() => setIsLoadingLocalModels(false))
+    }
+  }, [sourceType, localModelsEnabled, currentSubpath])
+
+  // Auto-fill served model name when model path changes (for HuggingFace only)
+  useEffect(() => {
+    if (sourceType === 'huggingface' && modelPath.trim()) {
+      setServedModelName(modelPath.trim())
+    }
+  }, [sourceType, modelPath])
 
   // Debounced memory check when model path or max tokens changes
   useEffect(() => {
@@ -197,6 +246,11 @@ export function LoadModelDialog({
       return
     }
 
+    if (!servedModelName.trim()) {
+      setServedModelNameValidated('error')
+      return
+    }
+
     setPhase('loading')
     setErrorMessage(null)
 
@@ -208,6 +262,8 @@ export function LoadModelDialog({
         model_path: modelPath.trim(),
         max_tokens: maxTokens,
         extra_args: parsedArgs.length > 0 ? parsedArgs : undefined,
+        source_type: sourceType,
+        served_model_name: servedModelName.trim(),
       }
 
       // Include GPU selection if manual mode
@@ -244,6 +300,14 @@ export function LoadModelDialog({
     setGpuSelectionMode('auto')
     setSelectedGpuIds([])
     setTensorParallelSize(1)
+    // Reset source type and local models state
+    setSourceType('huggingface')
+    setServedModelName('')
+    setServedModelNameValidated('default')
+    setSelectedLocalModel(null)
+    setLocalModels([])
+    setCurrentSubpath('')
+    setLocalModelsBasePath('')
     onClose()
   }, [onClose])
 
@@ -285,37 +349,254 @@ export function LoadModelDialog({
         {phase === 'form' && (
           <>
             <Form>
-              <FormGroup label="Model Path" isRequired fieldId="model-path">
+              {/* Model Source Type */}
+              <FormGroup label="Model Source" fieldId="source-type">
+                <Flex gap={{ default: 'gapMd' }}>
+                  <FlexItem>
+                    <Radio
+                      id="source-huggingface"
+                      name="source-type"
+                      label="HuggingFace"
+                      isChecked={sourceType === 'huggingface'}
+                      onChange={() => {
+                        setSourceType('huggingface')
+                        setModelPath('')
+                        setServedModelName('')
+                        setSelectedLocalModel(null)
+                        setValidated('default')
+                      }}
+                    />
+                  </FlexItem>
+                  {localModelsEnabled && (
+                    <FlexItem>
+                      <Radio
+                        id="source-local"
+                        name="source-type"
+                        label="Local Path"
+                        isChecked={sourceType === 'local'}
+                        onChange={() => {
+                          setSourceType('local')
+                          setModelPath('')
+                          setServedModelName('')
+                          setValidated('default')
+                        }}
+                      />
+                    </FlexItem>
+                  )}
+                </Flex>
+              </FormGroup>
+
+              {/* Model Path - conditional based on source type */}
+              {sourceType === 'huggingface' ? (
+                <FormGroup label="Model Path" isRequired fieldId="model-path">
+                  <TextInput
+                    id="model-path"
+                    value={modelPath}
+                    onChange={handleModelPathChange}
+                    placeholder="e.g., meta-llama/Llama-3.2-1B"
+                    validated={validated}
+                    aria-describedby="model-path-helper"
+                  />
+                  {validated === 'error' && (
+                    <FormHelperText>
+                      <HelperText>
+                        <HelperTextItem variant="error">Model path is required</HelperTextItem>
+                      </HelperText>
+                    </FormHelperText>
+                  )}
+                </FormGroup>
+              ) : (
+                <FormGroup label="Select Local Model" isRequired fieldId="local-model">
+                  {/* Breadcrumb navigation */}
+                  <Breadcrumb style={{ marginBottom: 'var(--pf-t--global--spacer--sm)' }}>
+                    <BreadcrumbItem
+                      onClick={() => {
+                        setCurrentSubpath('')
+                        setSelectedLocalModel(null)
+                        setModelPath('')
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {localModelsBasePath ? localModelsBasePath.split('/').pop() || 'models' : 'Loading...'}
+                    </BreadcrumbItem>
+                    {currentSubpath.split('/').filter(Boolean).map((segment, index, segments) => {
+                      const pathUpToSegment = segments.slice(0, index + 1).join('/')
+                      const isLast = index === segments.length - 1
+                      return (
+                        <BreadcrumbItem
+                          key={pathUpToSegment}
+                          isActive={isLast && !selectedLocalModel}
+                          onClick={() => {
+                            if (!isLast || selectedLocalModel) {
+                              setCurrentSubpath(pathUpToSegment)
+                              setSelectedLocalModel(null)
+                              setModelPath('')
+                            }
+                          }}
+                          style={{ cursor: isLast && !selectedLocalModel ? 'default' : 'pointer' }}
+                        >
+                          {segment}
+                        </BreadcrumbItem>
+                      )
+                    })}
+                    {selectedLocalModel && (
+                      <BreadcrumbItem isActive>
+                        {selectedLocalModel.name}
+                      </BreadcrumbItem>
+                    )}
+                  </Breadcrumb>
+
+                  {isLoadingLocalModels ? (
+                    <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+                      <FlexItem>
+                        <Spinner size="md" />
+                      </FlexItem>
+                      <FlexItem>Loading local models...</FlexItem>
+                    </Flex>
+                  ) : localModels.length > 0 ? (
+                    <>
+                      {/* Directory list */}
+                      <div
+                        style={{
+                          border: '1px solid var(--pf-t--global--border--color--default)',
+                          borderRadius: 'var(--pf-t--global--border--radius--small)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        {localModels.map((model) => (
+                          <Flex
+                            key={model.path}
+                            alignItems={{ default: 'alignItemsCenter' }}
+                            onClick={() => {
+                              if (model.has_config) {
+                                // Model folder: select it
+                                setSelectedLocalModel(model)
+                                setModelPath(model.path)
+                                setServedModelName(model.name) // Auto-fill with folder name
+                                setValidated('default')
+                              } else {
+                                // Regular folder: navigate into it
+                                const relativePath = currentSubpath
+                                  ? `${currentSubpath}/${model.name}`
+                                  : model.name
+                                setCurrentSubpath(relativePath)
+                                setSelectedLocalModel(null)
+                                setModelPath('')
+                              }
+                            }}
+                            style={{
+                              padding: 'var(--pf-t--global--spacer--sm)',
+                              borderBottom: '1px solid var(--pf-t--global--border--color--default)',
+                              cursor: 'pointer',
+                              backgroundColor:
+                                selectedLocalModel?.path === model.path
+                                  ? 'var(--pf-t--global--background--color--primary--default)'
+                                  : undefined,
+                            }}
+                          >
+                            <FlexItem grow={{ default: 'grow' }}>
+                              <span
+                                style={{
+                                  fontWeight: selectedLocalModel?.path === model.path ? 'bold' : 'normal',
+                                }}
+                              >
+                                {model.name}
+                              </span>
+                              {model.has_config ? (
+                                <span
+                                  style={{
+                                    marginLeft: 'var(--pf-t--global--spacer--sm)',
+                                    fontSize: 'var(--pf-t--global--font--size--xs)',
+                                    color: 'var(--pf-t--global--color--status--success--default)',
+                                  }}
+                                >
+                                  (model)
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    marginLeft: 'var(--pf-t--global--spacer--sm)',
+                                    fontSize: 'var(--pf-t--global--font--size--xs)',
+                                    color: 'var(--pf-t--global--text--color--subtle)',
+                                  }}
+                                >
+                                  (folder)
+                                </span>
+                              )}
+                            </FlexItem>
+                          </Flex>
+                        ))}
+                      </div>
+
+                      {validated === 'error' && (
+                        <FormHelperText>
+                          <HelperText>
+                            <HelperTextItem variant="error">Please select a model</HelperTextItem>
+                          </HelperText>
+                        </FormHelperText>
+                      )}
+                    </>
+                  ) : (
+                    <Alert variant="warning" isInline title="No directories found">
+                      No subdirectories found in this path.
+                    </Alert>
+                  )}
+                </FormGroup>
+              )}
+
+              {/* Served Model Name */}
+              <FormGroup label="Served Model Name" isRequired fieldId="served-model-name">
                 <TextInput
-                  id="model-path"
-                  value={modelPath}
-                  onChange={handleModelPathChange}
-                  placeholder="e.g., meta-llama/Llama-3.2-1B"
-                  validated={validated}
-                  aria-describedby="model-path-helper"
+                  id="served-model-name"
+                  value={servedModelName}
+                  onChange={(_event, value) => {
+                    setServedModelName(value)
+                    if (value.trim()) {
+                      setServedModelNameValidated('default')
+                    }
+                  }}
+                  placeholder={
+                    sourceType === 'huggingface'
+                      ? 'Auto-filled from model path'
+                      : 'Enter a name for this model'
+                  }
+                  validated={servedModelNameValidated}
                 />
-                {validated === 'error' && (
-                  <FormHelperText>
-                    <HelperText>
-                      <HelperTextItem variant="error">Model path is required</HelperTextItem>
-                    </HelperText>
-                  </FormHelperText>
-                )}
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem variant={servedModelNameValidated === 'error' ? 'error' : undefined}>
+                      {servedModelNameValidated === 'error'
+                        ? 'Served model name is required'
+                        : `This name is used for inference requests (--served-model-name).${sourceType === 'huggingface' ? ' Auto-filled from HuggingFace ID.' : ''}`}
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
               </FormGroup>
 
               <FormGroup label="Max Tokens" fieldId="max-tokens">
                 <NumberInput
                   value={maxTokens}
-                  onMinus={() => setMaxTokens(Math.max(512, maxTokens - 512))}
-                  onPlus={() => setMaxTokens(Math.min(32768, maxTokens + 512))}
+                  onMinus={() => setMaxTokens(Math.max(128, maxTokens - 512))}
+                  onPlus={() => setMaxTokens(Math.min(1000000, maxTokens + 512))}
                   onChange={(event) => {
-                    const value = Number((event.target as HTMLInputElement).value)
-                    if (!isNaN(value) && value >= 512 && value <= 32768) {
-                      setMaxTokens(value)
+                    const inputValue = (event.target as HTMLInputElement).value
+                    // Allow empty or any numeric input during typing
+                    if (inputValue === '' || !isNaN(Number(inputValue))) {
+                      setMaxTokens(inputValue === '' ? 0 : Number(inputValue))
                     }
                   }}
-                  min={512}
-                  max={32768}
+                  onBlur={(event) => {
+                    const value = Number((event.target as HTMLInputElement).value)
+                    // Clamp to valid range on blur, reset to min if invalid
+                    if (isNaN(value) || value < 128) {
+                      setMaxTokens(128)
+                    } else if (value > 1000000) {
+                      setMaxTokens(1000000)
+                    }
+                  }}
+                  min={128}
+                  max={1000000}
                   inputName="max-tokens"
                   inputAriaLabel="Max tokens"
                 />

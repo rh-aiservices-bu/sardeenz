@@ -15,8 +15,11 @@ import type {
   TestHfTokenResponse,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ChatCompletionChunk,
   GpuAvailabilityResponse,
   MultiGpuMemoryUsageResponse,
+  ListLocalModelsResponse,
+  LocalModelsStatusResponse,
 } from '@sardeenz/types'
 
 // Memory Profile types for API responses
@@ -406,6 +409,19 @@ class ApiClient {
     return response.data
   }
 
+  // Local models endpoints
+
+  async getLocalModelsStatus(): Promise<LocalModelsStatusResponse> {
+    const response = await this.client.get<LocalModelsStatusResponse>('/api/local-models/status')
+    return response.data
+  }
+
+  async listLocalModels(subpath?: string): Promise<ListLocalModelsResponse> {
+    const params = subpath ? `?subpath=${encodeURIComponent(subpath)}` : ''
+    const response = await this.client.get<ListLocalModelsResponse>(`/api/local-models${params}`)
+    return response.data
+  }
+
   // Inference endpoints
 
   async sendChatCompletionViaProxy(
@@ -428,6 +444,212 @@ class ApiClient {
       request
     )
     return response.data
+  }
+
+  /**
+   * Send streaming chat completion via proxy.
+   * Uses fetch + ReadableStream for SSE parsing (axios doesn't support streaming).
+   *
+   * @param request - Chat completion request (stream flag added automatically)
+   * @param onChunk - Callback for each token chunk
+   * @param onComplete - Callback when stream completes with full text and token count
+   * @param onError - Callback for errors
+   * @returns AbortController for stream cancellation
+   */
+  async sendStreamingChatCompletionViaProxy(
+    request: ChatCompletionRequest,
+    onChunk: (chunk: string) => void,
+    onComplete: (fullText: string, tokenCount: number) => void,
+    onError: (error: ErrorDetails) => void
+  ): Promise<AbortController> {
+    const abortController = new AbortController()
+    const fullText: string[] = []
+    let tokenCount = 0
+
+    try {
+      const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+      const response = await fetch(`${baseURL}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...request, stream: true }),
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          error: { message: response.statusText },
+        }))
+        onError({
+          statusCode: response.status,
+          message: errorData.error?.message || response.statusText,
+        })
+        return abortController
+      }
+
+      if (!response.body) {
+        onError({ message: 'No response body' })
+        return abortController
+      }
+
+      // Process SSE stream
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim() || line.startsWith(':')) continue
+
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+
+            if (data === '[DONE]') {
+              onComplete(fullText.join(''), tokenCount)
+              return abortController
+            }
+
+            try {
+              const chunk = JSON.parse(data) as ChatCompletionChunk
+              const content = chunk.choices[0]?.delta?.content
+
+              if (content) {
+                fullText.push(content)
+                tokenCount++
+                onChunk(content)
+              }
+
+              if (chunk.choices[0]?.finish_reason) {
+                onComplete(fullText.join(''), tokenCount)
+                return abortController
+              }
+            } catch (err) {
+              console.warn('Failed to parse SSE chunk:', data, err)
+            }
+          }
+        }
+      }
+
+      onComplete(fullText.join(''), tokenCount)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User cancelled - not an error
+        return abortController
+      }
+      onError(extractErrorDetails(err))
+    }
+
+    return abortController
+  }
+
+  /**
+   * Send streaming chat completion directly to port.
+   * Uses fetch + ReadableStream for SSE parsing (axios doesn't support streaming).
+   *
+   * @param port - Model port number
+   * @param request - Chat completion request (stream flag added automatically)
+   * @param onChunk - Callback for each token chunk
+   * @param onComplete - Callback when stream completes with full text and token count
+   * @param onError - Callback for errors
+   * @returns AbortController for stream cancellation
+   */
+  async sendStreamingChatCompletionDirect(
+    port: number,
+    request: ChatCompletionRequest,
+    onChunk: (chunk: string) => void,
+    onComplete: (fullText: string, tokenCount: number) => void,
+    onError: (error: ErrorDetails) => void
+  ): Promise<AbortController> {
+    const abortController = new AbortController()
+    const fullText: string[] = []
+    let tokenCount = 0
+
+    try {
+      const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+      const response = await fetch(`${baseURL}/api/direct/${port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...request, stream: true }),
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          error: { message: response.statusText },
+        }))
+        onError({
+          statusCode: response.status,
+          message: errorData.error?.message || response.statusText,
+        })
+        return abortController
+      }
+
+      if (!response.body) {
+        onError({ message: 'No response body' })
+        return abortController
+      }
+
+      // Process SSE stream
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim() || line.startsWith(':')) continue
+
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+
+            if (data === '[DONE]') {
+              onComplete(fullText.join(''), tokenCount)
+              return abortController
+            }
+
+            try {
+              const chunk = JSON.parse(data) as ChatCompletionChunk
+              const content = chunk.choices[0]?.delta?.content
+
+              if (content) {
+                fullText.push(content)
+                tokenCount++
+                onChunk(content)
+              }
+
+              if (chunk.choices[0]?.finish_reason) {
+                onComplete(fullText.join(''), tokenCount)
+                return abortController
+              }
+            } catch (err) {
+              console.warn('Failed to parse SSE chunk:', data, err)
+            }
+          }
+        }
+      }
+
+      onComplete(fullText.join(''), tokenCount)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User cancelled - not an error
+        return abortController
+      }
+      onError(extractErrorDetails(err))
+    }
+
+    return abortController
   }
 
   // Memory profile endpoints

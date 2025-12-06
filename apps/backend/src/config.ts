@@ -19,10 +19,14 @@ export interface Config {
   // vLLM configuration
   vllmBasePort: number
   vllmMaxInstances: number
+  vllmStartupTimeout: number
 
   // KVCached configuration
   enableKvcached: boolean
   kvcachedAutopatch: boolean
+
+  // Local models configuration
+  localModelsPath: string
 
   // Logging
   logLevel: string
@@ -79,10 +83,14 @@ export const config: Config = {
   // vLLM configuration
   vllmBasePort: getEnvInt('VLLM_BASE_PORT', 12346),
   vllmMaxInstances: getEnvInt('VLLM_MAX_INSTANCES', 10),
+  vllmStartupTimeout: getEnvInt('VLLM_STARTUP_TIMEOUT', 1800000), // 30 minutes default
 
   // KVCached configuration
   enableKvcached: getEnvBool('ENABLE_KVCACHED', true),
   kvcachedAutopatch: getEnvBool('KVCACHED_AUTOPATCH', true),
+
+  // Local models configuration
+  localModelsPath: getEnv('LOCAL_MODELS_PATH', ''),
 
   // Logging
   logLevel: getEnv('LOG_LEVEL', 'info'),
