@@ -50,8 +50,9 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
           // Pipe streaming response
           reply.raw.writeHead(response.status, {
             'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no', // Disable reverse proxy buffering (nginx, HAProxy)
           })
           const nodeStream = Readable.fromWeb(response.body as ReadableStream)
           await pipeline(nodeStream, reply.raw)

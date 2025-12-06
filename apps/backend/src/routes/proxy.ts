@@ -25,8 +25,9 @@ async function pipeStreamToReply(
   // Set headers once
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // Disable reverse proxy buffering (nginx, HAProxy)
   })
   // Disable Nagle's algorithm for SSE - reduces latency for small chunks
   reply.raw.socket?.setNoDelay(true)
