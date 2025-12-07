@@ -1,6 +1,4 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { Readable } from 'stream'
-import { pipeline } from 'stream/promises'
 
 /**
  * Lightweight port-based proxy routes.
@@ -47,15 +45,47 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
         // Check if streaming response (SSE)
         const contentType = response.headers.get('content-type') || ''
         if (contentType.includes('text/event-stream')) {
-          // Pipe streaming response
+          // Set SSE headers
           reply.raw.writeHead(response.status, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             Connection: 'keep-alive',
-            'X-Accel-Buffering': 'no', // Disable reverse proxy buffering (nginx, HAProxy)
+            'X-Accel-Buffering': 'no', // Disable nginx buffering (HAProxy uses timeout-tunnel)
           })
-          const nodeStream = Readable.fromWeb(response.body as ReadableStream)
-          await pipeline(nodeStream, reply.raw)
+
+          // Disable Nagle's algorithm for SSE
+          reply.raw.socket?.setNoDelay(true)
+
+          // Manual streaming to avoid Node.js stream buffering
+          const reader = response.body!.getReader()
+          const decoder = new TextDecoder()
+          let clientDisconnected = false
+
+          reply.raw.on('close', () => {
+            clientDisconnected = true
+            reader.cancel().catch(() => {})
+          })
+
+          try {
+            while (!clientDisconnected) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              const chunk = decoder.decode(value, { stream: true })
+              if (chunk && !clientDisconnected) {
+                reply.raw.write(chunk)
+              }
+            }
+
+            const remaining = decoder.decode()
+            if (remaining && !clientDisconnected) {
+              reply.raw.write(remaining)
+            }
+          } finally {
+            if (!reply.raw.writableEnded) {
+              reply.raw.end()
+            }
+          }
           return
         }
 

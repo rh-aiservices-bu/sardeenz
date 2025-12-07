@@ -1,6 +1,4 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { Readable } from 'stream'
-import { pipeline } from 'stream/promises'
 import {
   CompletionRequestSchema,
   ChatCompletionRequestSchema,
@@ -13,7 +11,8 @@ import { metricsStore } from '../stores/metrics-store.js'
 import { AppError, NotFoundError } from '../utils/errors.js'
 
 /**
- * Pipes a WHATWG ReadableStream to a Fastify raw response.
+ * Streams a WHATWG ReadableStream to a Fastify raw response using manual read/write.
+ * Uses direct chunk writing to avoid Node.js stream buffering issues with SSE.
  * Handles client disconnect gracefully and records completion metrics.
  */
 async function pipeStreamToReply(
@@ -22,36 +21,55 @@ async function pipeStreamToReply(
   modelPath: string,
   startTime: number
 ): Promise<void> {
-  // Set headers once
+  // Set SSE headers
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no', // Disable reverse proxy buffering (nginx, HAProxy)
+    'X-Accel-Buffering': 'no', // Disable nginx buffering (HAProxy uses timeout-tunnel)
   })
+
   // Disable Nagle's algorithm for SSE - reduces latency for small chunks
   reply.raw.socket?.setNoDelay(true)
 
-  // Convert WHATWG stream to Node stream (Node 16.7+)
-  const nodeStream = Readable.fromWeb(response.body as ReadableStream)
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let clientDisconnected = false
 
   // Track client disconnect
-  const abortController = new AbortController()
   reply.raw.on('close', () => {
-    if (!reply.raw.writableEnded) {
-      abortController.abort()
-    }
+    clientDisconnected = true
+    reader.cancel().catch(() => {
+      // Ignore cancel errors
+    })
   })
 
   try {
-    // pipeline() handles backpressure automatically
-    await pipeline(nodeStream, reply.raw, { signal: abortController.signal })
+    while (!clientDisconnected) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      // Decode and write immediately (no buffering)
+      const chunk = decoder.decode(value, { stream: true })
+      if (chunk && !clientDisconnected) {
+        reply.raw.write(chunk)
+      }
+    }
+
+    // Flush any remaining bytes from the decoder
+    const remaining = decoder.decode()
+    if (remaining && !clientDisconnected) {
+      reply.raw.write(remaining)
+    }
   } catch (err) {
-    // Client disconnected or stream error - not an error condition
-    if ((err as Error).name !== 'AbortError') {
+    // Client disconnected or stream cancelled - not an error condition
+    if (!clientDisconnected) {
       throw err
     }
   } finally {
+    if (!reply.raw.writableEnded) {
+      reply.raw.end()
+    }
     // Record completion metrics after stream ends
     const durationMs = Date.now() - startTime
     setImmediate(() => metricsStore.recordRequest(modelPath, true, durationMs))
