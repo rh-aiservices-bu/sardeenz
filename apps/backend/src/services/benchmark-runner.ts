@@ -251,10 +251,7 @@ function calculateMetrics(
   const goodputPercent = totalRequests > 0 ? (goodputCount / totalRequests) * 100 : 0
 
   // Calculate total tokens per second
-  const totalCompletionTokens = successful.reduce(
-    (sum, r) => sum + (r.completionTokens ?? 0),
-    0
-  )
+  const totalCompletionTokens = successful.reduce((sum, r) => sum + (r.completionTokens ?? 0), 0)
   const totalTimeMs = e2eValues.reduce((sum, v) => sum + v, 0)
   const tokensPerSecondTotal = totalTimeMs > 0 ? (totalCompletionTokens / totalTimeMs) * 1000 : 0
 
@@ -265,9 +262,7 @@ function calculateMetrics(
     ttftMin: ttftValues.length > 0 ? Math.min(...ttftValues) : undefined,
     ttftMax: ttftValues.length > 0 ? Math.max(...ttftValues) : undefined,
     ttftAvg:
-      ttftValues.length > 0
-        ? ttftValues.reduce((a, b) => a + b, 0) / ttftValues.length
-        : undefined,
+      ttftValues.length > 0 ? ttftValues.reduce((a, b) => a + b, 0) / ttftValues.length : undefined,
     ttftP50: ttftValues.length > 0 ? percentile(ttftValues, 50) : undefined,
     ttftP90: ttftValues.length > 0 ? percentile(ttftValues, 90) : undefined,
     ttftP95: ttftValues.length > 0 ? percentile(ttftValues, 95) : undefined,
@@ -277,9 +272,7 @@ function calculateMetrics(
     tpsMin: tpsValues.length > 0 ? Math.min(...tpsValues) : undefined,
     tpsMax: tpsValues.length > 0 ? Math.max(...tpsValues) : undefined,
     tpsAvg:
-      tpsValues.length > 0
-        ? tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length
-        : undefined,
+      tpsValues.length > 0 ? tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length : undefined,
     tpsP50: tpsValues.length > 0 ? percentile(tpsValues, 50) : undefined,
     tpsP90: tpsValues.length > 0 ? percentile(tpsValues, 90) : undefined,
     tpsP95: tpsValues.length > 0 ? percentile(tpsValues, 95) : undefined,
@@ -289,9 +282,7 @@ function calculateMetrics(
     e2eMin: e2eValues.length > 0 ? Math.min(...e2eValues) : undefined,
     e2eMax: e2eValues.length > 0 ? Math.max(...e2eValues) : undefined,
     e2eAvg:
-      e2eValues.length > 0
-        ? e2eValues.reduce((a, b) => a + b, 0) / e2eValues.length
-        : undefined,
+      e2eValues.length > 0 ? e2eValues.reduce((a, b) => a + b, 0) / e2eValues.length : undefined,
     e2eP50: e2eValues.length > 0 ? percentile(e2eValues, 50) : undefined,
     e2eP90: e2eValues.length > 0 ? percentile(e2eValues, 90) : undefined,
     e2eP95: e2eValues.length > 0 ? percentile(e2eValues, 95) : undefined,
@@ -323,7 +314,7 @@ interface WarmupResult {
  * Runs warmup requests without tracking metrics
  */
 async function executeWarmupPhase(
-  _runId: string,
+  runId: string,
   scenario: BenchmarkScenario,
   abortController: AbortController,
   onComplete: () => void
@@ -351,11 +342,37 @@ async function executeWarmupPhase(
       : `http://localhost:${instance.port}`
 
   const limit = pLimit(scenario.concurrency)
+  let inFlightRequests = 0
+  let completedRequests = 0
+
+  // Periodic progress interval to show ongoing activity during long-running warmup requests
+  const progressInterval = setInterval(() => {
+    if (inFlightRequests > 0 && !abortController.signal.aborted) {
+      emitProgress({
+        runId,
+        phase: 'warmup',
+        scenarioId: scenario.id,
+        inFlightRequests,
+        message: `${scenario.modelName}: ${inFlightRequests} warmup request(s) in progress...`,
+      })
+    }
+  }, 5000)
 
   try {
     const warmupTasks = Array.from({ length: scenario.warmupRequests }, () =>
       limit(async () => {
         if (abortController.signal.aborted) return
+
+        // Emit event when warmup request starts
+        inFlightRequests++
+        emitProgress({
+          runId,
+          phase: 'warmup',
+          scenarioId: scenario.id,
+          inFlightRequests,
+          message: `${scenario.modelName}: ${inFlightRequests} warmup request(s) in progress`,
+        })
+
         await executeStreamingRequest(
           baseUrl,
           instance.modelName,
@@ -363,10 +380,25 @@ async function executeWarmupPhase(
           scenario.outputTokens,
           abortController.signal
         )
+
+        inFlightRequests--
+        completedRequests++
+
+        // Emit progress when warmup request completes
+        emitProgress({
+          runId,
+          phase: 'warmup',
+          scenarioId: scenario.id,
+          inFlightRequests,
+          message: `${scenario.modelName}: ${completedRequests}/${scenario.warmupRequests} warmup complete`,
+        })
       })
     )
 
     await Promise.all(warmupTasks)
+
+    // Clean up the periodic progress interval
+    clearInterval(progressInterval)
 
     if (abortController.signal.aborted) {
       return { scenarioId: scenario.id, success: false, error: 'Cancelled' }
@@ -375,6 +407,7 @@ async function executeWarmupPhase(
     onComplete()
     return { scenarioId: scenario.id, success: true }
   } catch (error) {
+    clearInterval(progressInterval)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return { scenarioId: scenario.id, success: false, error: errorMessage }
   }
@@ -414,10 +447,38 @@ async function executeMeasuredPhase(
   })
 
   let completedRequests = 0
+  let inFlightRequests = 0
+
+  // Periodic progress interval to show ongoing activity during long-running requests
+  const progressInterval = setInterval(() => {
+    if (inFlightRequests > 0 && !abortController.signal.aborted) {
+      emitProgress({
+        runId,
+        phase: 'running',
+        scenarioId: scenario.id,
+        currentRequest: completedRequests,
+        totalRequests: scenario.totalRequests,
+        inFlightRequests,
+        message: `${scenario.modelName}: ${inFlightRequests} request(s) in progress...`,
+      })
+    }
+  }, 5000)
 
   const measurementTasks = Array.from({ length: scenario.totalRequests }, (_, i) =>
     limit(async () => {
       if (abortController.signal.aborted) return
+
+      // Emit event when request starts
+      inFlightRequests++
+      emitProgress({
+        runId,
+        phase: 'running',
+        scenarioId: scenario.id,
+        currentRequest: completedRequests,
+        totalRequests: scenario.totalRequests,
+        inFlightRequests,
+        message: `${scenario.modelName}: ${inFlightRequests} request(s) in progress`,
+      })
 
       const result = await executeStreamingRequest(
         baseUrl,
@@ -427,6 +488,7 @@ async function executeMeasuredPhase(
         abortController.signal
       )
 
+      inFlightRequests--
       result.sequence = i + 1
       result.isWarmup = false
       results.push(result)
@@ -467,6 +529,7 @@ async function executeMeasuredPhase(
           scenarioId: scenario.id,
           currentRequest: completedRequests,
           totalRequests: scenario.totalRequests,
+          inFlightRequests,
           message: `${scenario.modelName}: ${completedRequests}/${scenario.totalRequests} requests`,
         })
       }
@@ -474,6 +537,9 @@ async function executeMeasuredPhase(
   )
 
   await Promise.all(measurementTasks)
+
+  // Clean up the periodic progress interval
+  clearInterval(progressInterval)
 
   // Check if aborted
   if (abortController.signal.aborted) {

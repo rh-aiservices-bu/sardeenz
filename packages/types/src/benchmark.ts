@@ -218,6 +218,8 @@ export interface BenchmarkProgressEvent {
     warmupComplete?: number
     /** Total number of scenarios in warmup phase */
     warmupTotal?: number
+    /** Number of requests currently in-flight */
+    inFlightRequests?: number
     message: string
   }
 }
