@@ -99,8 +99,8 @@ export class ModelManager extends EventEmitter {
     )
 
     // Determine KVCached status
-    // Disable KVCached for tensor parallel models (cross-GPU KV sharing not supported)
-    const enableKvcached = config.enableKvcached && tensorParallelSize === 1
+    // KVCached supports tensor parallelism as of Q2 2025
+    const enableKvcached = config.enableKvcached
 
     this.logger.info(
       {

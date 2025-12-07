@@ -693,12 +693,12 @@ export function LoadModelDialog({
                             </FormGroup>
 
                             <Alert
-                              variant="warning"
+                              variant="info"
                               isInline
-                              title="KVCached Disabled"
+                              title="Tensor Parallelism"
                               style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
                             >
-                              Tensor parallelism across multiple GPUs disables KVCached memory sharing. Each GPU will use independent memory pools.
+                              Tensor parallelism with KVCached is a recent feature. Results may vary.
                             </Alert>
                           </div>
                         )}
