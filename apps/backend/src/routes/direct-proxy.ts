@@ -79,12 +79,13 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
         }
 
         if (contentType.includes('text/event-stream')) {
-          // Set SSE headers
+          // Set SSE headers (including CORS for OpenShift HAProxy compatibility)
           const sseHeaders = {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             Connection: 'keep-alive',
             'X-Accel-Buffering': 'no', // Disable nginx buffering (HAProxy uses timeout-tunnel)
+            'Access-Control-Allow-Origin': '*', // Required for SSE through OpenShift routes
           }
           reply.raw.writeHead(response.status, sseHeaders)
 
@@ -106,8 +107,20 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
           let totalBytes = 0
           const streamStartTime = Date.now()
 
+          // Heartbeat to keep HAProxy connection alive during long inference
+          const heartbeat = setInterval(() => {
+            if (!clientDisconnected && !reply.raw.writableEnded) {
+              try {
+                reply.raw.write(': heartbeat\n\n')
+              } catch {
+                // Connection closed, ignore
+              }
+            }
+          }, 15000) // 15 seconds
+
           reply.raw.on('close', () => {
             clientDisconnected = true
+            clearInterval(heartbeat)
             if (debugStreaming) {
               fastify.log.info(
                 { stage: 'client_disconnected', targetUrl, chunkIndex, totalBytes },
@@ -150,6 +163,7 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
               totalBytes += remaining.length
             }
           } finally {
+            clearInterval(heartbeat)
             if (!reply.raw.writableEnded) {
               reply.raw.end()
             }

@@ -464,14 +464,18 @@ class ApiClient {
   ): Promise<AbortController> {
     const abortController = new AbortController()
     const fullText: string[] = []
-    let tokenCount = 0
+    let completionTokens = 0
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
       const response = await fetch(`${baseURL}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({
+          ...request,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         signal: abortController.signal,
       })
 
@@ -511,7 +515,7 @@ class ApiClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              onComplete(fullText.join(''), tokenCount)
+              onComplete(fullText.join(''), completionTokens)
               return abortController
             }
 
@@ -521,14 +525,14 @@ class ApiClient {
 
               if (content) {
                 fullText.push(content)
-                tokenCount++
                 onChunk(content)
               }
 
-              if (chunk.choices[0]?.finish_reason) {
-                onComplete(fullText.join(''), tokenCount)
-                return abortController
+              // Extract token usage from final chunk (when stream_options.include_usage is true)
+              if (chunk.usage) {
+                completionTokens = chunk.usage.completion_tokens
               }
+              // Note: Don't return early on finish_reason - usage chunk comes after it
             } catch (err) {
               console.warn('Failed to parse SSE chunk:', data, err)
             }
@@ -536,7 +540,7 @@ class ApiClient {
         }
       }
 
-      onComplete(fullText.join(''), tokenCount)
+      onComplete(fullText.join(''), completionTokens)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // User cancelled - not an error
@@ -568,14 +572,18 @@ class ApiClient {
   ): Promise<AbortController> {
     const abortController = new AbortController()
     const fullText: string[] = []
-    let tokenCount = 0
+    let completionTokens = 0
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
       const response = await fetch(`${baseURL}/api/direct/${port}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({
+          ...request,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         signal: abortController.signal,
       })
 
@@ -615,7 +623,7 @@ class ApiClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              onComplete(fullText.join(''), tokenCount)
+              onComplete(fullText.join(''), completionTokens)
               return abortController
             }
 
@@ -625,14 +633,14 @@ class ApiClient {
 
               if (content) {
                 fullText.push(content)
-                tokenCount++
                 onChunk(content)
               }
 
-              if (chunk.choices[0]?.finish_reason) {
-                onComplete(fullText.join(''), tokenCount)
-                return abortController
+              // Extract token usage from final chunk (when stream_options.include_usage is true)
+              if (chunk.usage) {
+                completionTokens = chunk.usage.completion_tokens
               }
+              // Note: Don't return early on finish_reason - usage chunk comes after it
             } catch (err) {
               console.warn('Failed to parse SSE chunk:', data, err)
             }
@@ -640,7 +648,7 @@ class ApiClient {
         }
       }
 
-      onComplete(fullText.join(''), tokenCount)
+      onComplete(fullText.join(''), completionTokens)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // User cancelled - not an error

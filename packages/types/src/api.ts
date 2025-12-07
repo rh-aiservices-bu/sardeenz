@@ -274,6 +274,8 @@ export interface ChatCompletionChunk {
   created: number
   model: string
   choices: ChatCompletionStreamChoice[]
+  /** Usage info included in final chunk when stream_options.include_usage is true */
+  usage?: UsageInfo
 }
 
 // Instance-specific responses
