@@ -12,7 +12,7 @@ export const ModelConfigurationSchema = Type.Object({
   modelPath: Type.String({ pattern: '^[\\w\\-\\.]+/[\\w\\-\\.]+$' }),
   displayName: Type.Optional(Type.String({ maxLength: 100 })),
   description: Type.Optional(Type.String({ maxLength: 500 })),
-  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
   estimatedMemoryGB: Type.Optional(Type.Number({ minimum: 0 })),
   tags: Type.Optional(Type.Array(Type.String({ maxLength: 50 }), { maxItems: 10 })),
 })
@@ -23,7 +23,7 @@ export const ModelInstanceSchema = Type.Object({
   status: ModelStatusSchema,
   port: Type.Integer({ minimum: 1024, maximum: 65535 }),
   processId: Type.Integer({ minimum: 1 }),
-  maxTokens: Type.Integer({ minimum: 512, maximum: 32768 }),
+  maxTokens: Type.Integer({ minimum: 1, maximum: 1000000 }),
   gpuMemoryUtilization: Type.Number({ minimum: 0.1, maximum: 0.95 }),
   loadedAt: Type.String({ format: 'date-time' }),
   readyAt: Type.Optional(Type.String({ format: 'date-time' })),
@@ -56,7 +56,7 @@ export const ModelSourceTypeSchema = Type.Union([
 // API request/response schemas
 export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
-  max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  max_tokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
   extra_args: Type.Optional(Type.Array(Type.String())),
   gpu_ids: Type.Optional(Type.Array(Type.Integer({ minimum: 0, maximum: 15 }))),
   tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
