@@ -15,6 +15,7 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | Route File | Purpose |
 |------------|---------|
 | `src/routes/models.ts` | Model CRUD: load, unload, list, get, health check, logs |
+| `src/routes/model-configurations.ts` | Configuration CRUD: save, load, list, delete model presets |
 | `src/routes/events.ts` | SSE event streaming endpoint |
 | `src/routes/health.ts` | Backend health checks (`/api/health`, `/api/health/ready`, `/api/health/live`) |
 | `src/routes/proxy.ts` | OpenAI-compatible inference proxy (`/v1/*`) with round-robin load balancing |
@@ -42,6 +43,7 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 |-------|---------|
 | `src/stores/benchmark-store.ts` | BenchmarkRun, Scenario, Results, Metrics persistence |
 | `src/stores/memory-profile-store.ts` | MemoryProfile storage and lookup |
+| `src/stores/model-configuration-store.ts` | SavedModelConfiguration persistence |
 
 ## Development Commands
 

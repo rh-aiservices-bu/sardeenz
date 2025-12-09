@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Model Configuration Management
+
+- Added persistent model configuration storage with SQLite
+- CRUD API endpoints: `/api/configurations/*` for saving, loading, listing, and deleting presets
+- Save/Load configuration dialogs in frontend (`SaveConfigurationDialog`, `LoadConfigurationDialog`)
+- Captures model path, served model name, GPU assignment, tensor parallel size, max tokens, and extra args
+- Load order preserved for sequential restoration
+
+### Sequential Model Loading
+
+- Added `launchModelAndWait()` method for synchronous model loading during configuration restore
+- Union-Find conflict detection groups models sharing ANY GPU (tensor parallelism support)
+- Models in the same conflict group load sequentially to prevent vLLM memory calculation conflicts
+- Models on disjoint GPUs load in parallel for faster configuration restoration
+
+### SSE Streaming Fixes
+
+- Added anti-buffering headers for OpenShift Routes (`X-Accel-Buffering: no`)
+- Fixed SSE streaming behind reverse proxies that buffer responses
+- Improved benchmark progress feedback with better event structure
+
+### UI Improvements
+
+- Added sardine favicon using bot-avatar design
+- Refreshed project logo assets (SVG, PNG)
+
 ### Multi-GPU Support
 
 - Added intelligent GPU selection and tensor parallel support

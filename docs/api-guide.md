@@ -14,6 +14,7 @@ This guide provides practical examples for using the Sardeenz APIs.
 - [Code Examples](#code-examples)
 - [Benchmark API](#benchmark-api)
 - [Memory Profile API](#memory-profile-api)
+- [Configuration API](#configuration-api)
 
 ## Overview
 
@@ -1436,6 +1437,117 @@ Check if a model will fit in available GPU memory before loading.
 {
   "success": true,
   "message": "Memory profile deleted"
+}
+```
+
+## Configuration API
+
+The Configuration API allows you to save and restore model configurations for quick deployment of model presets.
+
+### List Configurations
+
+**Endpoint:** `GET /api/configurations`
+
+**Response (200 OK):**
+```json
+{
+  "configurations": [
+    {
+      "id": "config-uuid",
+      "name": "Production Models",
+      "description": "Standard production model set",
+      "modelCount": 3,
+      "createdAt": "2025-12-01T10:00:00Z",
+      "updatedAt": "2025-12-01T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Get Configuration Details
+
+**Endpoint:** `GET /api/configurations/{id}`
+
+**Response (200 OK):**
+```json
+{
+  "configuration": {
+    "id": "config-uuid",
+    "name": "Production Models",
+    "description": "Standard production model set",
+    "modelCount": 3,
+    "createdAt": "2025-12-01T10:00:00Z",
+    "entries": [
+      {
+        "id": "entry-uuid",
+        "modelPath": "meta-llama/Llama-3.2-1B",
+        "servedModelName": "llama-1b",
+        "maxTokens": 4096,
+        "sourceType": "huggingface",
+        "gpuIds": [0],
+        "tensorParallelSize": 1,
+        "extraArgs": ["--trust-remote-code"],
+        "loadOrder": 0
+      }
+    ]
+  }
+}
+```
+
+### Create Configuration
+
+**Endpoint:** `POST /api/configurations`
+
+Saves current running models as a configuration preset.
+
+**Request Body:**
+```json
+{
+  "name": "Production Models",
+  "description": "Standard production model set"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "configuration": {
+    "id": "new-config-uuid",
+    "name": "Production Models",
+    "modelCount": 3,
+    "createdAt": "2025-12-01T10:00:00Z"
+  }
+}
+```
+
+### Load Configuration
+
+**Endpoint:** `POST /api/configurations/{id}/load`
+
+Unloads all current models and loads models from the saved configuration.
+
+> **Note:** Models sharing GPUs are loaded sequentially to prevent vLLM memory calculation conflicts. Models on disjoint GPUs load in parallel for faster restoration.
+
+**Response (202 Accepted):**
+```json
+{
+  "status": "started",
+  "configId": "config-uuid",
+  "configName": "Production Models",
+  "modelCount": 3
+}
+```
+
+### Delete Configuration
+
+**Endpoint:** `DELETE /api/configurations/{id}`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Configuration deleted"
 }
 ```
 

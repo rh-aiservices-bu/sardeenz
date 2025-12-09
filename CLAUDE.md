@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - LLM benchmarking with latency/throughput metrics
   - Memory profiling for capacity planning
   - Multi-GPU support with tensor parallelism and intelligent GPU selection
+  - Model configuration presets (save/load model sets with GPU assignments)
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
 - **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
 - **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes

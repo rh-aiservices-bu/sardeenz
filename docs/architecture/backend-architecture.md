@@ -28,6 +28,7 @@ The backend is a Fastify server providing:
 Core service managing vLLM subprocess lifecycle:
 
 - **Async model loading**: `launchModel()` returns immediately with `starting` status
+- **Sync model loading**: `launchModelAndWait()` waits for model to reach terminal status (for sequential loading)
 - **Background monitoring**: Polls health endpoint every 2s, times out after 3 minutes
 - **Status transitions**: `starting` → `active` (success) or `failed` (error/timeout)
 - **Multi-instance support**: Multiple instances of same model via unique instance IDs
@@ -35,6 +36,7 @@ Core service managing vLLM subprocess lifecycle:
 - **KVCached integration**: All single-GPU models share `kvcached_mem_info` IPC segment (disabled for tensor parallel)
 - **SIGKILL unload**: Uses SIGKILL (not SIGTERM) to bypass Python cleanup that would delete shared IPC
 - **EngineCore PID tracking**: Extracts GPU-using process PID from logs for accurate memory monitoring
+- **Conflict group detection**: Union-Find algorithm groups models sharing any GPU for sequential loading
 
 ### ProcessLogBuffer (`src/services/process-log-buffer.ts`)
 
@@ -135,6 +137,16 @@ Request routing for inference proxy:
 - **Model lookup**: Resolves model name to running instance
 - **Round-robin**: Load balances across multiple instances of same model
 - **Metrics tracking**: Records request latency and counts
+
+### ModelConfigurationStore (`src/stores/model-configuration-store.ts`)
+
+SQLite-backed store for model configuration presets:
+
+- **Save current state**: Captures all running model configurations (path, GPU, tokens, extra args)
+- **Load order preservation**: Entries stored with `load_order` for sequential restoration
+- **GPU assignment capture**: Saves `gpuIds` and `tensorParallelSize` per model
+- **CRUD operations**: Create, read, update, delete configurations
+- **Entry management**: Each configuration contains multiple model entries
 
 ## Model Loading Flow
 
