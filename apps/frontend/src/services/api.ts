@@ -92,6 +92,62 @@ export interface MemoryCheckResponse {
   estimated_required_gib?: number
 }
 
+// Model Configuration types for API responses
+export interface ModelConfigurationEntryResponse {
+  id: string
+  config_id: string
+  model_path: string
+  served_model_name?: string
+  max_tokens: number
+  source_type: 'huggingface' | 'local'
+  extra_args?: string[]
+  gpu_ids?: number[]
+  tensor_parallel_size: number
+  load_order: number
+}
+
+export interface SavedModelConfigurationResponse {
+  id: string
+  name: string
+  description?: string
+  model_count: number
+  created_at: string
+  updated_at?: string
+  entries?: ModelConfigurationEntryResponse[]
+}
+
+export interface ListModelConfigurationsResponse {
+  configurations: SavedModelConfigurationResponse[]
+  total: number
+}
+
+export interface GetModelConfigurationResponse {
+  configuration: SavedModelConfigurationResponse
+}
+
+export interface CreateModelConfigurationRequest {
+  name: string
+  description?: string
+}
+
+export interface UpdateModelConfigurationRequest {
+  name?: string
+  description?: string
+}
+
+export interface DeleteModelConfigurationResponse {
+  status: 'success'
+  id: string
+  deleted_at: string
+}
+
+export interface LoadModelConfigurationResponse {
+  status: 'started'
+  configuration_id: string
+  configuration_name: string
+  message: string
+}
+
 // Benchmark types for API responses
 export interface BenchmarkSummary {
   id: string
@@ -464,14 +520,18 @@ class ApiClient {
   ): Promise<AbortController> {
     const abortController = new AbortController()
     const fullText: string[] = []
-    let tokenCount = 0
+    let completionTokens = 0
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
       const response = await fetch(`${baseURL}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({
+          ...request,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         signal: abortController.signal,
       })
 
@@ -511,7 +571,7 @@ class ApiClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              onComplete(fullText.join(''), tokenCount)
+              onComplete(fullText.join(''), completionTokens)
               return abortController
             }
 
@@ -521,14 +581,14 @@ class ApiClient {
 
               if (content) {
                 fullText.push(content)
-                tokenCount++
                 onChunk(content)
               }
 
-              if (chunk.choices[0]?.finish_reason) {
-                onComplete(fullText.join(''), tokenCount)
-                return abortController
+              // Extract token usage from final chunk (when stream_options.include_usage is true)
+              if (chunk.usage) {
+                completionTokens = chunk.usage.completion_tokens
               }
+              // Note: Don't return early on finish_reason - usage chunk comes after it
             } catch (err) {
               console.warn('Failed to parse SSE chunk:', data, err)
             }
@@ -536,7 +596,7 @@ class ApiClient {
         }
       }
 
-      onComplete(fullText.join(''), tokenCount)
+      onComplete(fullText.join(''), completionTokens)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // User cancelled - not an error
@@ -568,14 +628,18 @@ class ApiClient {
   ): Promise<AbortController> {
     const abortController = new AbortController()
     const fullText: string[] = []
-    let tokenCount = 0
+    let completionTokens = 0
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
       const response = await fetch(`${baseURL}/api/direct/${port}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({
+          ...request,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         signal: abortController.signal,
       })
 
@@ -615,7 +679,7 @@ class ApiClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              onComplete(fullText.join(''), tokenCount)
+              onComplete(fullText.join(''), completionTokens)
               return abortController
             }
 
@@ -625,14 +689,14 @@ class ApiClient {
 
               if (content) {
                 fullText.push(content)
-                tokenCount++
                 onChunk(content)
               }
 
-              if (chunk.choices[0]?.finish_reason) {
-                onComplete(fullText.join(''), tokenCount)
-                return abortController
+              // Extract token usage from final chunk (when stream_options.include_usage is true)
+              if (chunk.usage) {
+                completionTokens = chunk.usage.completion_tokens
               }
+              // Note: Don't return early on finish_reason - usage chunk comes after it
             } catch (err) {
               console.warn('Failed to parse SSE chunk:', data, err)
             }
@@ -640,7 +704,7 @@ class ApiClient {
         }
       }
 
-      onComplete(fullText.join(''), tokenCount)
+      onComplete(fullText.join(''), completionTokens)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // User cancelled - not an error
@@ -750,6 +814,48 @@ class ApiClient {
 
     const response = await this.client.get<BenchmarkResultsResponse>(
       `/api/benchmarks/${benchmarkId}/scenarios/${scenarioId}/results${params.toString() ? '?' + params.toString() : ''}`
+    )
+    return response.data
+  }
+
+  // Model Configuration endpoints
+
+  async listConfigurations(): Promise<ListModelConfigurationsResponse> {
+    const response = await this.client.get<ListModelConfigurationsResponse>('/api/configurations')
+    return response.data
+  }
+
+  async getConfiguration(id: string): Promise<GetModelConfigurationResponse> {
+    const response = await this.client.get<GetModelConfigurationResponse>(`/api/configurations/${id}`)
+    return response.data
+  }
+
+  async saveConfiguration(data: CreateModelConfigurationRequest): Promise<GetModelConfigurationResponse> {
+    const response = await this.client.post<GetModelConfigurationResponse>('/api/configurations', data)
+    return response.data
+  }
+
+  async updateConfiguration(
+    id: string,
+    data: UpdateModelConfigurationRequest
+  ): Promise<GetModelConfigurationResponse> {
+    const response = await this.client.put<GetModelConfigurationResponse>(
+      `/api/configurations/${id}`,
+      data
+    )
+    return response.data
+  }
+
+  async deleteConfiguration(id: string): Promise<DeleteModelConfigurationResponse> {
+    const response = await this.client.delete<DeleteModelConfigurationResponse>(
+      `/api/configurations/${id}`
+    )
+    return response.data
+  }
+
+  async loadConfiguration(id: string): Promise<LoadModelConfigurationResponse> {
+    const response = await this.client.post<LoadModelConfigurationResponse>(
+      `/api/configurations/${id}/load`
     )
     return response.data
   }

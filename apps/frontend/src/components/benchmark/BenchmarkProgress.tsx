@@ -31,6 +31,7 @@ interface ProgressData {
   totalScenarios?: number
   warmupComplete?: number
   warmupTotal?: number
+  inFlightRequests?: number
   message: string
 }
 
@@ -66,6 +67,7 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
   const [totalScenarios, setTotalScenarios] = useState(0)
   const [warmupComplete, setWarmupComplete] = useState(0)
   const [warmupTotal, setWarmupTotal] = useState(0)
+  const [inFlightRequests, setInFlightRequests] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -133,6 +135,11 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
           }
           if (progressData.warmupTotal !== undefined) {
             setWarmupTotal(progressData.warmupTotal)
+          }
+
+          // Handle in-flight requests
+          if (progressData.inFlightRequests !== undefined) {
+            setInFlightRequests(progressData.inFlightRequests)
           }
 
           // Check for completion
@@ -203,26 +210,29 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
 
   // Fetch benchmark details to get scenario metadata (model names) and total requests
   useEffect(() => {
-    apiClient.getBenchmark(benchmarkId).then((response) => {
-      const scenarioMap = new Map<string, ScenarioInfo>()
-      const totalsMap = new Map<string, number>()
-      // API returns snake_case fields
-      const scenarioList = response.benchmark.scenarios as Array<{
-        id: string
-        model_name: string
-        routing_mode: string
-        total_requests: number
-      }>
-      scenarioList.forEach((s) => {
-        scenarioMap.set(s.id, { modelName: s.model_name, routingMode: s.routing_mode })
-        totalsMap.set(s.id, s.total_requests)
+    apiClient
+      .getBenchmark(benchmarkId)
+      .then((response) => {
+        const scenarioMap = new Map<string, ScenarioInfo>()
+        const totalsMap = new Map<string, number>()
+        // API returns snake_case fields
+        const scenarioList = response.benchmark.scenarios as Array<{
+          id: string
+          model_name: string
+          routing_mode: string
+          total_requests: number
+        }>
+        scenarioList.forEach((s) => {
+          scenarioMap.set(s.id, { modelName: s.model_name, routingMode: s.routing_mode })
+          totalsMap.set(s.id, s.total_requests)
+        })
+        setScenarios(scenarioMap)
+        setScenarioTotals(totalsMap)
+        setBenchmarkMode(response.benchmark.mode)
       })
-      setScenarios(scenarioMap)
-      setScenarioTotals(totalsMap)
-      setBenchmarkMode(response.benchmark.mode)
-    }).catch((err) => {
-      console.error('Failed to fetch benchmark details:', err)
-    })
+      .catch((err) => {
+        console.error('Failed to fetch benchmark details:', err)
+      })
   }, [benchmarkId])
 
   // Calculate overall progress across all scenarios
@@ -280,112 +290,157 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
 
   return (
     <>
-    <Card>
-      <CardTitle>
-        <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
-          <FlexItem>Benchmark Progress</FlexItem>
-          <FlexItem>
-            <Label color={getPhaseColor()}>{getPhaseLabel()}</Label>
-          </FlexItem>
-        </Flex>
-      </CardTitle>
-      <CardBody>
-        {error && (
-          <Alert variant="warning" isInline title="Connection issue" style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
-            {error}
-          </Alert>
-        )}
-
-        {/* Warmup progress bar - shown during warmup phase */}
-        {phase === 'warmup' && warmupTotal > 0 && (
-          <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
-            <Progress
-              value={Math.round((warmupComplete / warmupTotal) * 100)}
-              title="Warmup progress"
-              measureLocation={ProgressMeasureLocation.top}
-              label={`Warming up: ${warmupComplete}/${warmupTotal} scenarios complete`}
-            />
-          </div>
-        )}
-
-        {/* Request progress bar - shown during running/calculating/completed phases */}
-        {phase !== 'warmup' && (
-          <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
-            {(() => {
-              const { completed, total, percent } = getOverallProgress()
-              return (
-                <Progress
-                  value={percent}
-                  title="Benchmark progress"
-                  measureLocation={ProgressMeasureLocation.top}
-                  label={total > 0 ? `Completed ${completed}/${total} requests` : undefined}
-                  variant={phase === 'failed' ? ProgressVariant.danger : undefined}
-                />
-              )
-            })()}
-          </div>
-        )}
-
-        <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)', color: 'var(--pf-t--global--text--color--subtle)' }}>
-          {/* {message} */}
-          {!isConnected && phase !== 'completed' && phase !== 'failed' && (
-            <span style={{ marginLeft: 'var(--pf-t--global--spacer--sm)' }}>(reconnecting...)</span>
-          )}
-        </div>
-
-        {totalScenarios > 1 && (
-          <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
-            {benchmarkMode === 'contention'
-              ? `${totalScenarios} scenarios running concurrently`
-              : `Scenario ${completedScenarios + 1} of ${totalScenarios}`
-            }
-          </div>
-        )}
-
-        {scenarioMetrics.size > 0 && (
-          <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
-            {Array.from(scenarioMetrics.entries()).map(([scenarioId, metrics]) => {
-              const scenario = scenarios.get(scenarioId)
-              const label = scenario
-                ? `${scenario.modelName} (${scenario.routingMode})`
-                : scenarioId.slice(0, 8)
-              return (
-                <div key={scenarioId} style={{ marginBottom: 'var(--pf-t--global--spacer--sm)' }}>
-                  <div style={{ fontWeight: 'var(--pf-t--global--font--weight--body--bold)' }}>{label}</div>
-                  <div style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-                    TTFT: {metrics.avgTtft?.toFixed(0) ?? '-'} ms | TPS: {metrics.avgTps?.toFixed(1) ?? '-'} tok/s |{' '}
-                    <span style={{ color: 'var(--pf-t--global--color--status--success--default)' }}>
-                       {metrics.successCount + metrics.failCount}
-                    </span>
-                    /
-                    <span style={{ color: metrics.failCount > 0 ? 'var(--pf-t--global--color--status--danger--default)' : undefined }}>
-                      {scenarioTotals.get(scenarioId) ?? 0}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {phase !== 'completed' && phase !== 'failed' && (
-          <Button
-            variant="secondary"
-            icon={<TimesIcon />}
-            onClick={handleCancel}
-            isDisabled={isCancelling}
-            isLoading={isCancelling}
+      <Card>
+        <CardTitle>
+          <Flex
+            justifyContent={{ default: 'justifyContentSpaceBetween' }}
+            alignItems={{ default: 'alignItemsCenter' }}
           >
-            {isCancelling ? 'Cancelling...' : 'Cancel Benchmark'}
-          </Button>
-        )}
-      </CardBody>
-    </Card>
+            <FlexItem>Benchmark Progress</FlexItem>
+            <FlexItem>
+              <Label color={getPhaseColor()}>{getPhaseLabel()}</Label>
+            </FlexItem>
+          </Flex>
+        </CardTitle>
+        <CardBody>
+          {error && (
+            <Alert
+              variant="warning"
+              isInline
+              title="Connection issue"
+              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+            >
+              {error}
+            </Alert>
+          )}
 
-    {/* GPU Memory Overview - shows real-time GPU and KVCache consumption */}
-    <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
-      <GpuMemoryPanel />
-    </div>
+          {/* Warmup progress bar - shown during warmup phase */}
+          {phase === 'warmup' && warmupTotal > 0 && (
+            <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+              <Progress
+                value={Math.round((warmupComplete / warmupTotal) * 100)}
+                title="Warmup progress"
+                measureLocation={ProgressMeasureLocation.top}
+                label={`Warming up: ${warmupComplete}/${warmupTotal} scenarios complete`}
+              />
+              {inFlightRequests > 0 && (
+                <div
+                  style={{
+                    marginTop: 'var(--pf-t--global--spacer--sm)',
+                    color: 'var(--pf-t--global--text--color--subtle)',
+                  }}
+                >
+                  {inFlightRequests} warmup request(s) in progress...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Request progress bar - shown during running/calculating/completed phases */}
+          {phase !== 'warmup' && (
+            <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+              {(() => {
+                const { completed, total, percent } = getOverallProgress()
+                return (
+                  <>
+                    <Progress
+                      value={percent}
+                      title="Benchmark progress"
+                      measureLocation={ProgressMeasureLocation.top}
+                      label={total > 0 ? `Completed ${completed}/${total} requests` : undefined}
+                      variant={phase === 'failed' ? ProgressVariant.danger : undefined}
+                    />
+                    {inFlightRequests > 0 && phase === 'running' && (
+                      <div
+                        style={{
+                          marginTop: 'var(--pf-t--global--spacer--sm)',
+                          color: 'var(--pf-t--global--text--color--subtle)',
+                        }}
+                      >
+                        {inFlightRequests} request(s) in progress...
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginBottom: 'var(--pf-t--global--spacer--md)',
+              color: 'var(--pf-t--global--text--color--subtle)',
+            }}
+          >
+            {!isConnected && phase !== 'completed' && phase !== 'failed' && (
+              <span>(reconnecting...)</span>
+            )}
+          </div>
+
+          {totalScenarios > 1 && (
+            <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+              {benchmarkMode === 'contention'
+                ? `${totalScenarios} scenarios running concurrently`
+                : `Scenario ${completedScenarios + 1} of ${totalScenarios}`}
+            </div>
+          )}
+
+          {scenarioMetrics.size > 0 && (
+            <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+              {Array.from(scenarioMetrics.entries()).map(([scenarioId, metrics]) => {
+                const scenario = scenarios.get(scenarioId)
+                const label = scenario
+                  ? `${scenario.modelName} (${scenario.routingMode})`
+                  : scenarioId.slice(0, 8)
+                return (
+                  <div key={scenarioId} style={{ marginBottom: 'var(--pf-t--global--spacer--sm)' }}>
+                    <div style={{ fontWeight: 'var(--pf-t--global--font--weight--body--bold)' }}>
+                      {label}
+                    </div>
+                    <div style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+                      TTFT: {metrics.avgTtft?.toFixed(0) ?? '-'} ms | TPS:{' '}
+                      {metrics.avgTps?.toFixed(1) ?? '-'} tok/s |{' '}
+                      <span
+                        style={{ color: 'var(--pf-t--global--color--status--success--default)' }}
+                      >
+                        {metrics.successCount + metrics.failCount}
+                      </span>
+                      /
+                      <span
+                        style={{
+                          color:
+                            metrics.failCount > 0
+                              ? 'var(--pf-t--global--color--status--danger--default)'
+                              : undefined,
+                        }}
+                      >
+                        {scenarioTotals.get(scenarioId) ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {phase !== 'completed' && phase !== 'failed' && (
+            <Button
+              variant="secondary"
+              icon={<TimesIcon />}
+              onClick={handleCancel}
+              isDisabled={isCancelling}
+              isLoading={isCancelling}
+            >
+              {isCancelling ? 'Cancelling...' : 'Cancel Benchmark'}
+            </Button>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* GPU Memory Overview - shows real-time GPU and KVCache consumption */}
+      <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+        <GpuMemoryPanel />
+      </div>
     </>
   )
 }

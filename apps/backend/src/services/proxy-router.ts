@@ -4,6 +4,7 @@ import { modelStore } from '../stores/model-store.js'
 import { requestStore } from '../stores/request-store.js'
 import { metricsStore } from '../stores/metrics-store.js'
 import { NotFoundError, ServiceUnavailableError } from '../utils/errors.js'
+import { config } from '../config.js'
 import type { Logger } from '@sardeenz/utils'
 import http from 'http'
 import https from 'https'
@@ -155,18 +156,69 @@ export class ProxyRouter {
       this.logger.debug({ modelPath, instanceId: instance.id, targetUrl, streaming }, 'Forwarding request to vLLM')
 
       // Removed intermediate "forwarded" status update - minimal debugging value
+      const requestHeaders = { 'Content-Type': 'application/json' }
 
       if (streaming) {
+        // Debug: Log outgoing request details
+        if (config.debugStreaming) {
+          this.logger.info(
+            {
+              stage: 'request_to_vllm',
+              requestId,
+              targetUrl,
+              method,
+              headers: requestHeaders,
+              body,
+              instanceId: instance.id,
+              instancePort: instance.port,
+            },
+            'SSE Debug: Sending streaming request to vLLM'
+          )
+        }
+
         // Handle streaming request
         const response = await fetch(targetUrl, {
           method,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           body: JSON.stringify(body),
           // @ts-expect-error - Node.js fetch supports agent
           agent: targetUrl.startsWith('https') ? httpsAgent : httpAgent,
         })
+
+        // Debug: Log vLLM response info
+        if (config.debugStreaming) {
+          const responseHeaders: Record<string, string> = {}
+          response.headers.forEach((value, key) => {
+            responseHeaders[key] = value
+          })
+          const contentType = response.headers.get('content-type') || ''
+          this.logger.info(
+            {
+              stage: 'vllm_response',
+              requestId,
+              status: response.status,
+              statusText: response.statusText,
+              contentType,
+              allHeaders: responseHeaders,
+              isStreaming: contentType.includes('text/event-stream'),
+              hasBody: !!response.body,
+            },
+            'SSE Debug: vLLM response received'
+          )
+
+          // Warn if we expected streaming but didn't get SSE content-type
+          if (!contentType.includes('text/event-stream') && response.ok) {
+            this.logger.warn(
+              {
+                stage: 'vllm_response_warning',
+                requestId,
+                expectedContentType: 'text/event-stream',
+                actualContentType: contentType,
+              },
+              'SSE Debug: WARNING - vLLM did not return text/event-stream content-type'
+            )
+          }
+        }
 
         if (!response.ok) {
           // Read error body from vLLM and return it for proper error forwarding
