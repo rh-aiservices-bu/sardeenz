@@ -19,112 +19,109 @@ RUN microdnf -y update \
 # =============================================================================
 FROM vllm-base AS kvcached-builder
 
+ARG KVCACHED_VERSION=0.1.2
+
 ENV NV_CUDA_LIB_VERSION=12.8.1-1
-ENV NV_NVPROF_VERSION=12.8.90-1
-ENV NV_NVPROF_DEV_PACKAGE=cuda-nvprof-12-8-${NV_NVPROF_VERSION}
 ENV NV_CUDA_CUDART_DEV_VERSION=12.8.90-1
 ENV NV_NVML_DEV_VERSION=12.8.90-1
 ENV NV_LIBCUBLAS_DEV_VERSION=12.8.4.1-1
 ENV NV_LIBNPP_DEV_VERSION=12.3.3.100-1
-ENV NV_LIBNPP_DEV_PACKAGE=libnpp-devel-12-8-${NV_LIBNPP_DEV_VERSION}
-ENV NV_LIBNCCL_DEV_PACKAGE_NAME=libnccl-devel
-ENV NV_LIBNCCL_DEV_PACKAGE_VERSION=2.25.1-1
-ENV NCCL_VERSION=2.25.1
-ENV NV_LIBNCCL_DEV_PACKAGE=${NV_LIBNCCL_DEV_PACKAGE_NAME}-${NV_LIBNCCL_DEV_PACKAGE_VERSION}+cuda12.8
+ENV NV_LIBNCCL_DEV_PACKAGE=libnccl-devel-2.25.1-1+cuda12.8
 ENV NV_CUDA_NSIGHT_COMPUTE_VERSION=12.8.1-1
-ENV NV_CUDA_NSIGHT_COMPUTE_DEV_PACKAGE=cuda-nsight-compute-12-8-${NV_CUDA_NSIGHT_COMPUTE_VERSION}
 
-# Install Python 3.12-devel and build dependencies
+# Install CUDA build dependencies (minimal set for wheel compilation)
 RUN microdnf install -y \
     cuda-command-line-tools-12-8-${NV_CUDA_LIB_VERSION} \
     cuda-libraries-devel-12-8-${NV_CUDA_LIB_VERSION} \
     cuda-minimal-build-12-8-${NV_CUDA_LIB_VERSION} \
     cuda-cudart-devel-12-8-${NV_CUDA_CUDART_DEV_VERSION} \
-    ${NV_NVPROF_DEV_PACKAGE} \
     cuda-nvml-devel-12-8-${NV_NVML_DEV_VERSION} \
     libcublas-devel-12-8-${NV_LIBCUBLAS_DEV_VERSION} \
-    ${NV_LIBNPP_DEV_PACKAGE} \
+    libnpp-devel-12-8-${NV_LIBNPP_DEV_VERSION} \
     ${NV_LIBNCCL_DEV_PACKAGE} \
-    ${NV_CUDA_NSIGHT_COMPUTE_DEV_PACKAGE} \
+    cuda-nsight-compute-12-8-${NV_CUDA_NSIGHT_COMPUTE_VERSION} \
     && microdnf clean all \
     && rm -rf /var/cache/yum/*
 
 # Build KVCached wheel with CUDA support
 WORKDIR /build
-RUN pip3.12 wheel kvcached==0.1.2 \
+RUN pip3.12 wheel kvcached==${KVCACHED_VERSION} \
     --no-build-isolation \
     --wheel-dir /wheels
 
 # =============================================================================
-# Stage 2: App Builder
+# Stage 2: Runtime Dependencies
+# Install Node.js and production dependencies (cached unless package.json changes)
 # =============================================================================
-FROM vllm-base AS builder
+FROM vllm-base AS runtime-deps
 
 USER 0
 
-# Install Node.js 22 using nvm
-ENV NVM_DIR=/root/.nvm
+# Install Node.js 22 directly (no nvm overhead)
 ENV NODE_VERSION=22.11.0
+RUN microdnf install -y xz \
+    && microdnf clean all \
+    && curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
+    | tar -xJ -C /usr/local --strip-components=1 \
+    && node --version && npm --version
 
-RUN mkdir -p ${NVM_DIR} && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash && \
-    . "$NVM_DIR/nvm.sh" && \
-    nvm install ${NODE_VERSION} && \
-    nvm use ${NODE_VERSION} && \
-    nvm alias default ${NODE_VERSION}
-
-ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
-
-# Install Python dependencies from pre-built wheel (kvcached only - vLLM is in base image)
-# COPY --from=kvcached-builder /wheels/*.whl /wheels/
-# RUN pip install /wheels/kvcached*.whl nvitop==1.6.0
-
-# Build Node.js application
+# Copy package files for production install
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages ./packages
-COPY apps ./apps
-COPY tsconfig.base.json ./
-COPY assets ./assets
+COPY packages/types/package.json ./packages/types/
+COPY packages/utils/package.json ./packages/utils/
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/frontend/package.json ./apps/frontend/
 
-RUN npm ci
-RUN npm run build -w packages/types && \
-    npm run build -w packages/utils
-RUN npm run build -w apps/backend
+# Install production dependencies only
+RUN npm ci --omit=dev
+
+# =============================================================================
+# Stage 3: App Builder
+# =============================================================================
+FROM runtime-deps AS builder
+
+# Install dev dependencies on top of production deps
+RUN npm install
+
+# Build packages/types (base dependency)
+COPY packages/types ./packages/types
+COPY tsconfig.base.json ./
+RUN npx tsc -b packages/types
+
+# Build packages/utils (depends on types)
+COPY packages/utils ./packages/utils
+RUN npx tsc -b packages/utils
+
+# Build backend (depends on packages)
+COPY apps/backend ./apps/backend
+RUN npx tsc -b apps/backend
+
+# Build frontend (depends on packages)
+COPY apps/frontend ./apps/frontend
+COPY assets ./assets
 RUN npm run build -w apps/frontend
 
 # =============================================================================
-# Stage 3: Runtime
+# Stage 4: Runtime
 # =============================================================================
-FROM vllm-base AS runtime
+FROM runtime-deps AS runtime
 
 # Install Python dependencies from pre-built wheel (kvcached only - vLLM is in base image)
 COPY --from=kvcached-builder /wheels/*.whl /wheels/
-RUN pip install /wheels/kvcached*.whl nvitop==1.6.0
+RUN pip install --no-cache-dir /wheels/kvcached*.whl nvitop==1.6.0 \
+    && rm -rf /wheels
 
-# Install Node.js (copy from builder)
-ENV NVM_DIR=/root/.nvm
-ENV NODE_VERSION=22.11.0
-COPY --from=builder $NVM_DIR $NVM_DIR
-ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin:${PATH}"
+# Copy only built packages (dist + package.json, no source)
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
+COPY --from=builder /app/packages/utils/dist ./packages/utils/dist
 
-# Copy Python packages installed from pre-built wheel (kvcached and dependencies)
-# vLLM uses /opt/vllm as Python environment
-#COPY --from=kvcached-builder /opt/vllm/lib/python3.12/site-packages/kvcached /opt/vllm/lib/python3.12/site-packages/kvcached
-#COPY --from=kvcached-builder /opt/vllm/lib/python3.12/site-packages/kvcached_autopatch.pth /opt/vllm/lib/python3.12/site-packages/
-#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/nvitop /opt/vllm/lib/python3.12/site-packages/nvitop
-#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/posix_ipc* /opt/vllm/lib/python3.12/site-packages/
-#COPY --from=builder /opt/vllm/lib/python3.12/site-packages/wrapt /opt/vllm/lib/python3.12/site-packages/wrapt
-
-# Copy application
-WORKDIR /app
-COPY --from=builder /app/package.json /app/package-lock.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages ./packages
+# Copy backend (dist + migrations + scripts)
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder /app/apps/backend/src/db/migrations ./apps/backend/dist/db/migrations
 COPY --from=builder /app/apps/backend/scripts ./apps/backend/scripts
-COPY --from=builder /app/apps/backend/package.json ./apps/backend/
+
+# Copy frontend (static files only)
 COPY --from=builder /app/apps/frontend/dist ./apps/frontend/dist
 
 # Environment variables
