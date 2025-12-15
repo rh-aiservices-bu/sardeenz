@@ -53,7 +53,11 @@ frontend/
 ├── src/
 │   ├── components/      # Shared UI components
 │   │   ├── benchmark/   # Benchmark-related components
-│   │   └── Layout/      # AppLayout, NavSidebar
+│   │   ├── inference/   # Chat session and inference components
+│   │   ├── Layout/      # AppLayout, NavSidebar
+│   │   ├── LoadConfigurationDialog.tsx   # Load saved model configurations
+│   │   ├── SaveConfigurationDialog.tsx   # Save current models as configuration
+│   │   └── LoadModelDialog.tsx           # Load individual models
 │   ├── pages/           # Route-specific pages
 │   ├── services/        # API client layer
 │   ├── App.tsx          # Root component with routing

@@ -274,6 +274,34 @@ export class ModelManager extends EventEmitter {
   }
 
   /**
+   * Launch a model and wait for it to reach terminal status (running or failed).
+   * Use this for sequential loading where you need to wait for one model
+   * to fully load before starting another (e.g., configuration restore).
+   */
+  async launchModelAndWait(options: LaunchModelOptions): Promise<ModelInstance> {
+    const instance = await this.launchModel(options)
+
+    return new Promise((resolve, reject) => {
+      const checkStatus = () => {
+        const current = modelStore.get(instance.id)
+        if (!current) {
+          reject(new Error('Model instance disappeared during loading'))
+          return
+        }
+        if (current.status === 'running') {
+          resolve(current)
+        } else if (current.status === 'failed') {
+          reject(new Error(current.errorMessage || 'Model failed to load'))
+        } else {
+          // Still starting, check again in 1 second
+          setTimeout(checkStatus, 1000)
+        }
+      }
+      checkStatus()
+    })
+  }
+
+  /**
    * Monitor model startup in background and update status when ready
    * Called without await so API can return immediately
    */

@@ -95,6 +95,8 @@ App (AuthProvider, Router)
 │
 └── Shared Components
     ├── LoadModelDialog (Modal form)
+    ├── SaveConfigurationDialog (Save current models as preset)
+    ├── LoadConfigurationDialog (Load saved configuration)
     ├── UnloadModelDialog (Confirmation)
     ├── ErrorAlert (Notification)
     └── LoadingSpinner

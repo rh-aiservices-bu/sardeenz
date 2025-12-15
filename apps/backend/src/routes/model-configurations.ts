@@ -307,26 +307,101 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
             }
           }
 
-          // 2. Load each model from configuration
-          for (const entry of config.entries!) {
-            try {
-              await modelManager.launchModel({
-                modelPath: entry.modelPath,
-                maxTokens: entry.maxTokens,
-                gpuIds: entry.gpuIds,
-                tensorParallelSize: entry.tensorParallelSize,
-                sourceType: entry.sourceType,
-                servedModelName: entry.servedModelName,
-                extraArgs: entry.extraArgs,
-              })
-              fastify.log.info({ modelPath: entry.modelPath }, 'Loaded model from config')
-            } catch (err) {
-              fastify.log.error(
-                { err, modelPath: entry.modelPath },
-                'Failed to load model during config load'
-              )
+          // 2. Build conflict groups using Union-Find
+          // Models sharing ANY GPU must be in the same group (for tensor parallelism support)
+          // This ensures models like [GPU 1] and [GPU 0, GPU 1] are loaded sequentially
+          const AUTO_GPU_GROUP = -1 // Virtual group for entries without explicit GPU assignment
+          type EntryWithIndex = { entry: ModelConfigurationEntry; index: number }
+
+          const entriesWithIndex: EntryWithIndex[] = config.entries!.map((entry, index) => ({
+            entry,
+            index,
+          }))
+
+          // Union-Find parent array
+          const parent = entriesWithIndex.map((_, i) => i)
+
+          function find(i: number): number {
+            if (parent[i] !== i) {
+              parent[i] = find(parent[i])
+            }
+            return parent[i]
+          }
+
+          function union(i: number, j: number): void {
+            const pi = find(i)
+            const pj = find(j)
+            if (pi !== pj) {
+              parent[pi] = pj
             }
           }
+
+          // Get GPU set for an entry (use AUTO_GPU_GROUP for entries without explicit GPUs)
+          function getGpuSet(entry: ModelConfigurationEntry): Set<number> {
+            if (!entry.gpuIds || entry.gpuIds.length === 0) {
+              return new Set([AUTO_GPU_GROUP])
+            }
+            return new Set(entry.gpuIds)
+          }
+
+          // Find entries that share GPUs and union them
+          for (let i = 0; i < entriesWithIndex.length; i++) {
+            const gpusI = getGpuSet(entriesWithIndex[i].entry)
+            for (let j = i + 1; j < entriesWithIndex.length; j++) {
+              const gpusJ = getGpuSet(entriesWithIndex[j].entry)
+              // Check for intersection
+              for (const gpu of gpusI) {
+                if (gpusJ.has(gpu)) {
+                  union(i, j)
+                  break
+                }
+              }
+            }
+          }
+
+          // Group entries by their conflict group root
+          const conflictGroups = new Map<number, EntryWithIndex[]>()
+          for (let i = 0; i < entriesWithIndex.length; i++) {
+            const root = find(i)
+            if (!conflictGroups.has(root)) {
+              conflictGroups.set(root, [])
+            }
+            conflictGroups.get(root)!.push(entriesWithIndex[i])
+          }
+
+          // Sort each group by load_order
+          for (const group of conflictGroups.values()) {
+            group.sort((a, b) => a.entry.loadOrder - b.entry.loadOrder)
+          }
+
+          // 3. Load each conflict group in parallel, but sequentially within each group
+          const loadPromises = Array.from(conflictGroups.values()).map(async (group) => {
+            for (const { entry } of group) {
+              try {
+                await modelManager.launchModelAndWait({
+                  modelPath: entry.modelPath,
+                  maxTokens: entry.maxTokens,
+                  gpuIds: entry.gpuIds,
+                  tensorParallelSize: entry.tensorParallelSize,
+                  sourceType: entry.sourceType,
+                  servedModelName: entry.servedModelName,
+                  extraArgs: entry.extraArgs,
+                })
+                fastify.log.info(
+                  { modelPath: entry.modelPath, gpuIds: entry.gpuIds },
+                  'Loaded model from config'
+                )
+              } catch (err) {
+                fastify.log.error(
+                  { err, modelPath: entry.modelPath, gpuIds: entry.gpuIds },
+                  'Failed to load model during config load'
+                )
+                // Continue with next model in this conflict group
+              }
+            }
+          })
+
+          await Promise.all(loadPromises)
 
           fastify.log.info(
             { configId: id, configName: config.name },
