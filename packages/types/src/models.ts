@@ -2,7 +2,8 @@
 
 export enum ModelStatus {
   Starting = 'starting',
-  Active = 'active',
+  Running = 'running',
+  Sleeping = 'sleeping',
   Stopping = 'stopping',
   Failed = 'failed',
 }
@@ -26,6 +27,26 @@ export enum OperationType {
   Restart = 'restart',
 }
 
+// Memory metrics parsed from vLLM logs
+
+/** Memory metrics parsed from vLLM logs after model loading */
+export interface ModelMemoryMetrics {
+  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  totalGpuMemoryGiB: number
+  /** Model weights memory in GiB */
+  weightsMemoryGiB: number
+  /** CUDA graph capture memory in GiB */
+  cudaGraphMemoryGiB: number
+  /** Overhead memory (total - weights - CUDA graphs) in GiB */
+  overheadMemoryGiB: number
+  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
+  kvCacheAvailableGiB: number
+  /** KV cache memory per max-size request in MiB */
+  kvCachePerRequestMiB: number
+  /** Max model context length used for calculation */
+  maxModelLen: number
+}
+
 // Entity interfaces
 
 export interface ModelConfiguration {
@@ -40,15 +61,32 @@ export interface ModelConfiguration {
 export interface ModelInstance {
   id: string
   modelPath: string
+  /** Model name used by vLLM for inference (from --served-model-name or defaults to modelPath) */
+  modelName: string
   status: ModelStatus
   port: number
+  /** Main vLLM API Server process ID */
   processId: number
+  /** vLLM EngineCore process ID (consumes GPU VRAM, extracted from logs) */
+  engineCorePid?: number
   maxTokens: number
   gpuMemoryUtilization: number
   loadedAt: Date
   readyAt?: Date
   errorMessage?: string
   ipcSegmentName: string
+  /** Parsed memory metrics (populated after model becomes active) */
+  memoryMetrics?: ModelMemoryMetrics
+  /** Whether model supports chat templates (true) or needs manual wrapping (false) */
+  hasChatTemplate?: boolean
+  /** Full vLLM launch command for debugging/reproduction */
+  launchCommand?: string
+  /** GPU indices this model is running on (single GPU: [0], tensor parallel: [0,1]) */
+  gpuIds: number[]
+  /** Tensor parallel size (1 = single GPU, >1 = spanning multiple GPUs) */
+  tensorParallelSize: number
+  /** Whether KVCached is enabled for this instance (disabled for tensor parallel) */
+  kvcachedEnabled: boolean
 }
 
 export interface InferenceRequest {

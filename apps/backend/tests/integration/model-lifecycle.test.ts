@@ -50,7 +50,7 @@ describe('Model Lifecycle Routes', () => {
       const instance1: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -94,7 +94,7 @@ describe('Model Lifecycle Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -115,7 +115,7 @@ describe('Model Lifecycle Routes', () => {
       const body = JSON.parse(response.payload)
       expect(body.model.id).toBe('instance-1')
       expect(body.model.model_path).toBe('meta-llama/Llama-3.2-1B')
-      expect(body.model.status).toBe('active')
+      expect(body.model.status).toBe('running')
       expect(body.model.port).toBe(12346)
       expect(body.model.max_tokens).toBe(4096)
       expect(body.model.gpu_memory_utilization).toBe(0.9)
@@ -154,7 +154,7 @@ describe('Model Lifecycle Routes', () => {
       const existingInstance: ModelInstance = {
         id: 'existing-id',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -196,7 +196,7 @@ describe('Model Lifecycle Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -254,7 +254,7 @@ describe('Model Lifecycle Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,
@@ -284,7 +284,7 @@ describe('Model Lifecycle Routes', () => {
       const instance: ModelInstance = {
         id: 'instance-1',
         modelPath: 'meta-llama/Llama-3.2-1B',
-        status: 'active' as ModelStatus,
+        status: 'running' as ModelStatus,
         port: 12346,
         processId: 12345,
         maxTokens: 4096,

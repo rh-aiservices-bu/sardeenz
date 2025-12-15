@@ -4,23 +4,26 @@ import { modelStore } from '../stores/model-store.js'
 import { requestStore } from '../stores/request-store.js'
 import { metricsStore } from '../stores/metrics-store.js'
 import { NotFoundError, ServiceUnavailableError } from '../utils/errors.js'
+import { config } from '../config.js'
 import type { Logger } from '@sardeenz/utils'
 import http from 'http'
 import https from 'https'
 
-// Connection pool for vLLM instances
+// Connection pool for vLLM instances - optimized for high throughput streaming
 const httpAgent = new http.Agent({
   keepAlive: true,
-  maxSockets: 100,
-  maxFreeSockets: 10,
-  timeout: 60000,
+  maxSockets: Infinity,     // No artificial limit - let OS handle it
+  maxFreeSockets: 256,      // Keep more sockets warm for reuse
+  timeout: 120000,          // Longer timeout for streaming responses
+  scheduling: 'fifo',       // FIFO scheduling for predictable latency
 })
 
 const httpsAgent = new https.Agent({
   keepAlive: true,
-  maxSockets: 100,
-  maxFreeSockets: 10,
-  timeout: 60000,
+  maxSockets: Infinity,
+  maxFreeSockets: 256,
+  timeout: 120000,
+  scheduling: 'fifo',
 })
 
 /**
@@ -75,6 +78,9 @@ export class ProxyRouter {
   /**
    * Route an inference request to the appropriate model instance
    * Uses round-robin load balancing when multiple instances are available (FR-028)
+   *
+   * For streaming requests: returns raw WHATWG Response for caller to pipe to client.
+   * Caller is responsible for recording completion metrics after stream ends.
    */
   async routeRequest(options: {
     modelPath: string
@@ -82,31 +88,33 @@ export class ProxyRouter {
     method: string
     body: Record<string, unknown>
     streaming: boolean
-    onChunk?: (chunk: Uint8Array) => void
   }): Promise<{
     requestId: string
-    response?: unknown
+    response?: unknown | Response
     statusCode: number
     instanceId?: string
+    startTime?: number // For streaming: caller computes duration after stream ends
   }> {
-    const { modelPath, endpoint, method, body, streaming, onChunk } = options
+    const { modelPath, endpoint, method, body, streaming } = options
 
-    // Find active model instances
-    const instances = modelStore.getActiveByPath(modelPath)
+    // Find running model instances by model name
+    // The modelPath parameter is actually the model name from the request's "model" field
+    const instances = modelStore.getRunningByName(modelPath)
 
     if (instances.length === 0) {
       // Check if any instances exist at all
-      const allInstances = modelStore.getAllByPath(modelPath)
+      const allInstances = modelStore.getAllByName(modelPath)
+
       if (allInstances.length === 0) {
         throw new NotFoundError(
-          `Model ${modelPath} not loaded. Available models: ${modelStore.getAllPaths().join(', ')}`
+          `Model ${modelPath} not loaded. Available models: ${modelStore.getAllNames().join(', ')}`
         )
       }
 
-      // Instances exist but none are active
+      // Instances exist but none are running
       const statuses = allInstances.map((i) => `${i.id.slice(0, 8)}:${i.status}`).join(', ')
       throw new ServiceUnavailableError(
-        `Model ${modelPath} has no active instances. Instance states: ${statuses}`
+        `Model ${modelPath} has no running instances. Instance states: ${statuses}`
       )
     }
 
@@ -133,12 +141,13 @@ export class ProxyRouter {
       status: 'pending' as RequestStatus,
     }
 
-    requestStore.add(modelPath, request)
+    // Defer initial request record to avoid blocking hot path
+    setImmediate(() => requestStore.add(modelPath, request))
 
     const startTime = Date.now()
 
     try {
-      // Update metrics - increment active connections
+      // Update metrics - keep synchronous for accurate connection tracking
       metricsStore.updateConnections(modelPath, 1)
 
       // Forward request to vLLM instance
@@ -146,56 +155,110 @@ export class ProxyRouter {
 
       this.logger.debug({ modelPath, instanceId: instance.id, targetUrl, streaming }, 'Forwarding request to vLLM')
 
-      request.forwardedAt = new Date()
-      request.status = 'forwarded' as RequestStatus
-      requestStore.add(modelPath, request)
+      // Removed intermediate "forwarded" status update - minimal debugging value
+      const requestHeaders = { 'Content-Type': 'application/json' }
 
       if (streaming) {
+        // Debug: Log outgoing request details
+        if (config.debugStreaming) {
+          this.logger.info(
+            {
+              stage: 'request_to_vllm',
+              requestId,
+              targetUrl,
+              method,
+              headers: requestHeaders,
+              body,
+              instanceId: instance.id,
+              instancePort: instance.port,
+            },
+            'SSE Debug: Sending streaming request to vLLM'
+          )
+        }
+
         // Handle streaming request
         const response = await fetch(targetUrl, {
           method,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           body: JSON.stringify(body),
           // @ts-expect-error - Node.js fetch supports agent
           agent: targetUrl.startsWith('https') ? httpsAgent : httpAgent,
         })
 
-        if (!response.ok) {
-          throw new Error(`vLLM returned ${response.status}: ${response.statusText}`)
-        }
+        // Debug: Log vLLM response info
+        if (config.debugStreaming) {
+          const responseHeaders: Record<string, string> = {}
+          response.headers.forEach((value, key) => {
+            responseHeaders[key] = value
+          })
+          const contentType = response.headers.get('content-type') || ''
+          this.logger.info(
+            {
+              stage: 'vllm_response',
+              requestId,
+              status: response.status,
+              statusText: response.statusText,
+              contentType,
+              allHeaders: responseHeaders,
+              isStreaming: contentType.includes('text/event-stream'),
+              hasBody: !!response.body,
+            },
+            'SSE Debug: vLLM response received'
+          )
 
-        // Stream response
-        if (response.body && onChunk) {
-          const reader = response.body.getReader()
-          try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              onChunk(value)
-            }
-          } finally {
-            reader.releaseLock()
+          // Warn if we expected streaming but didn't get SSE content-type
+          if (!contentType.includes('text/event-stream') && response.ok) {
+            this.logger.warn(
+              {
+                stage: 'vllm_response_warning',
+                requestId,
+                expectedContentType: 'text/event-stream',
+                actualContentType: contentType,
+              },
+              'SSE Debug: WARNING - vLLM did not return text/event-stream content-type'
+            )
           }
         }
 
-        const durationMs = Date.now() - startTime
+        if (!response.ok) {
+          // Read error body from vLLM and return it for proper error forwarding
+          const errorData = (await response.json().catch(() => ({
+            error: { message: response.statusText, type: 'upstream_error' },
+          }))) as { error?: { message?: string }; message?: string }
 
-        // Update request record
-        request.completedAt = new Date()
-        request.status = 'completed' as RequestStatus
-        request.statusCode = response.status
-        request.durationMs = durationMs
-        requestStore.add(modelPath, request)
+          const durationMs = Date.now() - startTime
 
-        // Update metrics
-        metricsStore.recordRequest(modelPath, true, durationMs)
+          // Defer request record update
+          const capturedStatus = response.status
+          const capturedError = errorData.error?.message || errorData.message || response.statusText
+          setImmediate(() => {
+            request.completedAt = new Date()
+            request.status = 'failed' as RequestStatus
+            request.statusCode = capturedStatus
+            request.errorMessage = capturedError
+            request.durationMs = durationMs
+            requestStore.add(modelPath, request)
+          })
 
+          // Defer metrics recording for errors too
+          setImmediate(() => metricsStore.recordRequest(modelPath, false, durationMs))
+
+          return {
+            requestId,
+            response: errorData,
+            statusCode: response.status,
+            instanceId: instance.id,
+          }
+        }
+
+        // For streaming success: return raw Response for caller to pipe
+        // Caller is responsible for recording completion metrics after stream ends
         return {
           requestId,
+          response, // WHATWG Response with readable body
           statusCode: response.status,
           instanceId: instance.id,
+          startTime, // Caller uses this to compute duration after stream ends
         }
       } else {
         // Handle non-streaming request
@@ -212,15 +275,19 @@ export class ProxyRouter {
         const responseData = await response.json()
         const durationMs = Date.now() - startTime
 
-        // Update request record
-        request.completedAt = new Date()
-        request.status = 'completed' as RequestStatus
-        request.statusCode = response.status
-        request.durationMs = durationMs
-        requestStore.add(modelPath, request)
+        // Defer request record update
+        const capturedStatus = response.status
+        const wasOk = response.ok
+        setImmediate(() => {
+          request.completedAt = new Date()
+          request.status = wasOk ? 'completed' as RequestStatus : 'failed' as RequestStatus
+          request.statusCode = capturedStatus
+          request.durationMs = durationMs
+          requestStore.add(modelPath, request)
+        })
 
-        // Update metrics
-        metricsStore.recordRequest(modelPath, response.ok, durationMs)
+        // Defer metrics recording
+        setImmediate(() => metricsStore.recordRequest(modelPath, wasOk, durationMs))
 
         return {
           requestId,
@@ -231,20 +298,23 @@ export class ProxyRouter {
       }
     } catch (err) {
       const durationMs = Date.now() - startTime
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
 
-      // Update request record
-      request.completedAt = new Date()
-      request.status = 'failed' as RequestStatus
-      request.errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      request.durationMs = durationMs
-      requestStore.add(modelPath, request)
+      // Defer request record update
+      setImmediate(() => {
+        request.completedAt = new Date()
+        request.status = 'failed' as RequestStatus
+        request.errorMessage = errorMessage
+        request.durationMs = durationMs
+        requestStore.add(modelPath, request)
+      })
 
-      // Update metrics
-      metricsStore.recordRequest(modelPath, false, durationMs)
+      // Defer metrics recording
+      setImmediate(() => metricsStore.recordRequest(modelPath, false, durationMs))
 
       throw err
     } finally {
-      // Decrement active connections
+      // Decrement active connections - keep synchronous for accuracy
       metricsStore.updateConnections(modelPath, -1)
     }
   }

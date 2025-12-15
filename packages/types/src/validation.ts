@@ -12,7 +12,7 @@ export const ModelConfigurationSchema = Type.Object({
   modelPath: Type.String({ pattern: '^[\\w\\-\\.]+/[\\w\\-\\.]+$' }),
   displayName: Type.Optional(Type.String({ maxLength: 100 })),
   description: Type.Optional(Type.String({ maxLength: 500 })),
-  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  defaultMaxTokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
   estimatedMemoryGB: Type.Optional(Type.Number({ minimum: 0 })),
   tags: Type.Optional(Type.Array(Type.String({ maxLength: 50 }), { maxItems: 10 })),
 })
@@ -23,7 +23,7 @@ export const ModelInstanceSchema = Type.Object({
   status: ModelStatusSchema,
   port: Type.Integer({ minimum: 1024, maximum: 65535 }),
   processId: Type.Integer({ minimum: 1 }),
-  maxTokens: Type.Integer({ minimum: 512, maximum: 32768 }),
+  maxTokens: Type.Integer({ minimum: 1, maximum: 1000000 }),
   gpuMemoryUtilization: Type.Number({ minimum: 0.1, maximum: 0.95 }),
   loadedAt: Type.String({ format: 'date-time' }),
   readyAt: Type.Optional(Type.String({ format: 'date-time' })),
@@ -47,10 +47,21 @@ export const ResourceMetricsSchema = Type.Object({
   lastUpdated: Type.String({ format: 'date-time' }),
 })
 
+// Model source type schema
+export const ModelSourceTypeSchema = Type.Union([
+  Type.Literal('huggingface'),
+  Type.Literal('local'),
+])
+
 // API request/response schemas
 export const LoadModelRequestSchema = Type.Object({
   model_path: Type.String({ minLength: 1 }),
-  max_tokens: Type.Optional(Type.Integer({ minimum: 512, maximum: 32768, default: 4096 })),
+  max_tokens: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000, default: 4096 })),
+  extra_args: Type.Optional(Type.Array(Type.String())),
+  gpu_ids: Type.Optional(Type.Array(Type.Integer({ minimum: 0, maximum: 15 }))),
+  tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+  source_type: Type.Optional(ModelSourceTypeSchema),
+  served_model_name: Type.Optional(Type.String({ minLength: 1 })),
 })
 
 export const LoadModelResponseSchema = Type.Object({
@@ -67,9 +78,18 @@ export const UnloadModelResponseSchema = Type.Object({
   unloaded_at: Type.String({ format: 'date-time' }),
 })
 
+export const ModelMemoryMetricsDTOSchema = Type.Object({
+  weights_memory_gib: Type.Number(),
+  cuda_graph_memory_gib: Type.Number(),
+  kv_cache_available_gib: Type.Number(),
+  kv_cache_per_request_mib: Type.Number(),
+  max_model_len: Type.Integer(),
+})
+
 export const ModelInstanceDTOSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   model_path: Type.String(),
+  model_name: Type.String(),
   status: ModelStatusSchema,
   port: Type.Integer(),
   process_id: Type.Integer(),
@@ -78,6 +98,12 @@ export const ModelInstanceDTOSchema = Type.Object({
   loaded_at: Type.String({ format: 'date-time' }),
   ready_at: Type.Optional(Type.String({ format: 'date-time' })),
   error_message: Type.Optional(Type.String()),
+  memory_metrics: Type.Optional(ModelMemoryMetricsDTOSchema),
+  has_chat_template: Type.Optional(Type.Boolean()),
+  launch_command: Type.Optional(Type.String()),
+  gpu_ids: Type.Array(Type.Integer()),
+  tensor_parallel_size: Type.Integer(),
+  kvcached_enabled: Type.Boolean(),
 })
 
 export const ListModelsResponseSchema = Type.Object({
@@ -165,6 +191,151 @@ export const ErrorResponseSchema = Type.Object({
   }),
 })
 
+// vLLM Proxy API schemas
+
+// Embedding request (OpenAI-compatible)
+export const EmbeddingRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  input: Type.Union([Type.String(), Type.Array(Type.String())]),
+  encoding_format: Type.Optional(Type.Union([Type.Literal('float'), Type.Literal('base64')])),
+  user: Type.Optional(Type.String()),
+})
+
+// Tokenize request (vLLM-specific)
+export const TokenizeRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  prompt: Type.Optional(Type.String()),
+  add_special_tokens: Type.Optional(Type.Boolean()),
+})
+
+// Detokenize request (vLLM-specific)
+export const DetokenizeRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+  tokens: Type.Array(Type.Integer()),
+})
+
+// Generic vLLM request with required model field (for pooling, classification, score, re-rank)
+export const VLLMGenericRequestSchema = Type.Object({
+  model: Type.String({ minLength: 1 }),
+}, { additionalProperties: true })
+
+// vLLM models list response (for aggregation)
+export const VLLMModelSchema = Type.Object({
+  id: Type.String(),
+  object: Type.Literal('model'),
+  created: Type.Integer(),
+  owned_by: Type.String(),
+  root: Type.Optional(Type.String()),
+  parent: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  max_model_len: Type.Optional(Type.Integer()),
+  permission: Type.Optional(Type.Array(Type.Object({}, { additionalProperties: true }))),
+})
+
+export const VLLMModelsListResponseSchema = Type.Object({
+  object: Type.Literal('list'),
+  data: Type.Array(VLLMModelSchema),
+})
+
+// Multi-GPU schemas
+
+export const ModelGpuMemorySchema = Type.Object({
+  model_path: Type.String(),
+  instance_id: Type.String(),
+  display_name: Type.String(),
+  gpu_memory_gb: Type.Number(),
+  color: Type.String(),
+})
+
+export const PerGpuMetricsSchema = Type.Object({
+  gpu_index: Type.Integer(),
+  name: Type.String(),
+  total_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+  utilization_percent: Type.Number(),
+  models: Type.Array(ModelGpuMemorySchema),
+})
+
+export const KVCacheMetricsSchema = Type.Object({
+  total_gb: Type.Number(),
+  prealloc_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+})
+
+export const MultiGpuMemoryUsageResponseSchema = Type.Object({
+  gpus: Type.Array(PerGpuMetricsSchema),
+  kvcache: KVCacheMetricsSchema,
+  total_system_free_gb: Type.Number(),
+})
+
+export const GpuInfoSchema = Type.Object({
+  index: Type.Integer(),
+  name: Type.String(),
+  memory_total_mb: Type.Integer(),
+  memory_used_mb: Type.Integer(),
+  memory_free_mb: Type.Integer(),
+  utilization_percent: Type.Number(),
+  models_loaded: Type.Integer(),
+  recommended: Type.Boolean(),
+})
+
+export const GpuRecommendationSchema = Type.Object({
+  gpu_id: Type.Integer(),
+  free_memory_gb: Type.Number(),
+  reason: Type.String(),
+})
+
+export const GpuAvailabilityResponseSchema = Type.Object({
+  gpus: Type.Array(GpuInfoSchema),
+  recommendation: GpuRecommendationSchema,
+})
+
+// Settings schemas
+export const HfTokenSourceSchema = Type.Union([
+  Type.Literal('env'),
+  Type.Literal('runtime'),
+  Type.Null(),
+])
+
+export const SettingsResponseSchema = Type.Object({
+  hf_token: Type.Union([Type.String(), Type.Null()]),
+  hf_token_source: HfTokenSourceSchema,
+})
+
+export const UpdateSettingsRequestSchema = Type.Object({
+  hf_token: Type.Optional(Type.String({ minLength: 1 })),
+})
+
+export const TestHfTokenRequestSchema = Type.Object({
+  token: Type.String({ minLength: 1 }),
+})
+
+export const TestHfTokenResponseSchema = Type.Object({
+  valid: Type.Boolean(),
+  username: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
+})
+
+// Local models schemas
+export const LocalModelInfoSchema = Type.Object({
+  name: Type.String(),
+  path: Type.String(),
+  modified_at: Type.Optional(Type.String({ format: 'date-time' })),
+  has_config: Type.Boolean(),
+})
+
+export const ListLocalModelsResponseSchema = Type.Object({
+  models: Type.Array(LocalModelInfoSchema),
+  total: Type.Integer(),
+  base_path: Type.String(),
+})
+
+export const LocalModelsStatusResponseSchema = Type.Object({
+  enabled: Type.Boolean(),
+  path: Type.Optional(Type.String()),
+})
+
 // Type exports for TypeScript inference
 export type LoadModelRequestType = Static<typeof LoadModelRequestSchema>
 export type LoadModelResponseType = Static<typeof LoadModelResponseSchema>
@@ -180,3 +351,22 @@ export type ChatCompletionRequestType = Static<typeof ChatCompletionRequestSchem
 export type ErrorResponseType = Static<typeof ErrorResponseSchema>
 export type ListInstancesResponseType = Static<typeof ListInstancesResponseSchema>
 export type UnloadInstanceResponseType = Static<typeof UnloadInstanceResponseSchema>
+export type SettingsResponseType = Static<typeof SettingsResponseSchema>
+export type UpdateSettingsRequestType = Static<typeof UpdateSettingsRequestSchema>
+export type TestHfTokenRequestType = Static<typeof TestHfTokenRequestSchema>
+export type TestHfTokenResponseType = Static<typeof TestHfTokenResponseSchema>
+export type MultiGpuMemoryUsageResponseType = Static<typeof MultiGpuMemoryUsageResponseSchema>
+export type GpuAvailabilityResponseType = Static<typeof GpuAvailabilityResponseSchema>
+export type PerGpuMetricsType = Static<typeof PerGpuMetricsSchema>
+export type GpuInfoType = Static<typeof GpuInfoSchema>
+export type GpuRecommendationType = Static<typeof GpuRecommendationSchema>
+export type ModelSourceTypeType = Static<typeof ModelSourceTypeSchema>
+export type LocalModelInfoType = Static<typeof LocalModelInfoSchema>
+export type ListLocalModelsResponseType = Static<typeof ListLocalModelsResponseSchema>
+export type LocalModelsStatusResponseType = Static<typeof LocalModelsStatusResponseSchema>
+export type EmbeddingRequest = Static<typeof EmbeddingRequestSchema>
+export type TokenizeRequest = Static<typeof TokenizeRequestSchema>
+export type DetokenizeRequest = Static<typeof DetokenizeRequestSchema>
+export type VLLMGenericRequest = Static<typeof VLLMGenericRequestSchema>
+export type VLLMModel = Static<typeof VLLMModelSchema>
+export type VLLMModelsListResponse = Static<typeof VLLMModelsListResponseSchema>

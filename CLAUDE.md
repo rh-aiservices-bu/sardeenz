@@ -10,9 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Controller API**: Dynamically load/unload models, query status, manage GPU memory (Fastify + TypeScript)
   - Real-time model load progress via SSE events
   - Intelligent error extraction from vLLM logs
+  - LLM benchmarking with latency/throughput metrics
+  - Memory profiling for capacity planning
+  - Multi-GPU support with tensor parallelism and intelligent GPU selection
+  - Model configuration presets (save/load model sets with GPU assignments)
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
-- **Admin Dashboard**: React + PatternFly 6 web interface for model management and monitoring
-- **Container Deployment**: Unified CUDA + Node.js container image for OpenShift/Kubernetes
+- **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
+- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes
 
 **Documentation:** See [`docs/`](./docs/) for detailed architecture, API guides, and deployment instructions.
 
@@ -45,7 +49,7 @@ This project uses an npm workspace monorepo structure:
 
 **Key Design Decisions:**
 - Direct vLLM subprocess management (no Docker-in-Docker) for zero-downtime model loading
-- Stateless architecture (in-memory storage for PoC phase)
+- Hybrid storage: in-memory for runtime state, SQLite for benchmarks/profiles persistence
 - OpenAI-compatible API via vLLM native format
 - Performance-first proxy with TCP passthrough (<50ms routing overhead)
 
@@ -73,17 +77,20 @@ docker run --gpus all -p 3000:3000 sardeenz
 
 ## Documentation
 
-- [`docs/dev-setup.md`](./docs/dev-setup.md) - GPU development environment setup (vLLM, KVCached, uv)
-- [`docs/architecture.md`](./docs/architecture.md) - Detailed system architecture and design
-- [`docs/api-guide.md`](./docs/api-guide.md) - API usage examples and integration patterns
-- [`docs/deployment.md`](./docs/deployment.md) - Container and OpenShift deployment guide
-- [`docs/kvcached/`](./docs/kvcached/) - KVCached GPU memory sharing documentation
-- [`specs/001-multi-model-platform/`](./specs/001-multi-model-platform/) - Design specifications and planning
+- [`docs/architecture.md`](./docs/architecture.md) - System architecture overview
+- [`docs/architecture/backend-architecture.md`](./docs/architecture/backend-architecture.md) - Backend component details
+- [`docs/architecture/frontend-architecture.md`](./docs/architecture/frontend-architecture.md) - Frontend component details
+- [`docs/dev-setup.md`](./docs/dev-setup.md) - GPU development environment setup
+- [`docs/api-guide.md`](./docs/api-guide.md) - API usage examples
+- [`docs/deployment.md`](./docs/deployment.md) - Container and OpenShift deployment
+- [`docs/kvcached/`](./docs/kvcached/) - KVCached GPU memory sharing
+- [`CHANGELOG.md`](./CHANGELOG.md) - Project change history
 
 ## Active Technologies
 
-- TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target (001-multi-model-platform)
-- In-memory storage for PoC phase (Map data structures for ModelInstance, ResourceMetrics, InferenceRequest logs, ControllerOperation audit trail). Future: Config file for ModelConfiguration catalog, optional database for persistence. (001-multi-model-platform)
+- TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target
+- Fastify 5.1+ (backend), React 18 + PatternFly 6 (frontend)
+- SQLite (better-sqlite3) for persistence, in-memory Maps for runtime state
 
 ## Component-Specific Context
 
@@ -101,9 +108,3 @@ For detailed context specific to backend or frontend development:
 - ✅ **Use `docs/development/pf6-guide/` + PatternFly.org** for Patternfly 6 components
 
 Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI development, refer to the local PF6 guide and official PatternFly.org documentation.
-
-## Recent Changes
-
-- 001-multi-model-platform: Implemented async model loading with SSE event streaming, process log buffer, and intelligent error parsing
-- 001-multi-model-platform: Added TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target
-- 001-multi-model-platform: Added in-memory storage for PoC phase (Map data structures)

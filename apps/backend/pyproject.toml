@@ -1,0 +1,26 @@
+[project]
+name = "sardeenz-backend"
+version = "0.1.0"
+description = "Python dependencies for sardeenz backend (vLLM, KVCached)"
+requires-python = ">=3.12"
+
+# Base dependencies - installed in ALL environments (dev + Docker)
+# Docker base image (quay.io/vllm/vllm-cuda:0.11.0) already includes vLLM
+dependencies = [
+    "kvcached==0.1.2",
+    "nvitop==1.6.0",
+]
+
+[dependency-groups]
+# Development-only dependencies
+# vLLM is here because the Docker base image already includes it
+dev = [
+    "vllm==0.11.0",
+]
+
+[tool.uv]
+# kvcached requires --no-build-isolation for C++ extension compilation
+no-build-isolation-package = ["kvcached"]
+
+[tool.uv.extra-build-dependencies]
+kvcached = ["setuptools"]

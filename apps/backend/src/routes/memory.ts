@@ -4,46 +4,102 @@ import {
   SetMemoryLimitsRequestSchema,
   SetMemoryLimitsResponseSchema,
   ErrorResponseSchema,
+  MultiGpuMemoryUsageResponseSchema,
   type SetMemoryLimitsRequestType,
 } from '@sardeenz/types'
 import { MemoryMonitor } from '../services/memory-monitor.js'
 import { AppError } from '../utils/errors.js'
 
+// Response schemas for memory usage
+const KVCacheMetricsSchema = Type.Object({
+  total_gb: Type.Number(),
+  prealloc_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+})
+
+const GpuMetricsSchema = Type.Object({
+  total_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+  utilization_percent: Type.Number(),
+})
+
+const ModelGpuMemorySchema = Type.Object({
+  model_path: Type.String(),
+  instance_id: Type.String(),
+  display_name: Type.String(),
+  gpu_memory_gb: Type.Number(),
+  color: Type.String(),
+})
+
+const MemoryUsageResponseSchema = Type.Object({
+  kvcache: KVCacheMetricsSchema,
+  gpu: GpuMetricsSchema,
+  models: Type.Array(ModelGpuMemorySchema),
+})
+
 export default async function memoryRoutes(fastify: FastifyInstance) {
   const memoryMonitor = new MemoryMonitor(fastify.log)
 
   /**
-   * GET /api/memory/usage - Get GPU memory usage for all models
+   * GET /api/memory/usage - Get GPU and KVCache memory usage with per-model breakdown
    */
   fastify.get(
     '/api/memory/usage',
     {
       schema: {
         tags: ['memory'],
-        description: 'Get GPU memory usage for all models',
+        description: 'Get GPU and KVCache memory usage with per-model breakdown for visualization',
         response: {
-          200: Type.Object({
-            gpu_total_gb: Type.Number(),
-            gpu_used_gb: Type.Number(),
-            gpu_free_gb: Type.Number(),
-            models: Type.Array(
-              Type.Object({
-                model_path: Type.String(),
-                gpu_memory_used_gb: Type.Number(),
-                gpu_memory_limit_gb: Type.Number(),
-                gpu_memory_usage_percent: Type.Number(),
-              })
-            ),
-          }),
+          200: MemoryUsageResponseSchema,
           500: ErrorResponseSchema,
         },
       },
       // TODO: Uncomment when auth is configured
       // onRequest: fastify.requireRole('admin-readonly'),
+      config: { logRequests: false },
     },
     async (_request, reply) => {
       try {
         const usage = await memoryMonitor.getMemoryUsage()
+        return usage
+      } catch (err) {
+        if (err instanceof AppError) {
+          reply.status(err.statusCode as 500)
+          return reply.send(err.toJSON())
+        }
+
+        reply.status(500)
+        return reply.send({
+          error: {
+            message: err instanceof Error ? err.message : 'Unknown error',
+            type: 'internal_error',
+          },
+        })
+      }
+    }
+  )
+
+  /**
+   * GET /api/memory/usage/multi-gpu - Get per-GPU memory breakdown for multi-GPU systems
+   */
+  fastify.get(
+    '/api/memory/usage/multi-gpu',
+    {
+      schema: {
+        tags: ['memory'],
+        description: 'Get per-GPU memory usage with per-model breakdown for multi-GPU visualization',
+        response: {
+          200: MultiGpuMemoryUsageResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      config: { logRequests: false },
+    },
+    async (_request, reply) => {
+      try {
+        const usage = await memoryMonitor.getMultiGpuMemoryUsage()
         return usage
       } catch (err) {
         if (err instanceof AppError) {

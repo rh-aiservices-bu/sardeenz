@@ -8,9 +8,19 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document | Description |
 |----------|-------------|
-| [**Architecture**](./architecture.md) | System architecture, design decisions, and technical details |
+| [**Architecture Overview**](./architecture.md) | High-level system architecture, design decisions, and technical details |
+| [**Backend Architecture**](./architecture/backend-architecture.md) | Detailed backend components, flows, and process management |
+| [**Frontend Architecture**](./architecture/frontend-architecture.md) | Frontend component specs, state management, and API integration |
 | [**API Guide**](./api-guide.md) | API reference with code examples for Controller and Proxy APIs |
 | [**Deployment Guide**](./deployment.md) | Container building and OpenShift/Kubernetes deployment |
+
+### 🛠️ Development Guides
+
+| Resource | Description |
+|----------|-------------|
+| [**Development Setup**](./dev-setup.md) | GPU development environment setup (vLLM, KVCached, uv) |
+| [**PatternFly 6 Guide**](./development/pf6-guide/README.md) | Complete UI development guide with PatternFly 6 |
+| [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend |
 
 ### 🔧 Technical Resources
 
@@ -18,6 +28,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 |----------|-------------|
 | [**KVCached**](./kvcached/) | GPU memory sharing documentation and setup guides |
 | [**Specifications**](../specs/001-multi-model-platform/) | Design specifications, planning documents, and data models |
+| [**Changelog**](../CHANGELOG.md) | Project change history |
 
 ### 🚀 Getting Started
 
@@ -45,7 +56,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 **Building features and fixing bugs?**
 
-- [Architecture](./architecture.md) - Understand system components and data flow
+- [Architecture Overview](./architecture.md) - Understand system components and data flow
+- [Backend Architecture](./architecture/backend-architecture.md) - Backend component details
+- [Frontend Architecture](./architecture/frontend-architecture.md) - Frontend component specs
 - [API Guide](./api-guide.md#code-examples) - Integration code examples
 - [CLAUDE.md](../CLAUDE.md#common-commands) - Development workflow commands
 - [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
@@ -86,9 +99,11 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 **Working on the dashboard?**
 
-- [Architecture: Admin Dashboard](./architecture.md#3-admin-dashboard) - Dashboard component overview
+- [Frontend Architecture](./architecture/frontend-architecture.md) - Component specs and state management
+- [PatternFly 6 Guide](./development/pf6-guide/README.md) - Complete local UI development guide
+- [Frontend API Client](./development/frontend-api-client.md) - API client integration
+- [PatternFly 6 Documentation](https://www.patternfly.org/v6/) - Official UI component library
 - [CLAUDE.md](../CLAUDE.md#common-commands) - Frontend development commands
-- [PatternFly 6 Documentation](https://www.patternfly.org/v6/) - UI component library
 
 **Key Files:**
 - `apps/frontend/src/components/` - Reusable UI components
@@ -101,7 +116,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document | Topics Covered |
 |----------|----------------|
-| [architecture.md](./architecture.md) | System overview, technology stack, component architecture, data model, process management, memory management, security, performance |
+| [architecture.md](./architecture.md) | System overview, technology stack, component architecture, data model, security, performance |
+| [architecture/backend-architecture.md](./architecture/backend-architecture.md) | Backend components, model loading flows, process management, GPU memory tracking |
+| [architecture/frontend-architecture.md](./architecture/frontend-architecture.md) | Frontend components, state management, routing, API integration, real-time updates |
 | [specs/spec.md](../specs/001-multi-model-platform/spec.md) | Feature requirements, priorities, user stories |
 | [specs/plan.md](../specs/001-multi-model-platform/plan.md) | Implementation plan, milestones, timeline |
 | [specs/data-model.md](../specs/001-multi-model-platform/data-model.md) | Entity schemas, relationships, validation rules |
@@ -120,11 +137,20 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [deployment.md](./deployment.md) | Container build, Docker Compose, OpenShift deployment, configuration, health checks, monitoring, troubleshooting |
 | [kvcached/](./kvcached/) | KVCached installation, configuration, memory segment management |
 
-### Development Workflow
+### Development Guides
+
+| Document | Topics Covered |
+|----------|----------------|
+| [dev-setup.md](./dev-setup.md) | GPU development environment, vLLM setup, KVCached configuration |
+| [development/pf6-guide/](./development/pf6-guide/README.md) | PatternFly 6 components, styling standards, testing patterns, troubleshooting |
+| [development/frontend-api-client.md](./development/frontend-api-client.md) | Axios setup, API client patterns, error handling |
+
+### Project Management
 
 | Document | Topics Covered |
 |----------|----------------|
 | [CLAUDE.md](../CLAUDE.md) | Project overview, quick start, common commands, active technologies |
+| [CHANGELOG.md](../CHANGELOG.md) | Project change history, feature additions, bug fixes |
 | [specs/quickstart.md](../specs/001-multi-model-platform/quickstart.md) | Developer quickstart guide |
 
 ## Key Concepts

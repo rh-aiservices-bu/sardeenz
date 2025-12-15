@@ -44,7 +44,7 @@ npm run dev
 
 On first run, the script will:
 1. Create a Python virtual environment at `apps/backend/.venv`
-2. Install vLLM 0.11.0 and KVCached
+2. Install dependencies from `apps/backend/pyproject.toml` (vLLM, KVCached)
 3. Set up KVCached environment variables
 4. Start the backend and frontend development servers
 
@@ -52,13 +52,23 @@ On first run, the script will:
 
 ### Environment Variables
 
-The start-dev script configures these environment variables for KVCached GPU memory sharing:
+The backend uses environment variables for configuration. A reference file is available at `apps/backend/.env.example`.
 
-| Variable | Value | Description |
-|----------|-------|-------------|
+**KVCached variables** (configured by start-dev script):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `ENABLE_KVCACHED` | `true` | Enables KVCached memory sharing |
 | `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for KVCached support |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index (override with env var) |
+| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index |
+
+**HuggingFace authentication** (for gated models like Llama):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HF_TOKEN` | (none) | HuggingFace access token for gated models |
+
+Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens). You can also set this via the Settings page in the web UI.
 
 ### Model Loading
 
@@ -86,6 +96,36 @@ For development and testing on 8GB GPUs:
 - With KVCached, you can load 2-3 small models on an 8GB GPU
 - Monitor VRAM with `nvidia-smi` or the Admin Dashboard
 
+## Python Dependency Management
+
+Python dependencies are managed via `apps/backend/pyproject.toml` using [uv](https://docs.astral.sh/uv/).
+
+### Dependency Groups
+
+| Group | Packages | Used In |
+|-------|----------|---------|
+| (base) | kvcached | Dev + Docker |
+| dev | vllm | Dev only (Docker base image has vLLM) |
+
+### Adding New Packages
+
+1. Edit `apps/backend/pyproject.toml`:
+   - Add to `dependencies` for packages needed in both dev and production
+   - Add to `[dependency-groups] dev` for development-only packages
+
+2. Regenerate lock file:
+   ```bash
+   cd apps/backend
+   uv lock
+   ```
+
+3. Install updated dependencies:
+   ```bash
+   uv sync --locked --group dev
+   ```
+
+4. Commit both `pyproject.toml` and `uv.lock`
+
 ## Manual Python Setup (Optional)
 
 If you prefer to set up the Python environment manually:
@@ -93,18 +133,11 @@ If you prefer to set up the Python environment manually:
 ```bash
 cd apps/backend
 
-# Ensure Python 3.12 is available (downloads if needed)
-uv python install 3.12
+# Create venv and install all dependencies (including dev group)
+uv sync --locked --group dev
 
-# Create virtual environment
-uv venv .venv --python 3.12
-
-# Activate it
+# Activate the environment
 source .venv/bin/activate
-
-# Install vLLM and KVCached
-uv pip install vllm==0.11.0
-uv pip install kvcached --no-build-isolation
 ```
 
 Then run the server without the wrapper:
@@ -160,7 +193,9 @@ NVIDIA drivers are not installed. Install them from:
 
 Ensure the virtual environment is activated and vLLM is installed:
 ```bash
-source apps/backend/.venv/bin/activate
+cd apps/backend
+uv sync --locked --group dev
+source .venv/bin/activate
 which vllm  # Should show path in .venv/bin/
 ```
 

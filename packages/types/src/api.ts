@@ -2,9 +2,17 @@ import type { ModelStatus } from './models.js'
 
 // Controller API Request/Response types
 
+/** Model source type - HuggingFace ID or local path */
+export type ModelSourceType = 'huggingface' | 'local'
+
 export interface LoadModelRequest {
   model_path: string
   max_tokens?: number
+  extra_args?: string[] // Additional vLLM CLI arguments
+  gpu_ids?: number[] // Optional explicit GPU selection (auto-selects if not provided)
+  tensor_parallel_size?: number // For large models spanning multiple GPUs (default: 1)
+  source_type?: ModelSourceType // Model source type (default: 'huggingface')
+  served_model_name?: string // Name for vLLM --served-model-name (default: model_path)
 }
 
 export interface LoadModelResponse {
@@ -26,9 +34,25 @@ export interface ListModelsResponse {
   total: number
 }
 
+/** Memory metrics in API response (snake_case) */
+export interface ModelMemoryMetricsDTO {
+  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  total_gpu_memory_gib: number
+  weights_memory_gib: number
+  cuda_graph_memory_gib: number
+  /** Overhead memory (total - weights - CUDA graphs) in GiB */
+  overhead_memory_gib: number
+  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
+  kv_cache_available_gib: number
+  kv_cache_per_request_mib: number
+  max_model_len: number
+}
+
 export interface ModelInstanceDTO {
   id: string
   model_path: string
+  /** Model name used by vLLM for inference (from --served-model-name or defaults to model_path) */
+  model_name: string
   status: ModelStatus
   port: number
   process_id: number
@@ -37,6 +61,12 @@ export interface ModelInstanceDTO {
   loaded_at: string
   ready_at?: string
   error_message?: string
+  memory_metrics?: ModelMemoryMetricsDTO
+  has_chat_template?: boolean
+  launch_command?: string // Full vLLM command for debugging/reproduction
+  gpu_ids: number[] // GPU indices this model is running on
+  tensor_parallel_size: number // 1 = single GPU, >1 = spanning multiple GPUs
+  kvcached_enabled: boolean // Whether KVCached is enabled (false for tensor parallel)
 }
 
 export interface GetModelResponse {
@@ -50,13 +80,83 @@ export interface ModelHealthResponse {
   uptime_seconds: number
 }
 
-export interface MemoryUsageResponse {
-  gpu_total_gb: number
-  gpu_used_gb: number
-  gpu_free_gb: number
-  models: ModelMemoryUsage[]
+/** KVCache memory pool metrics (shared across all models) */
+export interface KVCacheMetrics {
+  total_gb: number // Total KVCache pool size
+  prealloc_gb: number // Pre-allocated but not yet used
+  used_gb: number // Currently used by active requests
+  free_gb: number // Available for new allocations
 }
 
+/** GPU memory metrics from nvidia-smi */
+export interface GpuMetrics {
+  total_gb: number
+  used_gb: number // Total used by all processes
+  free_gb: number
+  utilization_percent: number
+}
+
+/** Per-model GPU memory breakdown */
+export interface ModelGpuMemory {
+  model_path: string
+  instance_id: string // Unique instance identifier
+  display_name: string // Short name for legend, unique per instance (e.g., "Llama-3.2-1B", "Llama-3.2-1B (2)")
+  gpu_memory_gb: number // Model's GPU footprint (weights + CUDA graphs)
+  color: string // Assigned color for visualization
+}
+
+export interface MemoryUsageResponse {
+  kvcache: KVCacheMetrics
+  gpu: GpuMetrics
+  models: ModelGpuMemory[]
+}
+
+// Multi-GPU support types
+
+/** Per-GPU metrics with model breakdown for multi-GPU systems */
+export interface PerGpuMetrics {
+  gpu_index: number
+  name: string
+  total_gb: number
+  used_gb: number
+  free_gb: number
+  utilization_percent: number
+  models: ModelGpuMemory[]
+}
+
+/** Multi-GPU memory usage response */
+export interface MultiGpuMemoryUsageResponse {
+  gpus: PerGpuMetrics[]
+  kvcache: KVCacheMetrics
+  total_system_free_gb: number
+}
+
+/** Individual GPU info for availability response */
+export interface GpuInfo {
+  index: number
+  name: string
+  memory_total_mb: number
+  memory_used_mb: number
+  memory_free_mb: number
+  utilization_percent: number
+  models_loaded: number
+  recommended: boolean
+}
+
+/** GPU recommendation for auto-selection */
+export interface GpuRecommendation {
+  gpu_id: number
+  free_memory_gb: number
+  reason: string
+}
+
+/** Available GPUs with selection recommendation */
+export interface GpuAvailabilityResponse {
+  gpus: GpuInfo[]
+  recommendation: GpuRecommendation
+}
+
+/** Legacy model memory usage (for backward compatibility) */
 export interface ModelMemoryUsage {
   model_path: string
   gpu_memory_used_gb: number
@@ -122,6 +222,7 @@ export interface ChatCompletionRequest {
   presence_penalty?: number
   frequency_penalty?: number
   user?: string
+  chat_template?: string // Optional custom chat template (requires --trust-request-chat-template flag)
 }
 
 export interface ChatMessage {
@@ -151,6 +252,52 @@ export interface UsageInfo {
   total_tokens: number
 }
 
+// Streaming response types (OpenAI-compatible SSE format)
+
+/** Delta content in streaming chunk */
+export interface ChatCompletionDelta {
+  role?: 'assistant' | 'user' | 'system'
+  content?: string
+}
+
+/** Single streaming chunk choice */
+export interface ChatCompletionStreamChoice {
+  index: number
+  delta: ChatCompletionDelta
+  finish_reason: 'stop' | 'length' | 'content_filter' | null
+}
+
+/** Streaming chunk response */
+export interface ChatCompletionChunk {
+  id: string
+  object: 'chat.completion.chunk'
+  created: number
+  model: string
+  choices: ChatCompletionStreamChoice[]
+  /** Usage info included in final chunk when stream_options.include_usage is true */
+  usage?: UsageInfo
+}
+
+// Instance-specific responses
+
+export interface ListInstancesResponse {
+  instances: ModelInstanceDTO[]
+  total: number
+}
+
+export interface UnloadInstanceResponse {
+  status: 'success'
+  instance_id: string
+  model_path: string
+  unloaded_at: string
+}
+
+export interface GetInstanceLogsResponse {
+  instance_id: string
+  logs: string
+  line_count: number
+}
+
 // Error responses
 
 export interface ErrorResponse {
@@ -159,4 +306,52 @@ export interface ErrorResponse {
     type: string
     code?: string
   }
+}
+
+// Settings API types
+
+export interface SettingsResponse {
+  hf_token: string | null // Masked token (last 4 chars) or null
+  hf_token_source: 'env' | 'runtime' | null // Where token originated
+}
+
+export interface UpdateSettingsRequest {
+  hf_token?: string // Full token when updating
+}
+
+export interface TestHfTokenRequest {
+  token: string
+}
+
+export interface TestHfTokenResponse {
+  valid: boolean
+  username?: string // HF username if valid
+  error?: string // Error message if invalid
+}
+
+// Local Models API types
+
+/** Information about a local model available in the configured directory */
+export interface LocalModelInfo {
+  /** Model directory name */
+  name: string
+  /** Full path to model directory */
+  path: string
+  /** Last modified timestamp */
+  modified_at?: string
+  /** Whether config.json exists (indicates valid HF model) */
+  has_config: boolean
+}
+
+/** Response for listing local models */
+export interface ListLocalModelsResponse {
+  models: LocalModelInfo[]
+  total: number
+  base_path: string
+}
+
+/** Response for local models feature status */
+export interface LocalModelsStatusResponse {
+  enabled: boolean
+  path?: string
 }

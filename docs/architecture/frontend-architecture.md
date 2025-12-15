@@ -95,6 +95,8 @@ App (AuthProvider, Router)
 │
 └── Shared Components
     ├── LoadModelDialog (Modal form)
+    ├── SaveConfigurationDialog (Save current models as preset)
+    ├── LoadConfigurationDialog (Load saved configuration)
     ├── UnloadModelDialog (Confirmation)
     ├── ErrorAlert (Notification)
     └── LoadingSpinner
@@ -179,57 +181,112 @@ const ModelList: React.FC = () => {
 
 ### Route Structure
 
-| Path | Component | Purpose | Auth Required |
-|------|-----------|---------|---------------|
-| `/` | Dashboard | Model overview + metrics summary | Yes |
-| `/models` | ModelManagement | List all models, load/unload | Yes |
-| `/models/:id` | ModelDetails | Single model details, logs, metrics | Yes |
-| `/metrics` | Metrics | System-wide metrics and charts | Yes |
+| Path | Component | Purpose |
+|------|-----------|---------|
+| `/` | ModelManagement | Model list, load, unload, memory visualization |
+| `/gpu` | GpuInfo | GPU metrics and monitoring |
+| `/benchmark` | ModelBenchmark | Performance testing |
+| `/settings` | Settings | Application configuration |
 
-### Route Configuration
+### Centralized Route Configuration
+
+Routes are defined in a centralized configuration file (`src/routes.tsx`) that serves as the single source of truth for both routing and navigation:
+
+```tsx
+// src/routes.tsx
+import ModelManagement from './pages/ModelManagement'
+import GpuInfo from './pages/GpuInfo'
+import ModelBenchmark from './pages/ModelBenchmark'
+import Settings from './pages/Settings'
+
+export interface RouteConfig {
+  path: string
+  element: JSX.Element
+  label: string        // Navigation display label
+  itemId: string       // NavItem identifier
+}
+
+export const routes: RouteConfig[] = [
+  {
+    path: '/',
+    element: <ModelManagement />,
+    label: 'Model Management',
+    itemId: 'model-management',
+  },
+  {
+    path: '/gpu',
+    element: <GpuInfo />,
+    label: 'GPU Info',
+    itemId: 'gpu-info',
+  },
+  {
+    path: '/benchmark',
+    element: <ModelBenchmark />,
+    label: 'Model Benchmark',
+    itemId: 'model-benchmark',
+  },
+  {
+    path: '/settings',
+    element: <Settings />,
+    label: 'Settings',
+    itemId: 'settings',
+  },
+]
+```
+
+### App Integration with Auto-Generated Routes
+
+The `App.tsx` component imports the route configuration and automatically generates both the route definitions and navigation sidebar:
 
 ```tsx
 // src/App.tsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { routes } from './routes'
 
 function App() {
+  const location = useLocation()
+
+  // Auto-generated navigation sidebar from routes
+  const sidebar = (
+    <PageSidebar isSidebarOpen={isSidebarOpen}>
+      <PageSidebarBody>
+        <Nav>
+          <NavList>
+            {routes.map((route) => (
+              <NavItem
+                key={route.itemId}
+                itemId={route.itemId}
+                isActive={location.pathname === route.path}
+              >
+                <Link to={route.path}>{route.label}</Link>
+              </NavItem>
+            ))}
+          </NavList>
+        </Nav>
+      </PageSidebarBody>
+    </PageSidebar>
+  )
+
+  // Auto-generated route definitions
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-
-          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/models" element={<ModelManagement />} />
-            <Route path="/models/:id" element={<ModelDetails />} />
-            <Route path="/metrics" element={<Metrics />} />
-          </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
-  );
+    <Page masthead={masthead} sidebar={sidebar}>
+      <Routes>
+        {routes.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+      </Routes>
+    </Page>
+  )
 }
 ```
 
-### Protected Route Implementation
+### Benefits of Centralized Routing
 
-```tsx
-// src/components/Auth/ProtectedRoute.tsx
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-
-export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) return <Spinner />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-
-  return <>{children}</>;
-};
-```
+1. **Single Source of Truth**: Routes and navigation are defined in one place
+2. **Automatic Synchronization**: Navigation automatically updates when routes change
+3. **Type Safety**: TypeScript ensures all routes have required metadata
+4. **Easy Maintenance**: Adding a new route requires only one change in `routes.tsx`
+5. **Reduced Duplication**: No need to maintain separate route and navigation definitions
 
 ## Authentication Flow
 
@@ -513,38 +570,46 @@ export function useWebSocket(url: string) {
 
 ### 1. ModelCard
 
-**Purpose:** Display a single model instance with status, metrics, and actions.
+**Purpose:** Display a single model instance with status, GPU placement, and actions.
 
 **Props:**
 ```tsx
 interface ModelCardProps {
-  model: ModelInstance;
-  onUnload: (id: string) => void;
-  userRole: 'admin' | 'admin-readonly';
+  model: ModelInstanceDTO;
+  onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void;
+  isUnloading?: boolean;
 }
 ```
 
 **PatternFly Components:**
 - `Card`, `CardTitle`, `CardBody`, `CardFooter`
-- `Badge` (for status)
-- `ProgressBar` (for memory usage)
+- `DescriptionList` (for model details)
+- `Badge` (via `ModelStatusBadge` for status)
 - `Button` (for actions)
+- `ExpandableSection` (for launch command)
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│ llama-2-7b          [Running] badge │
+│ meta-llama/Llama-3.2-1B   [Running] │
 │                                     │
-│ Port: 5001                          │
-│ Memory: 4.2 GB / 6.0 GB             │
-│ [████████████░░░] 70%               │
+│ Served model name: Llama-3.2-1B     │
+│ Port: 8001                          │
+│ Max Tokens: 4096                    │
+│ GPU Memory: 80%             Details │
+│ GPU: 0        (or GPUs: 0, 1 (...)) │
+│ Started at: 12/5/2025, 10:30 AM     │
 │                                     │
-│ Uptime: 2h 15m                      │
-│ Requests: 1,234                     │
+│ ▸ Launch Command                    │
 │                                     │
-│ [View Details] [Unload] (admin only)│
+│ [Unload]                            │
 └─────────────────────────────────────┘
 ```
+
+**GPU Display:**
+- Single GPU: Shows "GPU 0"
+- Multiple GPUs: Shows "GPU 0, GPU 1 (tensor parallel)"
+- The "(tensor parallel)" suffix indicates model is split across GPUs
 
 ### 2. LoadModelDialog
 

@@ -27,15 +27,18 @@ Sardeenz is a multi-model management platform designed to:
 ┌─────────────────────────────────────────────────────────────┐
 │                      Admin Dashboard                        │
 │              (React + PatternFly 6 UI)                      │
+│                  (served on Port 3000)                      │
 └────────────────┬────────────────────────────────────────────┘
                  │ HTTPS (OAuth/OIDC)
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Controller API                           │
-│              (Fastify Backend - Port 3000)                  │
-│  • Model lifecycle (load/unload)                            │
-│  • Status & metrics endpoints                               │
-│  • Resource management                                      │
+│              Fastify Backend (Port 3000)                    │
+├─────────────────────────────────────────────────────────────┤
+│  Controller API (/api/*)           Inference Proxy (/v1/*) │
+│  • Model lifecycle (load/unload)   • OpenAI-compatible API  │
+│  • Status & metrics endpoints      • Model routing          │
+│  • GPU selection & management      • Streaming support (SSE)│
+│  • Static file serving (frontend)  • <50ms routing overhead │
 └────────────────┬────────────────────────────────────────────┘
                  │ subprocess management
                  ▼
@@ -45,24 +48,17 @@ Sardeenz is a multi-model management platform designed to:
 │  │   Model A    │  │   Model B    │  │   Model C    │      │
 │  │  (Port 5001) │  │  (Port 5002) │  │  (Port 5003) │      │
 │  │   OpenAI API │  │   OpenAI API │  │   OpenAI API │      │
+│  │   GPU 0      │  │   GPU 0      │  │  GPU 0-1 TP  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └───────────┬─────────────────────────────────────────────────┘
-            │ KVCached IPC shared memory
+            │ KVCached IPC shared memory (single-GPU models)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   GPU Memory (CUDA)                         │
-│  • Shared KV cache segments                                 │
-│  • Model weights                                            │
+│  • Shared KV cache segments (via KVCached)                  │
+│  • Model weights (per-GPU or tensor parallel)               │
 │  • Compute kernels                                          │
 └─────────────────────────────────────────────────────────────┘
-
-         ┌──────────────────────────────────────┐
-         │      Unified Proxy (Port 8000)       │
-         │  • OpenAI-compatible API             │
-         │  • Model routing by identifier       │
-         │  • Streaming support (SSE)           │
-         │  • <50ms routing overhead            │
-         └──────────────────────────────────────┘
                      ▲
                      │ HTTPS
                      │
@@ -78,6 +74,7 @@ Sardeenz is a multi-model management platform designed to:
 | **Runtime** | Node.js | 22.x | Server-side JavaScript execution |
 | **Language** | TypeScript | 5.7+ | Type-safe development (strict mode) |
 | **Framework** | Fastify | 5.1+ | High-performance HTTP server |
+| **Database** | SQLite | 3.x | Benchmark/profile persistence (better-sqlite3) |
 | **Auth** | @fastify/oauth2 | Latest | OAuth 2.0 / OIDC integration |
 | **Metrics** | fastify-metrics | Latest | Prometheus-format metrics |
 | **API Docs** | @fastify/swagger | Latest | OpenAPI 3.1 specification |
@@ -110,10 +107,14 @@ sardeenz/
 ├── apps/
 │   ├── backend/              # Fastify backend
 │   │   ├── src/
-│   │   │   ├── controllers/  # Request handlers
+│   │   │   ├── db/           # SQLite database layer
+│   │   │   │   ├── connection.ts    # Database connection
+│   │   │   │   ├── migrate.ts       # Migration runner
+│   │   │   │   └── migrations/      # SQL migration files
 │   │   │   ├── services/     # Business logic
+│   │   │   ├── stores/       # Data stores (in-memory + SQLite)
 │   │   │   ├── routes/       # API routes
-│   │   │   └── index.ts      # Entry point
+│   │   │   └── server.ts     # Entry point
 │   │   └── package.json
 │   └── frontend/             # React frontend
 │       ├── src/
@@ -142,7 +143,26 @@ sardeenz/
 - `GET /api/v1/models` - List all model instances
 - `GET /api/v1/models/{id}` - Get model instance details
 - `GET /api/v1/metrics` - Prometheus-format metrics
-- `GET /health` - Health check endpoint
+- `GET /api/health` - Health check endpoint
+- `GET /api/health/ready` - Readiness probe endpoint
+- `GET /api/health/live` - Liveness probe endpoint
+
+**Benchmarking Endpoints:**
+
+- `POST /api/benchmarks` - Create and start a benchmark run
+- `GET /api/benchmarks` - List all benchmark runs
+- `GET /api/benchmarks/{id}` - Get benchmark run details with scenarios
+- `GET /api/benchmarks/{id}/events` - SSE stream for real-time progress
+- `DELETE /api/benchmarks/{id}` - Delete a benchmark run
+
+**Memory Profile Endpoints:**
+
+- `GET /api/memory/profiles` - List all saved memory profiles
+- `POST /api/memory/profiles` - Create a memory profile from running model
+- `GET /api/memory/profiles/lookup` - Find profile by model_path + max_tokens + gpu_name
+- `POST /api/memory/profiles/check` - Pre-load memory check (will model fit?)
+- `GET /api/memory/profiles/{id}` - Get a specific profile
+- `DELETE /api/memory/profiles/{id}` - Delete a profile
 
 **Authentication:** OAuth 2.0 / OIDC with RBAC
 - `admin` role: Full control (load/unload)
@@ -154,40 +174,7 @@ sardeenz/
 - In-memory state management (Map data structures)
 - Event-driven architecture for process lifecycle events
 
-#### ProcessLogBuffer
-
-Captures vLLM process stdout/stderr for debugging and real-time streaming:
-
-- **Ring buffer design**: Bounded to 500 lines per instance
-- **Real-time listeners**: Supports SSE push via callback registration
-- **Cleanup policy**:
-  - Immediate clear on successful model unload
-  - 30-minute retention on failure for debugging
-- **Thread-safe**: Handles concurrent writes from stdout/stderr
-
-#### EventBus
-
-Singleton service for SSE event distribution:
-
-- **Event types**: `log`, `status`, `memory`, `progress`, `error`
-- **Per-instance subscriptions**: Connections scoped to model instance ID
-- **Event filtering**: Clients can subscribe to specific event types
-- **Heartbeat**: 30-second keepalive messages
-- **Factory methods**: `createLogEvent()`, `createStatusEvent()` for consistent event structure
-
-#### Error Parser
-
-Extracts meaningful error messages from vLLM process output:
-
-| Error Pattern | Description |
-|---------------|-------------|
-| CUDA OOM | Memory allocation failures with details |
-| Model not found | Missing model paths or files |
-| Port conflict | Address already in use |
-| CUDA/PyTorch mismatch | Version compatibility issues |
-| Generic exception | Python traceback extraction |
-
-Falls back to last stderr lines with exit code if no pattern matches.
+For detailed component documentation (ProcessLogBuffer, EventBus, Error Parser, Memory Parser, GPU Selector), see [Backend Architecture](./architecture/backend-architecture.md).
 
 ### 2. Unified Proxy
 
@@ -198,15 +185,20 @@ Falls back to last stderr lines with exit code if no pattern matches.
 - Model identification via `model` field in request body
 - Streaming support using Server-Sent Events (SSE)
 - Connection pooling to vLLM backends
-- TCP passthrough using Fastify `reply.hijack()` for minimal latency
+- Round-robin load balancing for multiple instances of same model
+- Direct port-based proxy (`/api/direct/:port/*`) for testing
 
 **Performance Target:** <50ms routing overhead (p95)
 
 **Routing Logic:**
 1. Parse incoming request to extract model identifier
 2. Lookup model instance in registry (Map lookup: O(1))
-3. Forward request to vLLM instance port
-4. Stream response back to client
+3. For multiple instances: round-robin load balancing
+4. Forward request to vLLM instance port
+5. Stream response back to client
+
+**Direct Proxy Mode:**
+For testing and debugging, the `/api/direct/:port/*` endpoint bypasses model routing and forwards requests directly to a specific port. Example: `POST /api/direct/5001/v1/chat/completions`
 
 ### 3. Admin Dashboard
 
@@ -222,6 +214,8 @@ Falls back to last stderr lines with exit code if no pattern matches.
 - PatternFly 6 components (Cards, Tables, Charts, Forms)
 - React Query for server state management
 - WebSocket connection for real-time updates
+
+For detailed frontend architecture, see [Frontend Architecture](./architecture/frontend-architecture.md).
 
 ### 4. vLLM Model Instances
 
@@ -278,12 +272,25 @@ interface ModelInstance {
   displayName: string;             // Human-readable name
   status: 'starting' | 'active' | 'stopping' | 'failed';
   port: number;                    // vLLM API port
-  pid: number;                     // Process ID
+  processId: number;               // API Server PID (from spawn)
+  engineCorePid?: number;          // EngineCore PID (allocates GPU VRAM)
   gpuMemoryLimit: number;          // GB allocated
+  gpuIds: number[];                // GPU indices this model runs on
+  tensorParallelSize: number;      // 1 = single GPU, >1 = spanning multiple GPUs
+  kvcachedEnabled: boolean;        // False for tensor parallel models
   createdAt: Date;
   startedAt?: Date;
   stoppedAt?: Date;
   errorMessage?: string;
+  memoryMetrics?: ModelMemoryMetrics; // Parsed from vLLM logs after loading
+}
+
+interface ModelMemoryMetrics {
+  weightsMemoryGiB: number;        // Model weights memory
+  cudaGraphMemoryGiB: number;      // CUDA graph capture memory
+  kvCacheAvailableGiB: number;     // Available KV cache memory
+  kvCachePerRequestMiB: number;    // KV cache per max-size request
+  maxModelLen: number;             // Max context length
 }
 ```
 
@@ -298,6 +305,91 @@ interface ResourceMetrics {
   activeConnections: number;       // Current connections
   avgResponseTime: number;         // ms (p50)
   p95ResponseTime: number;         // ms (p95)
+}
+```
+
+#### BenchmarkRun (SQLite Persisted)
+
+```typescript
+interface BenchmarkRun {
+  id: string;                      // UUID
+  name?: string;                   // Optional run name
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
+  mode: 'isolated' | 'contention'; // Execution mode
+  kvcachedEnabled: boolean;        // System KVCached status
+  createdAt: string;               // ISO timestamp
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  totalRequests: number;           // Sum across scenarios
+  successfulRequests: number;
+  failedRequests: number;
+  durationSeconds?: number;
+  scenarios: BenchmarkScenario[];  // Child scenarios
+}
+
+interface BenchmarkScenario {
+  id: string;
+  runId: string;
+  instanceId: string;              // Model instance being tested
+  routingMode: 'direct' | 'proxy'; // Route to vLLM or through proxy
+  modelPath: string;
+  modelName: string;
+  inputTokens: number;             // Target input token count
+  outputTokens: number;            // Target max_tokens
+  concurrency: number;             // Parallel requests
+  warmupRequests: number;          // Unmeasured warmup
+  totalRequests: number;           // Measured requests
+  slaThresholdMs?: number;         // For goodput calculation
+  status: 'pending' | 'running' | 'completed' | 'failed';
+}
+
+interface BenchmarkMetrics {
+  scenarioId: string;
+  // TTFT (Time To First Token) in ms
+  ttftMin: number; ttftMax: number; ttftAvg: number;
+  ttftP50: number; ttftP90: number; ttftP95: number; ttftP99: number;
+  // TPS (Tokens Per Second)
+  tpsMin: number; tpsMax: number; tpsAvg: number;
+  tpsP50: number; tpsP90: number; tpsP95: number; tpsP99: number;
+  // E2E Latency in ms
+  e2eMin: number; e2eMax: number; e2eAvg: number;
+  e2eP50: number; e2eP90: number; e2eP95: number; e2eP99: number;
+  // Goodput
+  goodputCount: number;            // Requests under SLA
+  goodputPercent: number;
+  // Throughput
+  requestsPerSecond: number;
+  tokensPerSecondTotal: number;
+}
+```
+
+#### MemoryProfile (SQLite Persisted)
+
+```typescript
+interface MemoryProfile {
+  id: string;                      // UUID
+  profileName: string;             // Human-readable name
+  modelPath: string;               // Model identifier
+  maxTokens: number;               // Context length when profiled
+
+  // Memory breakdown (GiB)
+  totalGpuMemoryGib: number;       // Total GPU memory consumed
+  weightsMemoryGib: number;        // Model weights
+  cudaGraphsGib: number;           // CUDA graph capture
+  overheadMemoryGib: number;       // Other overhead
+  kvCacheAvailableGib: number;     // Available KV cache (deprecated with KVCached)
+  kvCachePerRequestMib?: number;   // Estimated per-request KV cache
+
+  // GPU context
+  gpuName?: string;                // GPU where profiled
+  gpuTotalMemoryGib?: number;      // Total GPU memory
+
+  // Metadata
+  comments?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 ```
 
@@ -482,12 +574,13 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 - **Autoscaling:** Dynamic model loading based on request patterns
 - **A/B Testing:** Traffic splitting between model versions
 - **Request Queueing:** Priority queue for high-demand models
-- **Multi-GPU Support:** Distribute models across multiple GPUs
 - **LoRA Adapter Support:** Dynamic adapter loading for fine-tuned models
 
 ---
 
 **See Also:**
+- [Backend Architecture](./architecture/backend-architecture.md) - Detailed backend component documentation
+- [Frontend Architecture](./architecture/frontend-architecture.md) - Detailed frontend component documentation
 - [API Guide](./api-guide.md) - API usage examples
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
 - [KVCached Documentation](./kvcached/) - GPU memory sharing details

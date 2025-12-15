@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import * as fs from 'node:fs'
 
 export interface ProcessOptions {
   command: string
@@ -104,6 +105,49 @@ export async function killProcessGracefully(
 }
 
 /**
+ * Kill a process and all its descendants with SIGKILL (bypasses signal handlers)
+ * Use this for vLLM/KVCached processes where Python signal handlers would
+ * delete the shared IPC segment, breaking other running models.
+ *
+ * SIGKILL doesn't propagate to children, so we must explicitly kill all
+ * descendant processes (like vLLM's EngineCore) before killing the parent.
+ */
+export async function killProcessImmediate(
+  proc: ChildProcess,
+  timeout: number = 5000
+): Promise<void> {
+  if (!proc.pid) {
+    return
+  }
+
+  // Get all descendant PIDs before killing (they'll disappear after parent dies)
+  const descendants = await getDescendantPids(proc.pid)
+
+  // Kill descendants first (children before parent) to ensure GPU processes are cleaned up
+  for (const pid of descendants) {
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      // Process may have already exited
+    }
+  }
+
+  // Kill the parent process
+  return new Promise((resolve) => {
+    proc.kill('SIGKILL')
+
+    const killTimeout = setTimeout(() => {
+      resolve() // Timeout, process likely dead
+    }, timeout)
+
+    proc.on('exit', () => {
+      clearTimeout(killTimeout)
+      resolve()
+    })
+  })
+}
+
+/**
  * Get the next available port in a range
  */
 export function getNextPort(basePort: number, usedPorts: Set<number>): number {
@@ -145,4 +189,37 @@ export async function waitFor(
 
     await new Promise((resolve) => setTimeout(resolve, interval))
   }
+}
+
+/**
+ * Get all descendant PIDs of a process (children, grandchildren, etc.)
+ * Uses /proc filesystem on Linux to traverse the process tree
+ */
+export async function getDescendantPids(parentPid: number): Promise<number[]> {
+  const descendants: number[] = []
+  const queue: number[] = [parentPid]
+
+  while (queue.length > 0) {
+    const pid = queue.shift()!
+    try {
+      // Read /proc/<pid>/task/<pid>/children for direct children
+      const childrenPath = `/proc/${pid}/task/${pid}/children`
+      const childrenContent = await fs.promises.readFile(childrenPath, 'utf-8')
+      const childPids = childrenContent
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(Number)
+        .filter((n) => !isNaN(n))
+
+      for (const childPid of childPids) {
+        descendants.push(childPid)
+        queue.push(childPid) // Check grandchildren too
+      }
+    } catch {
+      // Process may have exited, or file doesn't exist
+    }
+  }
+
+  return descendants
 }

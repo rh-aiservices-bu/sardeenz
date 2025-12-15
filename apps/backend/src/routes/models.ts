@@ -29,6 +29,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
     return {
       id: instance.id,
       model_path: instance.modelPath,
+      model_name: instance.modelName,
       status: instance.status,
       port: instance.port,
       process_id: instance.processId,
@@ -37,6 +38,22 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       loaded_at: instance.loadedAt.toISOString(),
       ready_at: instance.readyAt?.toISOString(),
       error_message: instance.errorMessage,
+      memory_metrics: instance.memoryMetrics
+        ? {
+            total_gpu_memory_gib: instance.memoryMetrics.totalGpuMemoryGiB,
+            weights_memory_gib: instance.memoryMetrics.weightsMemoryGiB,
+            cuda_graph_memory_gib: instance.memoryMetrics.cudaGraphMemoryGiB,
+            overhead_memory_gib: instance.memoryMetrics.overheadMemoryGiB,
+            kv_cache_available_gib: instance.memoryMetrics.kvCacheAvailableGiB,
+            kv_cache_per_request_mib: instance.memoryMetrics.kvCachePerRequestMiB,
+            max_model_len: instance.memoryMetrics.maxModelLen,
+          }
+        : undefined,
+      has_chat_template: instance.hasChatTemplate,
+      launch_command: instance.launchCommand,
+      gpu_ids: instance.gpuIds,
+      tensor_parallel_size: instance.tensorParallelSize,
+      kvcached_enabled: instance.kvcachedEnabled,
     }
   }
 
@@ -60,7 +77,15 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       // onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
-      const { model_path, max_tokens } = request.body
+      const {
+        model_path,
+        max_tokens,
+        extra_args,
+        gpu_ids,
+        tensor_parallel_size,
+        source_type,
+        served_model_name,
+      } = request.body
 
       const operationId = randomUUID()
       const operation: ControllerOperation = {
@@ -70,7 +95,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         initiatedBy: 'system', // TODO: Get from auth context
         initiatedAt: new Date(),
         status: OperationStatus.InProgress,
-        parameters: { max_tokens },
+        parameters: { max_tokens, extra_args, gpu_ids, tensor_parallel_size, source_type, served_model_name },
       }
 
       operationStore.add(operation)
@@ -83,6 +108,11 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         const instance = await modelManager.launchModel({
           modelPath: model_path,
           maxTokens: max_tokens,
+          extraArgs: extra_args,
+          gpuIds: gpu_ids,
+          tensorParallelSize: tensor_parallel_size,
+          sourceType: source_type,
+          servedModelName: served_model_name,
         })
 
         // Operation stays InProgress - will be updated when model finishes loading
@@ -215,6 +245,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       },
       // TODO: Uncomment when auth is configured
       // onRequest: fastify.requireRole('admin-readonly'),
+      config: { logRequests: false },
     },
     async () => {
       const instances = modelManager.listModels()
@@ -288,7 +319,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         throw new NotFoundError(`Model ${decodedPath} not found`)
       }
 
-      if (instance.status !== 'active') {
+      if (instance.status !== 'running') {
         return reply.code(503).send({
           status: 'unhealthy',
           model: decodedPath,

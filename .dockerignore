@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (installed in container)
+node_modules
+**/node_modules
+
+# Build outputs (built in container)
+**/dist
+**/*.tsbuildinfo
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE/Editor
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Documentation (not needed in image)
+*.md
+docs
+
+# Environment files (secrets should be injected at runtime)
+.env*
+!.env.example
+
+# Config files not needed in container
+.eslintrc*
+.prettierrc*
+eslint.config.*
+
+# Claude/AI tooling
+.claude
+.specify
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/tests
+**/test
+**/__tests__

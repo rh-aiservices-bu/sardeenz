@@ -85,6 +85,26 @@ spec:
                 configMapKeyRef:
                   name: sardeenz-config
                   key: VLLM_MAX_INSTANCES
+            # HuggingFace cache location (for model downloads)
+            - name: HF_HOME
+              value: "/opt/app-root/models"
+            # SQLite database path (persistent storage)
+            - name: SARDEENZ_DB_PATH
+              value: "/opt/app-root/src/data/sardeenz.db"
+            # OpenShift arbitrary UID support - cache directories
+            - name: HOME
+              value: "/opt/app-root/src"
+            - name: XDG_CACHE_HOME
+              value: "/opt/app-root/src/.cache"
+            - name: FLASHINFER_WORKSPACE_DIR
+              value: "/opt/app-root/src/.cache/flashinfer"
+            # HuggingFace token for gated models (optional)
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-hf-token
+                  key: token
+                  optional: true
             # OAuth credentials from Secret
             - name: OAUTH_CLIENT_ID
               valueFrom:
@@ -119,7 +139,7 @@ spec:
           # Liveness probe - checks if container is healthy
           livenessProbe:
             httpGet:
-              path: /health/live
+              path: /api/health/live
               port: backend
               scheme: HTTP
             initialDelaySeconds: 90
@@ -131,7 +151,7 @@ spec:
           # Readiness probe - checks if container is ready to serve traffic
           readinessProbe:
             httpGet:
-              path: /health/ready
+              path: /api/health/ready
               port: backend
               scheme: HTTP
             initialDelaySeconds: 60
@@ -143,7 +163,7 @@ spec:
           # Startup probe - gives container time to start before liveness/readiness kicks in
           startupProbe:
             httpGet:
-              path: /health
+              path: /api/health
               port: backend
               scheme: HTTP
             initialDelaySeconds: 30
@@ -154,14 +174,19 @@ spec:
 
           volumeMounts:
             - name: huggingface-cache
-              mountPath: /root/.cache/huggingface
+              mountPath: /opt/app-root/models
+            - name: app-data
+              mountPath: /opt/app-root/src
 
       volumes:
         - name: huggingface-cache
           persistentVolumeClaim:
             claimName: sardeenz-model-cache
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: sardeenz-app-data
 
-      # Security context
+      # Security context - OpenShift runs as non-root with random UID
       securityContext:
         fsGroup: 0
-        runAsNonRoot: false  # vLLM requires root for GPU access in some environments
+        runAsNonRoot: true
