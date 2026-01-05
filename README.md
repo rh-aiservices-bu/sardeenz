@@ -2,15 +2,24 @@
   <img src="assets/sardeenz.png" alt="Sardeenz Logo" width="300">
 </p>
 
-# Sardeenz
+# Sardeenz 
 
-Multi-model vLLM management platform with dynamic loading and unified inference proxy.
+Sardeenz is a proof-of-concept application that allows you to load more than one model on a given GPU. It allows you to add more and more models onto a GPU, until it is fully utilized. 
 
 > **Status:** Early development (PoC phase)
 
 ## What is Sardeenz?
 
-Sardeenz is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of **vLLM** (inference engine) and **KVCached** (GPU memory sharing), it provides efficient multi-model hosting with intelligent GPU resource management.
+Sardeenz is a multi-model management POC application that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of **[vLLM](https://github.com/vllm-project/vllm)** (as the inference engine) and **[KVCached](https://github.com/ovg-project/kvcached)** (for GPU memory sharing), it provides efficient multi-model hosting with intelligent GPU resource management.
+
+## Why "Sardeenz"?
+
+Because we were looking for a way to squeeze or cram more models onto a GPU. (as opposed to the usual 1 model per GPU, no matter the sizes). This work, if successful, would result in many models being "squeezed together real tight". In both french and english, the idiom "[packed like sardines](https://wordhistories.net/2024/06/22/packed-like-sardines/)" conveys this idea. With a different spelling to set it apart from all the fish-related topics, and there you go: a cool project name. 
+
+## How (to pronounce) Sardeenz?
+
+Saardeenz is pronounced exactly like you would pronouce [sardines](https://www.youtube.com/watch?v=Rr1dwxmeIOU). 
+
 
 ### Core Components
 
