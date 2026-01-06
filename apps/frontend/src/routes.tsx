@@ -19,10 +19,10 @@ export const routes: RouteConfig[] = [
     itemId: 'model-management',
   },
   {
-    path: '/gpu',
-    element: <GpuInfo />,
-    label: 'GPU Info',
-    itemId: 'gpu-info',
+    path: '/inference-tests',
+    element: <InferenceTests />,
+    label: 'Inference Tests',
+    itemId: 'inference-tests',
   },
   {
     path: '/benchmark',
@@ -31,10 +31,10 @@ export const routes: RouteConfig[] = [
     itemId: 'model-benchmark',
   },
   {
-    path: '/inference-tests',
-    element: <InferenceTests />,
-    label: 'Inference Tests',
-    itemId: 'inference-tests',
+    path: '/gpu',
+    element: <GpuInfo />,
+    label: 'GPU Info',
+    itemId: 'gpu-info',
   },
   {
     path: '/settings',

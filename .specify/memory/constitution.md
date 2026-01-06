@@ -88,7 +88,7 @@ Requirements:
 
 Requirements:
 
-- OAuth 2.0 / OIDC integration for authentication
+- OAuth 2.0 integration for authentication
 - Two roles enforced: `admin` (full access), `admin-readonly` (read-only access)
 - Role assignment based on OAuth group membership claims
 - All model management APIs (load/unload) require `admin` role

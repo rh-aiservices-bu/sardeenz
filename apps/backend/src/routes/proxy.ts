@@ -213,7 +213,13 @@ async function handleJsonProxyRequest(
       }
 
       // Pipe stream to client - handles TCP_NODELAY, backpressure, and client disconnect
-      await pipeStreamToReply(reply, result.response as Response, model, result.startTime!, fastify.log)
+      await pipeStreamToReply(
+        reply,
+        result.response as Response,
+        model,
+        result.startTime!,
+        fastify.log
+      )
 
       routingTimer({ model, endpoint })
       fastify.sardeenzMetrics.inferenceRequests.inc({
@@ -272,6 +278,9 @@ async function handleJsonProxyRequest(
 
 export default async function proxyRoutes(fastify: FastifyInstance) {
   const proxyRouter = new ProxyRouter(fastify.log)
+
+  // Apply inference API key authentication to all routes in this plugin
+  fastify.addHook('preHandler', fastify.authenticateInference)
 
   // ============================================================
   // OpenAI-Compatible Endpoints (with /v1 prefix)
@@ -570,7 +579,13 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      return handleAudioProxyRequest(fastify, request, reply, '/v1/audio/transcriptions', proxyRouter)
+      return handleAudioProxyRequest(
+        fastify,
+        request,
+        reply,
+        '/v1/audio/transcriptions',
+        proxyRouter
+      )
     }
   )
 
@@ -622,7 +637,11 @@ async function handleAudioProxyRequest(
 
     // Parse multipart data to extract the model field
     const parts = await request.parts()
-    const formData: { model?: string; fields: Record<string, unknown>; files: Array<{ fieldname: string; file: Buffer; filename: string; mimetype: string }> } = {
+    const formData: {
+      model?: string
+      fields: Record<string, unknown>
+      files: Array<{ fieldname: string; file: Buffer; filename: string; mimetype: string }>
+    } = {
       fields: {},
       files: [],
     }
@@ -698,7 +717,11 @@ async function handleAudioProxyRequest(
     // Add files
     for (const file of formData.files) {
       bodyParts.push(Buffer.from(`--${boundary}\r\n`))
-      bodyParts.push(Buffer.from(`Content-Disposition: form-data; name="${file.fieldname}"; filename="${file.filename}"\r\n`))
+      bodyParts.push(
+        Buffer.from(
+          `Content-Disposition: form-data; name="${file.fieldname}"; filename="${file.filename}"\r\n`
+        )
+      )
       bodyParts.push(Buffer.from(`Content-Type: ${file.mimetype}\r\n\r\n`))
       bodyParts.push(file.file)
       bodyParts.push(Buffer.from('\r\n'))

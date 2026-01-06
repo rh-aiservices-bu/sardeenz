@@ -25,6 +25,7 @@ import {
 import { CopyIcon } from '@patternfly/react-icons'
 import { apiClient, extractErrorMessage } from '../../services/api'
 import type { ModelInstanceDTO, RoutingMode } from '@sardeenz/types'
+import { useAuth } from '../../contexts/AuthContext'
 
 /** Token step values for logarithmic-like distribution on sliders */
 const INPUT_TOKEN_STEPS = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
@@ -107,6 +108,8 @@ export interface BenchmarkFormConfig {
  * Follows PatternFly 6 patterns.
  */
 export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: BenchmarkConfigFormProps) {
+  const { canWrite } = useAuth()
+
   // Running instances
   const [runningInstances, setRunningInstances] = useState<ModelInstanceDTO[]>([])
   const [isLoadingInstances, setIsLoadingInstances] = useState(true)
@@ -617,8 +620,9 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
               <Button
                 type="submit"
                 variant="primary"
-                isDisabled={!isValid || isSubmitting}
+                isDisabled={!isValid || isSubmitting || !canWrite}
                 isLoading={isSubmitting}
+                title={!canWrite ? 'You do not have permission to run benchmarks' : undefined}
               >
                 {isSubmitting ? 'Starting...' : 'Start Benchmark'}
               </Button>

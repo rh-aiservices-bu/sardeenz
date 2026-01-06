@@ -31,6 +31,7 @@ import {
   extractErrorMessage,
   type SavedModelConfigurationResponse,
 } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 interface LoadConfigurationDialogProps {
   isOpen: boolean
@@ -49,6 +50,7 @@ export function LoadConfigurationDialog({
   onLoadStarted,
   currentModelCount,
 }: LoadConfigurationDialogProps) {
+  const { canWrite } = useAuth()
   const [configurations, setConfigurations] = useState<SavedModelConfigurationResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedConfig, setSelectedConfig] = useState<SavedModelConfigurationResponse | null>(null)
@@ -233,7 +235,8 @@ export function LoadConfigurationDialog({
                           aria-label={`Delete ${config.name}`}
                           onClick={(e) => handleDeleteConfig(config.id, e)}
                           isLoading={isDeleting === config.id}
-                          isDisabled={isDeleting !== null}
+                          isDisabled={isDeleting !== null || !canWrite}
+                          title={!canWrite ? 'You do not have permission to delete configurations' : undefined}
                         >
                           <TrashIcon />
                         </Button>
@@ -283,7 +286,8 @@ export function LoadConfigurationDialog({
           icon={<UploadIcon />}
           onClick={handleLoadConfig}
           isLoading={isLoadingConfig}
-          isDisabled={!selectedConfig || isLoadingConfig}
+          isDisabled={!selectedConfig || isLoadingConfig || !canWrite}
+          title={!canWrite ? 'You do not have permission to load configurations' : undefined}
         >
           Load Configuration
         </Button>

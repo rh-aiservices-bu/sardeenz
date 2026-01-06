@@ -56,8 +56,7 @@ export default async function memoryRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin-readonly'),
+      onRequest: fastify.requireRole('admin-readonly'),
       config: { logRequests: false },
     },
     async (_request, reply) => {
@@ -95,6 +94,7 @@ export default async function memoryRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
       config: { logRequests: false },
     },
     async (_request, reply) => {
@@ -134,8 +134,7 @@ export default async function memoryRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { model_path, limit_gb } = request.body

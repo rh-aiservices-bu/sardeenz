@@ -1,6 +1,5 @@
 {
   "name": "@sardeenz/contracts",
-  "version": "0.1.0",
   "description": "OpenAPI contracts for Sardeenz APIs",
   "private": true,
   "files": [

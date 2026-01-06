@@ -20,6 +20,10 @@ import type {
   MultiGpuMemoryUsageResponse,
   ListLocalModelsResponse,
   LocalModelsStatusResponse,
+  AuthInfoResponse,
+  LoginRequest,
+  LoginResponse,
+  CurrentUserResponse,
 } from '@sardeenz/types'
 
 // Memory Profile types for API responses
@@ -318,6 +322,8 @@ export function extractErrorMessage(error: unknown): string {
 
 class ApiClient {
   private client: AxiosInstance
+  private authToken: string | null = null
+  private inferenceApiKey: string | null = null
 
   constructor() {
     const baseURL = import.meta.env.VITE_API_BASE_URL || ''
@@ -330,10 +336,39 @@ class ApiClient {
       },
     })
 
-    // Add retry interceptor for connection errors
+    // Add request interceptor to include auth token
+    // Uses inference API key for inference routes, JWT for admin routes
+    this.client.interceptors.request.use((config) => {
+      const url = config.url || ''
+      const isInferenceRoute =
+        url.startsWith('/v1/') ||
+        url.startsWith('/tokenize') ||
+        url.startsWith('/detokenize') ||
+        url.startsWith('/pooling') ||
+        url.startsWith('/classification') ||
+        url.startsWith('/score') ||
+        url.startsWith('/re-rank') ||
+        url.startsWith('/api/direct/')
+
+      if (isInferenceRoute && this.inferenceApiKey) {
+        // Use inference API key for inference routes
+        config.headers.Authorization = `Bearer ${this.inferenceApiKey}`
+      } else if (this.authToken) {
+        // Use JWT for admin routes
+        config.headers.Authorization = `Bearer ${this.authToken}`
+      }
+      return config
+    })
+
+    // Add response interceptor for connection errors and 401 handling
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
+        // Handle 401 Unauthorized - emit event for AuthContext
+        if (error.response?.status === 401) {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+        }
+
         const config = error.config as RetryableRequestConfig | undefined
         if (!config) return Promise.reject(error)
 
@@ -359,6 +394,46 @@ class ApiClient {
         return this.client.request(config)
       }
     )
+  }
+
+  // Auth token management
+  setAuthToken(token: string | null): void {
+    this.authToken = token
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken
+  }
+
+  // Inference API key management (separate from admin JWT auth)
+  setInferenceApiKey(key: string | null): void {
+    this.inferenceApiKey = key
+  }
+
+  getInferenceApiKey(): string | null {
+    return this.inferenceApiKey
+  }
+
+  // Authentication endpoints
+
+  async getAuthInfo(): Promise<AuthInfoResponse> {
+    const response = await this.client.get<AuthInfoResponse>('/api/auth/info')
+    return response.data
+  }
+
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const response = await this.client.post<LoginResponse>('/api/auth/login', credentials)
+    return response.data
+  }
+
+  async logout(): Promise<void> {
+    await this.client.post('/api/auth/logout')
+    this.authToken = null
+  }
+
+  async getCurrentUser(): Promise<CurrentUserResponse> {
+    const response = await this.client.get<CurrentUserResponse>('/api/auth/me')
+    return response.data
   }
 
   // Model management endpoints
@@ -394,9 +469,7 @@ class ApiClient {
 
   async getModelHealth(modelPath: string): Promise<ModelHealthResponse> {
     const encodedPath = encodeURIComponent(modelPath)
-    const response = await this.client.get<ModelHealthResponse>(
-      `/api/models/${encodedPath}/health`
-    )
+    const response = await this.client.get<ModelHealthResponse>(`/api/models/${encodedPath}/health`)
     return response.data
   }
 
@@ -415,10 +488,7 @@ class ApiClient {
   }
 
   async setMemoryLimits(request: SetMemoryLimitsRequest): Promise<SetMemoryLimitsResponse> {
-    const response = await this.client.post<SetMemoryLimitsResponse>(
-      '/api/memory/limits',
-      request
-    )
+    const response = await this.client.post<SetMemoryLimitsResponse>('/api/memory/limits', request)
     return response.data
   }
 
@@ -442,7 +512,9 @@ class ApiClient {
   }
 
   async getMultiGpuMemoryUsage(): Promise<MultiGpuMemoryUsageResponse> {
-    const response = await this.client.get<MultiGpuMemoryUsageResponse>('/api/memory/usage/multi-gpu')
+    const response = await this.client.get<MultiGpuMemoryUsageResponse>(
+      '/api/memory/usage/multi-gpu'
+    )
     return response.data
   }
 
@@ -483,10 +555,7 @@ class ApiClient {
   async sendChatCompletionViaProxy(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
-    const response = await this.client.post<ChatCompletionResponse>(
-      '/v1/chat/completions',
-      request
-    )
+    const response = await this.client.post<ChatCompletionResponse>('/v1/chat/completions', request)
     return response.data
   }
 
@@ -524,9 +593,14 @@ class ApiClient {
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+      // Build headers - include inference API key if available
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (this.inferenceApiKey) {
+        headers['Authorization'] = `Bearer ${this.inferenceApiKey}`
+      }
       const response = await fetch(`${baseURL}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...request,
           stream: true,
@@ -632,9 +706,14 @@ class ApiClient {
 
     try {
       const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+      // Build headers - include inference API key if available
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (this.inferenceApiKey) {
+        headers['Authorization'] = `Bearer ${this.inferenceApiKey}`
+      }
       const response = await fetch(`${baseURL}/api/direct/${port}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...request,
           stream: true,
@@ -777,15 +856,20 @@ class ApiClient {
     return response.data
   }
 
-  async getBenchmark(id: string): Promise<{ benchmark: BenchmarkSummary & { scenarios: unknown[] } }> {
-    const response = await this.client.get<{ benchmark: BenchmarkSummary & { scenarios: unknown[] } }>(
-      `/api/benchmarks/${id}`
-    )
+  async getBenchmark(
+    id: string
+  ): Promise<{ benchmark: BenchmarkSummary & { scenarios: unknown[] } }> {
+    const response = await this.client.get<{
+      benchmark: BenchmarkSummary & { scenarios: unknown[] }
+    }>(`/api/benchmarks/${id}`)
     return response.data
   }
 
   async createBenchmark(data: CreateBenchmarkRequest): Promise<{ benchmark: BenchmarkSummary }> {
-    const response = await this.client.post<{ benchmark: BenchmarkSummary }>('/api/benchmarks', data)
+    const response = await this.client.post<{ benchmark: BenchmarkSummary }>(
+      '/api/benchmarks',
+      data
+    )
     return response.data
   }
 
@@ -794,7 +878,11 @@ class ApiClient {
     return response.data
   }
 
-  async exportBenchmark(id: string, format: 'csv' | 'json' = 'csv', includeWarmup = false): Promise<Blob> {
+  async exportBenchmark(
+    id: string,
+    format: 'csv' | 'json' = 'csv',
+    includeWarmup = false
+  ): Promise<Blob> {
     const response = await this.client.post(
       `/api/benchmarks/${id}/export`,
       { format, include_warmup: includeWarmup },
@@ -826,12 +914,19 @@ class ApiClient {
   }
 
   async getConfiguration(id: string): Promise<GetModelConfigurationResponse> {
-    const response = await this.client.get<GetModelConfigurationResponse>(`/api/configurations/${id}`)
+    const response = await this.client.get<GetModelConfigurationResponse>(
+      `/api/configurations/${id}`
+    )
     return response.data
   }
 
-  async saveConfiguration(data: CreateModelConfigurationRequest): Promise<GetModelConfigurationResponse> {
-    const response = await this.client.post<GetModelConfigurationResponse>('/api/configurations', data)
+  async saveConfiguration(
+    data: CreateModelConfigurationRequest
+  ): Promise<GetModelConfigurationResponse> {
+    const response = await this.client.post<GetModelConfigurationResponse>(
+      '/api/configurations',
+      data
+    )
     return response.data
   }
 

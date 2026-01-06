@@ -32,6 +32,7 @@ import {
 } from '@patternfly/react-core'
 import { TrashIcon, EyeIcon, RedoIcon } from '@patternfly/react-icons'
 import { apiClient, extractErrorMessage, type BenchmarkSummary } from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface BenchmarkHistoryTableProps {
   onViewBenchmark: (id: string) => void
@@ -43,6 +44,7 @@ interface BenchmarkHistoryTableProps {
  * Table listing past benchmark runs with pagination and filtering.
  */
 export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refreshTrigger }: BenchmarkHistoryTableProps) {
+  const { canWrite } = useAuth()
   const [benchmarks, setBenchmarks] = useState<BenchmarkSummary[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -258,7 +260,12 @@ export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refre
           </ToolbarItem>
           {selectedIds.length > 0 && (
             <ToolbarItem>
-              <Button variant="danger" onClick={handleBulkDeleteClick}>
+              <Button
+                variant="danger"
+                onClick={handleBulkDeleteClick}
+                isDisabled={!canWrite}
+                title={!canWrite ? 'You do not have permission to delete benchmarks' : undefined}
+              >
                 Delete {selectedIds.length} selected
               </Button>
             </ToolbarItem>
@@ -358,7 +365,8 @@ export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refre
                     icon={<TrashIcon />}
                     aria-label={`Delete benchmark ${benchmark.name || benchmark.id}`}
                     onClick={() => handleDeleteClick(benchmark)}
-                    isDisabled={benchmark.status === 'running'}
+                    isDisabled={benchmark.status === 'running' || !canWrite}
+                    title={!canWrite ? 'You do not have permission to delete benchmarks' : undefined}
                   />
                 </Td>
               </Tr>

@@ -79,7 +79,7 @@ sardeenz/
 │   │   │   │   ├── memory-monitor.ts  # KVCached memory monitoring
 │   │   │   │   └── metrics.ts         # Prometheus metrics
 │   │   │   └── plugins/           # Fastify plugins
-│   │   │       ├── auth.ts        # OAuth/OIDC plugin
+│   │   │       ├── auth.ts        # OAuth 2.0 plugin
 │   │   │       └── swagger.ts     # OpenAPI plugin
 │   │   ├── tests/                 # Backend tests
 │   │   │   ├── integration/       # API integration tests
@@ -218,10 +218,11 @@ cat > apps/backend/.env <<EOF
 PORT=3000
 NODE_ENV=development
 
-# OAuth/OIDC Configuration
-OAUTH_CLIENT_ID=vllm-stacker
+# OAuth 2.0 Configuration
+OAUTH_CLIENT_ID=sardeenz
 OAUTH_CLIENT_SECRET=change-me-in-production
-OIDC_ISSUER_URL=https://keycloak.example.com/realms/vllm
+OAUTH_ISSUER_URL=https://oauth-openshift.apps.example.com
+K8S_API_URL=https://api.example.com:6443
 JWT_SECRET=change-me-in-production
 API_BASE_URL=http://localhost:3000
 

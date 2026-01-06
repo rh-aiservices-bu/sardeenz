@@ -26,10 +26,12 @@ import {
 import { EyeIcon, EyeSlashIcon, CheckCircleIcon, ExclamationCircleIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import { useNotifications } from '../contexts/NotificationContext'
+import { useAuth } from '../contexts/AuthContext'
 import type { SettingsResponse } from '@sardeenz/types'
 
 function Settings() {
   const { addNotification } = useNotifications()
+  const { canWrite } = useAuth()
 
   // Settings state
   const [settings, setSettings] = useState<SettingsResponse | null>(null)
@@ -291,7 +293,8 @@ function Settings() {
                           variant="secondary"
                           onClick={handleTestToken}
                           isLoading={testing}
-                          isDisabled={testing || saving || (!hfToken.trim() && !settings?.hf_token)}
+                          isDisabled={testing || saving || (!hfToken.trim() && !settings?.hf_token) || !canWrite}
+                          title={!canWrite ? 'You do not have permission to test tokens' : undefined}
                         >
                           Test Connection
                         </Button>
@@ -301,7 +304,8 @@ function Settings() {
                           variant="primary"
                           onClick={handleSaveToken}
                           isLoading={saving}
-                          isDisabled={saving || testing || !hfToken.trim()}
+                          isDisabled={saving || testing || !hfToken.trim() || !canWrite}
+                          title={!canWrite ? 'You do not have permission to modify settings' : undefined}
                         >
                           Save Token
                         </Button>
@@ -312,7 +316,8 @@ function Settings() {
                             variant="link"
                             isDanger
                             onClick={handleClearToken}
-                            isDisabled={saving || testing}
+                            isDisabled={saving || testing || !canWrite}
+                            title={!canWrite ? 'You do not have permission to modify settings' : undefined}
                           >
                             Clear Token
                           </Button>

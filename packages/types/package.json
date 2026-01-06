@@ -1,6 +1,5 @@
 {
   "name": "@sardeenz/types",
-  "version": "0.1.0",
   "description": "Shared TypeScript types for Sardeenz",
   "private": true,
   "type": "module",

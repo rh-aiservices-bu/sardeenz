@@ -8,7 +8,7 @@ This directory contains Kubernetes manifests for deploying Sardeenz to OpenShift
 - NVIDIA GPU nodes with proper taints/labels
 - `oc` CLI (OpenShift) or `kubectl` (Kubernetes)
 - Access to container registry for pushing images
-- OAuth 2.0/OIDC provider (optional, for authentication)
+- OAuth 2.0 provider (optional, for authentication)
 
 ## Quick Start
 
@@ -25,9 +25,9 @@ docker push quay.io/your-org/sardeenz:latest
 ### 2. Create Namespace
 
 ```bash
-oc new-project vllm-stacker
+oc new-project sardeenz
 # or
-kubectl create namespace vllm-stacker
+kubectl create namespace sardeenz
 ```
 
 ### 3. Configure OAuth Credentials (Optional)
@@ -35,11 +35,11 @@ kubectl create namespace vllm-stacker
 If using authentication, create the OAuth secret:
 
 ```bash
-oc create secret generic vllm-stacker-oauth \
+oc create secret generic sardeenz-oauth \
   --from-literal=client-id=$OAUTH_CLIENT_ID \
   --from-literal=client-secret=$OAUTH_CLIENT_SECRET \
   --from-literal=issuer-url=$OAUTH_ISSUER_URL \
-  -n vllm-stacker
+  -n sardeenz
 ```
 
 Or edit `secret.yaml` and replace placeholder values before applying.
@@ -70,16 +70,16 @@ oc apply -f k8s/route.yaml
 
 ```bash
 # Check deployment status
-oc get deployment sardeenz -n vllm-stacker
+oc get deployment sardeenz -n sardeenz
 
 # Check pod status (should show GPU assigned)
-oc get pods -n vllm-stacker -o wide
+oc get pods -n sardeenz -o wide
 
 # Check logs
-oc logs -f deployment/sardeenz -n vllm-stacker
+oc logs -f deployment/sardeenz -n sardeenz
 
 # Get external URL (OpenShift only)
-oc get route sardeenz -n vllm-stacker -o jsonpath='{.spec.host}'
+oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 ```
 
 ## Manifest Files
@@ -215,7 +215,7 @@ readinessProbe:
 
 The deployment requires a PVC for caching Hugging Face models:
 
-- **Name:** `vllm-stacker-model-cache`
+- **Name:** `sardeenz-model-cache`
 - **Size:** 100Gi (adjust based on model sizes)
 - **Access Mode:** ReadWriteOnce
 - **Mount Path:** `/root/.cache/huggingface`
@@ -289,18 +289,18 @@ spec:
 
 ## Security
 
-### OAuth/OIDC Authentication
+### OAuth 2.0 Authentication
 
 To enable authentication, configure the OAuth secret and set environment variables:
 
-1. **Create OAuth application** in your identity provider (Keycloak, Auth0, etc.)
-2. **Set redirect URI** to `https://<route-host>/auth/callback`
+1. **Create OAuth application** in your identity provider (OpenShift OAuth, Keycloak, etc.)
+2. **Set redirect URI** to `https://<route-host>/api/auth/callback`
 3. **Create secret** with credentials
 4. **Restart deployment** to pick up changes
 
 **The application supports:**
 - OAuth 2.0 Authorization Code flow
-- OIDC discovery
+- Manual OAuth configuration (for OpenShift OAuth and other non-OIDC providers)
 - JWT token validation
 - Role-based access control (admin, admin-readonly)
 
@@ -428,7 +428,7 @@ oc adm top pod -l app=sardeenz
 ```bash
 # Update image tag in deployment
 oc set image deployment/sardeenz \
-  vllm-stacker=quay.io/your-org/sardeenz:v1.1.0
+  sardeenz=quay.io/your-org/sardeenz:v1.1.0
 
 # Watch rollout
 oc rollout status deployment/sardeenz
@@ -456,9 +456,9 @@ kubectl delete -k k8s/
 ### Delete Namespace
 
 ```bash
-oc delete project vllm-stacker
+oc delete project sardeenz
 # or
-kubectl delete namespace vllm-stacker
+kubectl delete namespace sardeenz
 ```
 
 **Note:** This deletes the PVC and model cache. Back up models first if needed.

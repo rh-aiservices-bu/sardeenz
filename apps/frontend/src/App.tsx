@@ -38,13 +38,23 @@ import {
   Spinner,
   Content,
 } from '@patternfly/react-core'
-import { BarsIcon, SunIcon, MoonIcon, ExclamationCircleIcon, UserIcon } from '@patternfly/react-icons'
+import {
+  BarsIcon,
+  SunIcon,
+  MoonIcon,
+  ExclamationCircleIcon,
+  UserIcon,
+} from '@patternfly/react-icons'
 import sardeenzLogo from '../../../assets/sardeenz.svg'
 import { routes } from './routes'
 import { useNotifications } from './contexts/NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
+import { useAuth } from './contexts/AuthContext'
 import { NotificationDrawer, NotificationBadgeButton } from './components/NotificationDrawer'
 import { AlertToastGroup } from './components/AlertToastGroup'
+import Login from './pages/Login'
+import OAuthCallback from './pages/OAuthCallback'
+import AccessDenied from './pages/AccessDenied'
 
 function App() {
   const location = useLocation()
@@ -59,6 +69,14 @@ function App() {
 
   const { toastNotifications, removeToastNotification, unreadCount } = useNotifications()
   const { status, retryConnection } = useConnection()
+  const {
+    user,
+    authMode,
+    logout,
+    isAuthenticated,
+    isLoading: authLoading,
+    isAccessDenied,
+  } = useAuth()
 
   // Apply theme to document
   useEffect(() => {
@@ -127,7 +145,12 @@ function App() {
                   isExpanded={isUserDropdownOpen}
                   icon={<UserIcon />}
                 >
-                  User
+                  {user?.username || 'User'}
+                  {user?.roles?.includes('admin')
+                    ? ' (admin)'
+                    : user?.roles?.includes('admin-readonly')
+                      ? ' (admin-readonly)'
+                      : ''}
                 </MenuToggle>
               )}
             >
@@ -136,7 +159,14 @@ function App() {
                   Profile
                 </DropdownItem>
                 <Divider component="li" />
-                <DropdownItem key="logout" isDisabled>
+                <DropdownItem
+                  key="logout"
+                  isDisabled={authMode === 'none'}
+                  onClick={() => {
+                    logout()
+                    onUserDropdownSelect()
+                  }}
+                >
                   Logout
                 </DropdownItem>
               </DropdownList>
@@ -175,7 +205,11 @@ function App() {
         <Nav>
           <NavList>
             {routes.map((route) => (
-              <NavItem key={route.itemId} itemId={route.itemId} isActive={location.pathname === route.path}>
+              <NavItem
+                key={route.itemId}
+                itemId={route.itemId}
+                isActive={location.pathname === route.path}
+              >
                 <Link to={route.path}>{route.label}</Link>
               </NavItem>
             ))}
@@ -190,6 +224,37 @@ function App() {
       <NotificationDrawer onClose={() => setIsDrawerOpen(false)} />
     </DrawerPanelContent>
   )
+
+  // Show auth loading state
+  if (authLoading) {
+    return (
+      <Page masthead={masthead}>
+        <PageSection isFilled>
+          <EmptyState titleText="Initializing..." icon={Spinner}>
+            <EmptyStateBody>
+              <Content component="p">Loading authentication...</Content>
+            </EmptyStateBody>
+          </EmptyState>
+        </PageSection>
+      </Page>
+    )
+  }
+
+  // Show access denied page when user is not in any authorized groups
+  if (!isAuthenticated && authMode !== 'none' && isAccessDenied) {
+    return <AccessDenied />
+  }
+
+  // Show login page for unauthenticated users (when auth is enabled)
+  if (!isAuthenticated && authMode !== 'none') {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<OAuthCallback />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    )
+  }
 
   // Show connecting state
   if (status === 'connecting') {
@@ -237,10 +302,7 @@ function App() {
 
   return (
     <>
-      <AlertToastGroup
-        notifications={toastNotifications}
-        onRemove={removeToastNotification}
-      />
+      <AlertToastGroup notifications={toastNotifications} onRemove={removeToastNotification} />
       <Page masthead={masthead} sidebar={sidebar}>
         <Drawer isExpanded={isDrawerOpen} onExpand={() => setIsDrawerOpen(true)}>
           <DrawerContent panelContent={drawerPanelContent}>

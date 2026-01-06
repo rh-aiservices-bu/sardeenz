@@ -29,7 +29,7 @@ The sardeenz frontend is a React-based admin dashboard that enables operators to
 - **Type-safe**: TypeScript strict mode throughout
 - **Accessibility**: WCAG 2.1 AA compliance
 - **Performance**: <3s initial load, <200ms interactions
-- **Security**: OAuth/OIDC with role-based access control
+- **Security**: OAuth 2.0 with role-based access control
 
 ## Technology Stack
 
@@ -290,7 +290,7 @@ function App() {
 
 ## Authentication Flow
 
-### OAuth/OIDC Integration
+### OAuth 2.0 Integration
 
 ```
 ┌─────────┐                ┌──────────┐                ┌──────────┐
