@@ -10,7 +10,7 @@ This directory contains OpenAPI 3.1 specifications for the Sardeenz platform.
 
 **Base Path**: `/api`
 
-**Authentication**: OAuth 2.0 / OIDC required
+**Authentication**: OAuth 2.0 required
 
 **Endpoints**:
 - `POST /models/load` - Load a new model (requires `admin` role)

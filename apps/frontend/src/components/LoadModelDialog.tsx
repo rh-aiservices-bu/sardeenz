@@ -29,6 +29,7 @@ import type { LoadModelRequest, ModelStatus, GpuAvailabilityResponse, LocalModel
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
 import { apiClient, type MemoryCheckResponse } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 /** Dialog phase state machine */
 type DialogPhase = 'form' | 'loading' | 'success' | 'failed'
@@ -60,6 +61,9 @@ export function LoadModelDialog({
   onLoad,
   onSuccess,
 }: LoadModelDialogProps) {
+  // Role-based access control
+  const { canWrite } = useAuth()
+
   // Form state
   const [modelPath, setModelPath] = useState('')
   const [maxTokens, setMaxTokens] = useState(4096)
@@ -818,7 +822,12 @@ export function LoadModelDialog({
       <ModalFooter>
         {phase === 'form' && (
           <>
-            <Button variant="primary" onClick={handleSubmit}>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              isDisabled={!canWrite}
+              title={!canWrite ? 'You do not have permission to start models' : undefined}
+            >
               Start Model
             </Button>
             <Button variant="link" onClick={handleClose}>

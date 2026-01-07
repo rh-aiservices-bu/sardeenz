@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import {
   SettingsResponseSchema,
   UpdateSettingsRequestSchema,
@@ -13,6 +13,7 @@ import { runtimeSettings } from '../stores/runtime-settings.js'
 export default async function settingsRoutes(fastify: FastifyInstance) {
   /**
    * GET /api/settings - Get current settings
+   * Note: admin-readonly users see a fake token for security
    */
   fastify.get(
     '/api/settings',
@@ -24,9 +25,23 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
           200: SettingsResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
-    async () => {
-      return runtimeSettings.getSettingsResponse()
+    async (request: FastifyRequest) => {
+      const settings = runtimeSettings.getSettingsResponse()
+
+      // Check if user is admin-readonly (not admin) - mask the real token
+      const userRoles = request.user?.roles || []
+      const isReadonlyOnly = userRoles.includes('admin-readonly') && !userRoles.includes('admin')
+
+      if (isReadonlyOnly && settings.hf_token) {
+        return {
+          hf_token: 'hf_demo_token',
+          hf_token_source: settings.hf_token_source,
+        }
+      }
+
+      return settings
     }
   )
 
@@ -45,6 +60,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
           400: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request) => {
       const { hf_token } = request.body
@@ -76,6 +92,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
           200: TestHfTokenResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request) => {
       const { token } = request.body

@@ -65,6 +65,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           400: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       try {
@@ -218,6 +219,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           200: ListBenchmarksResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request) => {
       const { page = 1, limit = 20, status } = request.query
@@ -266,6 +268,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -370,6 +373,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -418,6 +422,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { id, sid } = request.params
@@ -477,6 +482,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           include_warmup: Type.Optional(Type.Boolean({ default: false })),
         }),
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -597,6 +603,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         description: 'Subscribe to real-time benchmark progress events (SSE)',
         params: BenchmarkIdParamsSchema,
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (
       request: FastifyRequest<{ Params: { id: string } }>,

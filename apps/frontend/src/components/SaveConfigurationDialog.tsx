@@ -16,6 +16,7 @@ import {
   Alert,
 } from '@patternfly/react-core'
 import { apiClient, extractErrorMessage } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 interface SaveConfigurationDialogProps {
   isOpen: boolean
@@ -34,6 +35,7 @@ export function SaveConfigurationDialog({
   onSuccess,
   modelCount,
 }: SaveConfigurationDialogProps) {
+  const { canWrite } = useAuth()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -135,7 +137,13 @@ export function SaveConfigurationDialog({
       </ModalBody>
 
       <ModalFooter>
-        <Button variant="primary" onClick={handleSave} isLoading={isSaving} isDisabled={isSaving}>
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          isLoading={isSaving}
+          isDisabled={isSaving || !canWrite}
+          title={!canWrite ? 'You do not have permission to save configurations' : undefined}
+        >
           Save Configuration
         </Button>
         <Button variant="link" onClick={handleClose} isDisabled={isSaving}>

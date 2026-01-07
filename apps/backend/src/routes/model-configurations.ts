@@ -68,6 +68,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           200: ListModelConfigurationsResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
       const { configurations, total } = store.listConfigurations()
@@ -93,6 +94,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           404: ConfigurationErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -127,6 +129,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           409: ConfigurationErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { name, description } = request.body
@@ -178,6 +181,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           409: ConfigurationErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -226,6 +230,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           404: ConfigurationErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -266,6 +271,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
           400: ConfigurationErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params

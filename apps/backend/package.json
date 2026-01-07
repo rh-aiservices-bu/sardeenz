@@ -1,6 +1,5 @@
 {
   "name": "@sardeenz/backend",
-  "version": "0.1.0",
   "description": "Backend server for Sardeenz",
   "private": true,
   "type": "module",

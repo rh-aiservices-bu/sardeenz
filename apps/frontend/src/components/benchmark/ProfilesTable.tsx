@@ -28,6 +28,7 @@ import {
 import { TrashIcon, InfoCircleIcon } from '@patternfly/react-icons'
 import type { MemoryProfileResponse } from '../../services/api'
 import { apiClient, extractErrorMessage } from '../../services/api'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface ProfilesTableProps {
   profiles: MemoryProfileResponse[]
@@ -50,6 +51,7 @@ export function ProfilesTable({
   onProfileDeleted,
   onRefresh,
 }: ProfilesTableProps) {
+  const { canWrite } = useAuth()
   const [sortBy, setSortBy] = useState<SortableColumn>('created_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -219,6 +221,8 @@ export function ProfilesTable({
                   icon={<TrashIcon />}
                   aria-label={`Delete profile ${profile.profile_name}`}
                   onClick={() => handleDeleteClick(profile)}
+                  isDisabled={!canWrite}
+                  title={!canWrite ? 'You do not have permission to delete memory profiles' : undefined}
                 />
               </Td>
             </Tr>

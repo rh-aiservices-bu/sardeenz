@@ -1,6 +1,5 @@
 {
   "name": "@sardeenz/utils",
-  "version": "0.1.0",
   "description": "Shared utilities for Sardeenz",
   "private": true,
   "type": "module",

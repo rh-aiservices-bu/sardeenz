@@ -27,58 +27,235 @@ Sardeenz provides a unified API on a single port:
 
 ### Base URLs
 
-| Environment | Base URL | Example Endpoints |
-|-------------|----------|-------------------|
-| Development | `http://localhost:3000` | `/api/v1/models`, `/v1/chat/completions` |
-| Production | `https://your-domain.com` | `/api/v1/models`, `/v1/chat/completions` |
+| Environment | Base URL                  | Example Endpoints                        |
+| ----------- | ------------------------- | ---------------------------------------- |
+| Development | `http://localhost:3000`   | `/api/v1/models`, `/v1/chat/completions` |
+| Production  | `https://your-domain.com` | `/api/v1/models`, `/v1/chat/completions` |
 
 ### API Versioning
 
 Both APIs use URL-based versioning:
+
 - Controller: `/api/v1/...`
 - Proxy: `/v1/...` (matches OpenAI API convention)
 
 ## Authentication
 
-### Controller API
+Sardeenz uses a **dual-authentication model** that separates admin access from inference access:
 
-**OAuth 2.0 / OIDC with JWT Bearer Tokens**
+| Auth Type          | Purpose                   | Mechanism                            |
+| ------------------ | ------------------------- | ------------------------------------ |
+| **Admin Auth**     | Controller API, Dashboard | JWT (simple or OAuth)                |
+| **Inference Auth** | Inference endpoints       | Optional API key (OpenAI-compatible) |
+
+### Authentication Modes
+
+Admin authentication is configured via the `AUTH_MODE` environment variable:
+
+| Mode     | Description                | Use Case                                   | Roles                                 |
+| -------- | -------------------------- | ------------------------------------------ | ------------------------------------- |
+| `none`   | Authentication disabled    | Development, testing, trusted environments | All users are admin                   |
+| `simple` | Username/password with JWT | Single-admin deployments                   | Authenticated user gets `admin` role  |
+| `oauth`  | OAuth 2.0 (OpenShift)      | Enterprise deployments with SSO            | Roles from OpenShift group membership |
+
+### Route Categories
+
+| Route Type    | Routes                                                                                                    | Auth When `AUTH_MODE!=none`          |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| **Public**    | `/api/health/*`, `/api/auth/*`, `/docs/*`, `/metrics`                                                     | None required                        |
+| **Admin**     | `/api/models/*`, `/api/gpu/*`, `/api/memory/*`, `/api/benchmarks/*`, `/api/configurations/*`              | JWT required                         |
+| **Inference** | `/v1/*`, `/api/direct/*`, `/tokenize`, `/detokenize`, `/pooling`, `/classification`, `/score`, `/re-rank` | API key (if `INFERENCE_API_KEY` set) |
+
+### Inference API Key (OpenAI-Compatible)
+
+Inference endpoints can be protected separately from admin endpoints using the `INFERENCE_API_KEY` environment variable:
+
+| `INFERENCE_API_KEY` | Behavior                                                         |
+| ------------------- | ---------------------------------------------------------------- |
+| Not set (empty)     | Inference endpoints are open (no auth required)                  |
+| Set to a value      | Inference endpoints require `Authorization: Bearer <key>` header |
+
+**Example with API key protection:**
 
 ```bash
-# Obtain access token from your identity provider
-TOKEN=$(curl -X POST https://your-idp.com/oauth/token \
-  -d "grant_type=client_credentials" \
-  -d "client_id=your-client-id" \
-  -d "client_secret=your-client-secret" \
-  | jq -r '.access_token')
+# Set inference API key
+export INFERENCE_API_KEY=sk-your-secret-key
+
+# Inference request (requires API key)
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama-1b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+**OpenAI SDK compatibility:**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:3000/v1",
+    api_key="sk-your-secret-key"  # Your INFERENCE_API_KEY value
+)
+
+response = client.chat.completions.create(
+    model="llama-1b",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+**Frontend Dashboard:** When authenticated via the dashboard, the inference API key is automatically provided to the frontend, allowing inference tests and benchmarks to work seamlessly without manual key entry.
+
+### Public Endpoints (No Auth Required)
+
+These endpoints are always accessible without authentication:
+
+- `/api/health/*` - Health checks
+- `/api/auth/*` - Authentication endpoints
+- `/docs`, `/docs/*` - Swagger documentation
+- `/metrics` - Prometheus metrics
+
+### Mode: None (No Authentication)
+
+When `AUTH_MODE=none`, all endpoints are accessible without authentication. This is the default for development.
+
+```bash
+# No token needed
+curl http://localhost:3000/api/v1/models
+```
+
+### Mode: Simple (Username/Password)
+
+When `AUTH_MODE=simple`, users authenticate with username/password to receive a JWT.
+
+**Required Environment Variables:**
+
+- `ADMIN_USERNAME` - Admin username (default: `admin`)
+- `ADMIN_PASSWORD` - Admin password (required)
+- `JWT_SECRET` - Secret for JWT signing
+
+**Login:**
+
+```bash
+# Authenticate and get token
+TOKEN=$(curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your-password"}' \
+  | jq -r '.token')
 
 # Use token in requests
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/v1/models
 ```
 
-### RBAC Roles
+### Mode: OAuth (OpenShift OAuth)
 
-| Role | Permissions |
-|------|-------------|
-| `admin` | Load/unload models, view all data |
-| `admin-readonly` | View models and metrics (read-only) |
+When `AUTH_MODE=oauth`, users authenticate via OpenShift OAuth 2.0.
+
+**Required Environment Variables:**
+
+| Variable              | Description                               |
+| --------------------- | ----------------------------------------- |
+| `OAUTH_ISSUER_URL`    | OpenShift OAuth server URL                |
+| `OAUTH_CLIENT_ID`     | OAuth2 client ID                          |
+| `OAUTH_CLIENT_SECRET` | OAuth2 client secret                      |
+| `K8S_API_URL`         | Kubernetes API URL for fetching user info |
+| `API_BASE_URL`        | Backend URL for callbacks                 |
+| `JWT_SECRET`          | Secret for JWT signing                    |
+
+**OAuth Role Mapping:**
+
+Users must be members of OpenShift groups to access the dashboard:
+
+| OpenShift Group            | Application Role | Access Level            |
+| -------------------------- | ---------------- | ----------------------- |
+| `sardeenz-admins`          | `admin`          | Full read/write access  |
+| `sardeenz-admins-readonly` | `admin-readonly` | Read-only access        |
+| (no matching group)        | (denied)         | Cannot access dashboard |
+
+> **Setup:** For step-by-step instructions on creating OpenShift groups and adding users, see the [Deployment Guide: Authentication and RBAC](./deployment.md#authentication-and-rbac).
+
+> **Access Denied:** Users who successfully authenticate but are not members of either group will see an **Access Denied** page explaining which groups are required and how to request access from their OpenShift administrator. After being added to a group, they can click "Try Again" to re-authenticate.
+
+**Flow:**
+
+1. Frontend redirects to `/api/auth/login`
+2. Backend redirects to OpenShift OAuth authorization URL
+3. User authenticates with OpenShift
+4. Provider redirects to `/api/auth/callback`
+5. Backend exchanges code for access token
+6. Backend fetches user info from K8s API (`/apis/user.openshift.io/v1/users/~`)
+7. Backend maps OpenShift groups to application roles
+8. Backend issues internal JWT
+9. Frontend receives JWT via URL fragment
+
+### Using JWT Tokens
+
+All authenticated requests require the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/v1/models
+```
 
 **JWT Claims:**
+
 ```json
 {
   "sub": "user@example.com",
+  "username": "admin",
   "roles": ["admin"],
+  "authMode": "simple",
   "iat": 1234567890,
   "exp": 1234571490
 }
 ```
 
-### Proxy API
+### RBAC Roles
 
-The Proxy API is designed to run behind an API gateway (e.g., OpenShift Router) and assumes authentication is handled at the gateway level.
+Role-based access control is enforced on all API routes when authentication is enabled (`AUTH_MODE` is `simple` or `oauth`).
 
-For development/testing, the proxy may run without authentication.
+| Role             | Description                                 |
+| ---------------- | ------------------------------------------- |
+| `admin`          | Full read/write access to all operations    |
+| `admin-readonly` | Read-only access to view data and run tests |
+
+**Detailed Permissions:**
+
+| Action                                     | `admin` | `admin-readonly` |
+| ------------------------------------------ | :-----: | :--------------: |
+| View models, GPU, memory, configurations   |   ✅    |        ✅        |
+| View logs and SSE events                   |   ✅    |        ✅        |
+| Run inference tests (chat, benchmarks)     |   ✅    |        ✅        |
+| View benchmark results and memory profiles |   ✅    |        ✅        |
+| Load/unload models                         |   ✅    |        ❌        |
+| Save/delete/load configurations            |   ✅    |        ❌        |
+| Create/delete benchmarks                   |   ✅    |        ❌        |
+| Delete memory profiles                     |   ✅    |        ❌        |
+| Modify settings (HF token)                 |   ✅    |        ❌        |
+| View real HF token value                   |   ✅    |   ❌ (masked)    |
+| Kill orphan processes                      |   ✅    |        ❌        |
+
+> **Note:** The `admin-readonly` role cannot see the real HuggingFace token value. The API returns a masked placeholder (`hf_****...`) instead.
+
+**Frontend Visual Hints:**
+
+When authenticated with the `admin-readonly` role, the frontend displays visual indicators:
+
+- User dropdown shows role label (e.g., "admin" or "admin-readonly")
+- Write action buttons are disabled with tooltips explaining the permission requirement
+- Read-only users can still navigate all pages and view data
+
+### Auth API Endpoints
+
+| Endpoint             | Method | Description                     |
+| -------------------- | ------ | ------------------------------- |
+| `/api/auth/info`     | GET    | Returns auth mode configuration |
+| `/api/auth/login`    | POST   | Simple mode login (returns JWT) |
+| `/api/auth/login`    | GET    | OAuth mode redirect to provider |
+| `/api/auth/callback` | GET    | OAuth callback (issues JWT)     |
+| `/api/auth/me`       | GET    | Get current user info           |
+| `/api/auth/logout`   | POST   | Logout (client clears token)    |
 
 ## Controller API
 
@@ -89,6 +266,7 @@ For development/testing, the proxy may run without authentication.
 > **Note:** This endpoint returns immediately with `status: "starting"`. The model loads in the background. Subscribe to the SSE events endpoint (`/api/v1/models/instances/{instance_id}/events`) to monitor loading progress and receive the final `active` or `failed` status.
 
 **Request Body:**
+
 ```json
 {
   "model_path": "meta-llama/Llama-3.2-1B",
@@ -101,15 +279,16 @@ For development/testing, the proxy may run without authentication.
 
 **Request Fields:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `model_path` | string | Yes | Model identifier (HuggingFace path or local path) |
-| `max_tokens` | number | No | Maximum context length (default: model's max) |
-| `gpu_ids` | number[] | No | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory |
-| `tensor_parallel_size` | number | No | Number of GPUs for tensor parallelism (default: 1). KVCached is disabled when >1 |
-| `extra_args` | string[] | No | Additional vLLM CLI arguments |
+| Field                  | Type     | Required | Description                                                                      |
+| ---------------------- | -------- | -------- | -------------------------------------------------------------------------------- |
+| `model_path`           | string   | Yes      | Model identifier (HuggingFace path or local path)                                |
+| `max_tokens`           | number   | No       | Maximum context length (default: model's max)                                    |
+| `gpu_ids`              | number[] | No       | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory        |
+| `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). KVCached is disabled when >1 |
+| `extra_args`           | string[] | No       | Additional vLLM CLI arguments                                                    |
 
 **Response (202 Accepted):**
+
 ```json
 {
   "status": "success",
@@ -121,6 +300,7 @@ For development/testing, the proxy may run without authentication.
 ```
 
 **Example (curl):**
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/models/load \
   -H "Authorization: Bearer $TOKEN" \
@@ -132,6 +312,7 @@ curl -X POST http://localhost:3000/api/v1/models/load \
 ```
 
 **Example with tensor parallelism (2 GPUs):**
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/models/load \
   -H "Authorization: Bearer $TOKEN" \
@@ -145,21 +326,22 @@ curl -X POST http://localhost:3000/api/v1/models/load \
 ```
 
 **Example (JavaScript):**
+
 ```javascript
 const response = await fetch('http://localhost:3000/api/v1/models/load', {
   method: 'POST',
   headers: {
-    'Authorization': `Bearer ${token}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
     model_path: 'meta-llama/Llama-3.2-1B',
     max_tokens: 4096,
   }),
-});
+})
 
-const result = await response.json();
-console.log('Model loading:', result.instance_id);
+const result = await response.json()
+console.log('Model loading:', result.instance_id)
 ```
 
 ### List Models
@@ -167,6 +349,7 @@ console.log('Model loading:', result.instance_id);
 **Endpoint:** `GET /api/v1/models`
 
 **Response (200 OK):**
+
 ```json
 {
   "models": [
@@ -206,6 +389,7 @@ console.log('Model loading:', result.instance_id);
 ```
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/v1/models
@@ -216,6 +400,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 **Endpoint:** `GET /api/v1/models/{id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "model": {
@@ -236,8 +421,8 @@ curl -H "Authorization: Bearer $TOKEN" \
       "total_gpu_memory_gib": 1.22,
       "weights_memory_gib": 0.67,
       "cuda_graph_memory_gib": 0.55,
-      "overhead_memory_gib": 0.40,
-      "kv_cache_available_gib": 5.70,
+      "overhead_memory_gib": 0.4,
+      "kv_cache_available_gib": 5.7,
       "kv_cache_per_request_mib": 156.23,
       "max_model_len": 4096
     },
@@ -247,6 +432,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/v1/models/llama-3-2-1b-abc123
@@ -260,22 +446,23 @@ Real-time Server-Sent Events stream for model instance status and logs.
 
 **Query Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `types` | string | all | Comma-separated event types: `log,status,memory,progress,error` |
-| `replay_logs` | string | true | Replay existing buffered logs on connection |
+| Parameter     | Type   | Default | Description                                                     |
+| ------------- | ------ | ------- | --------------------------------------------------------------- |
+| `types`       | string | all     | Comma-separated event types: `log,status,memory,progress,error` |
+| `replay_logs` | string | true    | Replay existing buffered logs on connection                     |
 
 **Event Types:**
 
-| Type | Description |
-|------|-------------|
-| `log` | vLLM process stdout/stderr output |
-| `status` | Model status transitions (starting → active/failed) |
-| `memory` | GPU memory updates |
-| `progress` | Loading progress updates |
-| `error` | Error notifications |
+| Type       | Description                                         |
+| ---------- | --------------------------------------------------- |
+| `log`      | vLLM process stdout/stderr output                   |
+| `status`   | Model status transitions (starting → active/failed) |
+| `memory`   | GPU memory updates                                  |
+| `progress` | Loading progress updates                            |
+| `error`    | Error notifications                                 |
 
 **Response (SSE Stream):**
+
 ```
 event: status
 data: {"id":"evt-123","timestamp":"2025-11-11T10:30:00Z","instanceId":"abc123","eventType":"status","data":{"previousStatus":"starting","currentStatus":"active","message":"Model ready for inference"}}
@@ -285,6 +472,7 @@ data: {"id":"evt-124","timestamp":"2025-11-11T10:30:01Z","instanceId":"abc123","
 ```
 
 **Example (curl):**
+
 ```bash
 curl -N -H "Authorization: Bearer $TOKEN" \
   "http://localhost:3000/api/v1/models/instances/abc123/events?types=status,log"
@@ -298,11 +486,12 @@ Retrieve buffered vLLM process logs for debugging.
 
 **Query Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `lines` | number | 100 | Number of lines to return (1-500) |
+| Parameter | Type   | Default | Description                       |
+| --------- | ------ | ------- | --------------------------------- |
+| `lines`   | number | 100     | Number of lines to return (1-500) |
 
 **Response (200 OK):**
+
 ```json
 {
   "instance_id": "abc123",
@@ -312,6 +501,7 @@ Retrieve buffered vLLM process logs for debugging.
 ```
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:3000/api/v1/models/instances/abc123/logs?lines=50"
@@ -322,6 +512,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 **Endpoint:** `POST /api/v1/models/{id}/unload`
 
 **Response (202 Accepted):**
+
 ```json
 {
   "id": "llama-3-2-1b-abc123",
@@ -331,6 +522,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 **Example (curl):**
+
 ```bash
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
@@ -342,32 +534,34 @@ curl -X POST \
 **Endpoint:** `GET /api/v1/metrics`
 
 **Response (200 OK - Prometheus Format):**
+
 ```
-# HELP vllm_stacker_models_total Total number of model instances
-# TYPE vllm_stacker_models_total gauge
-vllm_stacker_models_total{status="active"} 2
-vllm_stacker_models_total{status="starting"} 0
-vllm_stacker_models_total{status="stopping"} 0
-vllm_stacker_models_total{status="failed"} 0
+# HELP sardeenz_models_total Total number of model instances
+# TYPE sardeenz_models_total gauge
+sardeenz_models_total{status="active"} 2
+sardeenz_models_total{status="starting"} 0
+sardeenz_models_total{status="stopping"} 0
+sardeenz_models_total{status="failed"} 0
 
-# HELP vllm_stacker_gpu_memory_used_bytes GPU memory used by all models
-# TYPE vllm_stacker_gpu_memory_used_bytes gauge
-vllm_stacker_gpu_memory_used_bytes{model_id="llama-3-2-1b-abc123"} 4080218931
-vllm_stacker_gpu_memory_used_bytes{model_id="mistral-7b-def456"} 8589934592
+# HELP sardeenz_gpu_memory_used_bytes GPU memory used by all models
+# TYPE sardeenz_gpu_memory_used_bytes gauge
+sardeenz_gpu_memory_used_bytes{model_id="llama-3-2-1b-abc123"} 4080218931
+sardeenz_gpu_memory_used_bytes{model_id="mistral-7b-def456"} 8589934592
 
-# HELP vllm_stacker_requests_total Total inference requests
-# TYPE vllm_stacker_requests_total counter
-vllm_stacker_requests_total{model_id="llama-3-2-1b-abc123",status="success"} 1523
-vllm_stacker_requests_total{model_id="mistral-7b-def456",status="success"} 892
+# HELP sardeenz_requests_total Total inference requests
+# TYPE sardeenz_requests_total counter
+sardeenz_requests_total{model_id="llama-3-2-1b-abc123",status="success"} 1523
+sardeenz_requests_total{model_id="mistral-7b-def456",status="success"} 892
 
-# HELP vllm_stacker_request_duration_ms Request duration in milliseconds
-# TYPE vllm_stacker_request_duration_ms histogram
-vllm_stacker_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="100"} 234
-vllm_stacker_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="500"} 1421
-vllm_stacker_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="+Inf"} 1523
+# HELP sardeenz_request_duration_ms Request duration in milliseconds
+# TYPE sardeenz_request_duration_ms histogram
+sardeenz_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="100"} 234
+sardeenz_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="500"} 1421
+sardeenz_request_duration_ms_bucket{model_id="llama-3-2-1b-abc123",le="+Inf"} 1523
 ```
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/v1/metrics
@@ -380,6 +574,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 > **Note:** Health check endpoints (`/api/health`, `/api/health/ready`, `/api/health/live`) have quiet logging enabled. Successful requests (2xx) are logged at debug level only to reduce log noise from frequent polling. Errors (4xx/5xx) are always logged at warn/error levels.
 
 **Response (200 OK):**
+
 ```json
 {
   "status": "healthy",
@@ -390,10 +585,12 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 **Additional Health Endpoints:**
+
 - `GET /api/health/ready` - Readiness probe (returns `{"status": "ready", "timestamp": "..."}`)
 - `GET /api/health/live` - Liveness probe (returns `{"status": "alive", "timestamp": "..."}`)
 
 **Example (curl):**
+
 ```bash
 curl http://localhost:3000/api/health
 ```
@@ -405,6 +602,7 @@ curl http://localhost:3000/api/health
 Returns GPU and KVCache memory usage with per-model breakdown for visualization (used by the GPU Memory Overview panel in the dashboard).
 
 **Response (200 OK):**
+
 ```json
 {
   "kvcache": {
@@ -447,43 +645,45 @@ Returns GPU and KVCache memory usage with per-model breakdown for visualization 
 
 **Field Descriptions:**
 
-| Field | Description |
-|-------|-------------|
-| `kvcache.total_gb` | Total KVCache pool size (shared across all models) |
-| `kvcache.prealloc_gb` | Pre-allocated but not actively used KVCache memory |
-| `kvcache.used_gb` | Currently active KVCache memory |
-| `kvcache.free_gb` | Available KVCache memory |
-| `gpu.total_gb` | Total GPU memory |
-| `gpu.used_gb` | Used GPU memory (all processes) |
-| `gpu.free_gb` | Free GPU memory |
-| `gpu.utilization_percent` | GPU utilization percentage |
-| `models[].model_path` | Full model path/identifier |
-| `models[].instance_id` | Unique instance identifier (stable across API calls) |
-| `models[].display_name` | Short display name, unique per instance. For duplicate models, includes suffix: "Model", "Model (2)", etc. |
-| `models[].gpu_memory_gb` | Model's GPU footprint (weights + CUDA graphs) |
-| `models[].color` | Hex color for visualization (unique per instance, based on instance_id hash) |
+| Field                     | Description                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `kvcache.total_gb`        | Total KVCache pool size (shared across all models)                                                         |
+| `kvcache.prealloc_gb`     | Pre-allocated but not actively used KVCache memory                                                         |
+| `kvcache.used_gb`         | Currently active KVCache memory                                                                            |
+| `kvcache.free_gb`         | Available KVCache memory                                                                                   |
+| `gpu.total_gb`            | Total GPU memory                                                                                           |
+| `gpu.used_gb`             | Used GPU memory (all processes)                                                                            |
+| `gpu.free_gb`             | Free GPU memory                                                                                            |
+| `gpu.utilization_percent` | GPU utilization percentage                                                                                 |
+| `models[].model_path`     | Full model path/identifier                                                                                 |
+| `models[].instance_id`    | Unique instance identifier (stable across API calls)                                                       |
+| `models[].display_name`   | Short display name, unique per instance. For duplicate models, includes suffix: "Model", "Model (2)", etc. |
+| `models[].gpu_memory_gb`  | Model's GPU footprint (weights + CUDA graphs)                                                              |
+| `models[].color`          | Hex color for visualization (unique per instance, based on instance_id hash)                               |
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/memory/usage
 ```
 
 **Example (JavaScript):**
+
 ```javascript
 const response = await fetch('http://localhost:3000/api/memory/usage', {
-  headers: { 'Authorization': `Bearer ${token}` },
-});
-const memoryData = await response.json();
+  headers: { Authorization: `Bearer ${token}` },
+})
+const memoryData = await response.json()
 
 // KVCache metrics (shared pool)
-console.log(`KVCache: ${memoryData.kvcache.used_gb}/${memoryData.kvcache.total_gb} GB`);
+console.log(`KVCache: ${memoryData.kvcache.used_gb}/${memoryData.kvcache.total_gb} GB`)
 
 // GPU metrics with per-model breakdown
-console.log(`GPU: ${memoryData.gpu.used_gb}/${memoryData.gpu.total_gb} GB`);
-memoryData.models.forEach(model => {
-  console.log(`  ${model.display_name}: ${model.gpu_memory_gb} GB`);
-});
+console.log(`GPU: ${memoryData.gpu.used_gb}/${memoryData.gpu.total_gb} GB`)
+memoryData.models.forEach((model) => {
+  console.log(`  ${model.display_name}: ${model.gpu_memory_gb} GB`)
+})
 ```
 
 ### Get Multi-GPU Memory Usage
@@ -493,6 +693,7 @@ memoryData.models.forEach(model => {
 Returns per-GPU memory breakdown for multi-GPU systems.
 
 **Response (200 OK):**
+
 ```json
 {
   "gpus": [
@@ -542,6 +743,7 @@ Returns per-GPU memory breakdown for multi-GPU systems.
 Returns all GPUs with availability information and a recommendation for the next model load.
 
 **Response (200 OK):**
+
 ```json
 {
   "gpus": [
@@ -575,6 +777,7 @@ Returns all GPUs with availability information and a recommendation for the next
 ```
 
 **Example (curl):**
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:3000/api/gpu/available
@@ -584,6 +787,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 The Direct Proxy provides a lightweight, port-based proxy for testing and debugging. It bypasses the model routing layer and forwards requests directly to a specific vLLM instance port.
 
+> **Authentication:** Like the Proxy API, when `INFERENCE_API_KEY` is set, direct proxy endpoints require `Authorization: Bearer <api-key>` header. See [Inference API Key](#inference-api-key-openai-compatible) for details.
+
 ### Forward Request to Port
 
 **Endpoint:** `ALL /api/direct/:port/*`
@@ -591,10 +796,12 @@ The Direct Proxy provides a lightweight, port-based proxy for testing and debugg
 Forwards any request directly to `http://localhost:{port}/{path}`.
 
 **Parameters:**
+
 - `port` - The vLLM instance port (e.g., 5001)
 - `*` - The path to forward (e.g., `v1/chat/completions`)
 
 **Example (curl):**
+
 ```bash
 # Chat completion via direct proxy to port 5001
 curl -X POST http://localhost:3000/api/direct/5001/v1/chat/completions \
@@ -606,10 +813,12 @@ curl -X POST http://localhost:3000/api/direct/5001/v1/chat/completions \
 ```
 
 **Supported Responses:**
+
 - JSON responses are returned directly
 - SSE/streaming responses are piped through
 
 **Use Cases:**
+
 - Testing a specific model instance without model routing
 - Debugging inference issues
 - Bypassing the proxy layer for performance testing
@@ -618,11 +827,14 @@ curl -X POST http://localhost:3000/api/direct/5001/v1/chat/completions \
 
 The Proxy API provides OpenAI-compatible endpoints for inference requests.
 
+> **Authentication:** When `INFERENCE_API_KEY` is set, all proxy endpoints require `Authorization: Bearer <api-key>` header. When not set, endpoints are open. See [Inference API Key](#inference-api-key-openai-compatible) for details.
+
 ### Chat Completions
 
 **Endpoint:** `POST /v1/chat/completions`
 
 **Request Body:**
+
 ```json
 {
   "model": "llama-3-2-1b-abc123",
@@ -643,6 +855,7 @@ The Proxy API provides OpenAI-compatible endpoints for inference requests.
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "id": "chatcmpl-abc123",
@@ -668,6 +881,7 @@ The Proxy API provides OpenAI-compatible endpoints for inference requests.
 ```
 
 **Example (curl):**
+
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -680,6 +894,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```
 
 **Example (Python with OpenAI SDK):**
+
 ```python
 from openai import OpenAI
 
@@ -702,17 +917,17 @@ print(response.choices[0].message.content)
 ### Streaming Chat Completions
 
 **Request Body (with streaming):**
+
 ```json
 {
   "model": "llama-3-2-1b-abc123",
-  "messages": [
-    {"role": "user", "content": "Write a short poem about AI."}
-  ],
+  "messages": [{ "role": "user", "content": "Write a short poem about AI." }],
   "stream": true
 }
 ```
 
 **Response (Server-Sent Events):**
+
 ```
 data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1699999999,"model":"llama-3-2-1b-abc123","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
 
@@ -726,6 +941,7 @@ data: [DONE]
 ```
 
 **Example (Python with OpenAI SDK):**
+
 ```python
 from openai import OpenAI
 
@@ -743,6 +959,7 @@ for chunk in stream:
 ```
 
 **Example (JavaScript with fetch):**
+
 ```javascript
 const response = await fetch('http://localhost:8000/v1/chat/completions', {
   method: 'POST',
@@ -752,26 +969,26 @@ const response = await fetch('http://localhost:8000/v1/chat/completions', {
     messages: [{ role: 'user', content: 'Write a short poem about AI.' }],
     stream: true,
   }),
-});
+})
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
+const reader = response.body.getReader()
+const decoder = new TextDecoder()
 
 while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
+  const { done, value } = await reader.read()
+  if (done) break
 
-  const chunk = decoder.decode(value);
-  const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+  const chunk = decoder.decode(value)
+  const lines = chunk.split('\n').filter((line) => line.startsWith('data: '))
 
   for (const line of lines) {
-    const data = line.replace('data: ', '');
-    if (data === '[DONE]') break;
+    const data = line.replace('data: ', '')
+    if (data === '[DONE]') break
 
-    const parsed = JSON.parse(data);
-    const content = parsed.choices[0]?.delta?.content;
+    const parsed = JSON.parse(data)
+    const content = parsed.choices[0]?.delta?.content
     if (content) {
-      process.stdout.write(content);
+      process.stdout.write(content)
     }
   }
 }
@@ -782,6 +999,7 @@ while (true) {
 **Endpoint:** `POST /v1/completions`
 
 **Request Body:**
+
 ```json
 {
   "model": "llama-3-2-1b-abc123",
@@ -792,6 +1010,7 @@ while (true) {
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "id": "cmpl-abc123",
@@ -818,6 +1037,7 @@ while (true) {
 ### Controller API Errors
 
 **Model Not Found (404):**
+
 ```json
 {
   "error": {
@@ -829,6 +1049,7 @@ while (true) {
 ```
 
 **Insufficient GPU Memory (400):**
+
 ```json
 {
   "error": {
@@ -840,6 +1061,7 @@ while (true) {
 ```
 
 **Unauthorized (401):**
+
 ```json
 {
   "error": {
@@ -851,6 +1073,7 @@ while (true) {
 ```
 
 **Forbidden (403):**
+
 ```json
 {
   "error": {
@@ -862,6 +1085,7 @@ while (true) {
 ```
 
 **Model Already Exists (409):**
+
 ```json
 {
   "error": {
@@ -875,6 +1099,7 @@ while (true) {
 ### Proxy API Errors
 
 **Invalid Model (400):**
+
 ```json
 {
   "error": {
@@ -887,6 +1112,7 @@ while (true) {
 ```
 
 **Model Not Ready (503):**
+
 ```json
 {
   "error": {
@@ -902,15 +1128,15 @@ while (true) {
 ### Complete Workflow (TypeScript)
 
 ```typescript
-import axios from 'axios';
+import axios from 'axios'
 
-const CONTROLLER_URL = 'http://localhost:3000/api/v1';
-const PROXY_URL = 'http://localhost:8000/v1';
-const AUTH_TOKEN = process.env.AUTH_TOKEN;
+const CONTROLLER_URL = 'http://localhost:3000/api/v1'
+const PROXY_URL = 'http://localhost:8000/v1'
+const AUTH_TOKEN = process.env.AUTH_TOKEN
 
 async function completeWorkflow() {
   // 1. Load a model
-  console.log('Loading model...');
+  console.log('Loading model...')
   const loadResponse = await axios.post(
     `${CONTROLLER_URL}/models/load`,
     {
@@ -922,54 +1148,51 @@ async function completeWorkflow() {
     {
       headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
     }
-  );
+  )
 
-  const modelId = loadResponse.data.id;
-  const instanceId = loadResponse.data.instance_id;
-  console.log(`Model loading started: ${instanceId}`);
+  const modelId = loadResponse.data.id
+  const instanceId = loadResponse.data.instance_id
+  console.log(`Model loading started: ${instanceId}`)
 
   // 2. Wait for model to be ready
   // Option A: Polling (shown below)
   // Option B: Subscribe to SSE at /api/v1/models/instances/{instance_id}/events
-  console.log('Waiting for model to be ready...');
-  let status = 'starting';
+  console.log('Waiting for model to be ready...')
+  let status = 'starting'
   while (status === 'starting') {
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    const statusResponse = await axios.get(
-      `${CONTROLLER_URL}/models/${modelId}`,
-      { headers: { Authorization: `Bearer ${AUTH_TOKEN}` } }
-    );
-    status = statusResponse.data.status;
-    console.log(`Status: ${status}`);
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    const statusResponse = await axios.get(`${CONTROLLER_URL}/models/${modelId}`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    })
+    status = statusResponse.data.status
+    console.log(`Status: ${status}`)
   }
 
   if (status !== 'active') {
-    throw new Error(`Model failed to start: ${status}`);
+    throw new Error(`Model failed to start: ${status}`)
   }
 
   // 3. Make inference request
-  console.log('Making inference request...');
+  console.log('Making inference request...')
   const inferenceResponse = await axios.post(`${PROXY_URL}/chat/completions`, {
     model: modelId,
-    messages: [
-      { role: 'user', content: 'What is 2+2?' },
-    ],
-  });
+    messages: [{ role: 'user', content: 'What is 2+2?' }],
+  })
 
-  console.log('Response:', inferenceResponse.data.choices[0].message.content);
+  console.log('Response:', inferenceResponse.data.choices[0].message.content)
 
   // 4. Unload model
-  console.log('Unloading model...');
+  console.log('Unloading model...')
   await axios.post(
     `${CONTROLLER_URL}/models/${modelId}/unload`,
     {},
     { headers: { Authorization: `Bearer ${AUTH_TOKEN}` } }
-  );
+  )
 
-  console.log('Workflow complete!');
+  console.log('Workflow complete!')
 }
 
-completeWorkflow().catch(console.error);
+completeWorkflow().catch(console.error)
 ```
 
 ### Python Client Library
@@ -979,7 +1202,7 @@ import requests
 import time
 from typing import Optional
 
-class VLLMStackerClient:
+class SardeenzClient:
     def __init__(self, controller_url: str, proxy_url: str, auth_token: str):
         self.controller_url = controller_url
         self.proxy_url = proxy_url
@@ -1043,7 +1266,7 @@ class VLLMStackerClient:
         response.raise_for_status()
 
 # Usage
-client = VLLMStackerClient(
+client = SardeenzClient(
     controller_url="http://localhost:3000/api/v1",
     proxy_url="http://localhost:8000/v1",
     auth_token="your-token-here",
@@ -1071,6 +1294,7 @@ The Benchmark API allows you to run performance tests on loaded models, measurin
 **Endpoint:** `POST /api/benchmarks`
 
 **Request Body:**
+
 ```json
 {
   "name": "SmolLM Performance Test",
@@ -1092,21 +1316,22 @@ The Benchmark API allows you to run performance tests on loaded models, measurin
 
 **Fields:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | No | Human-readable name for the benchmark run |
-| `mode` | string | Yes | `isolated` (run scenarios sequentially) or `contention` (run all simultaneously) |
-| `scenarios` | array | Yes | One or more scenarios to benchmark |
-| `scenarios[].instanceId` | string | Yes | Model instance ID to benchmark |
-| `scenarios[].routingMode` | string | No | `direct` (to vLLM) or `proxy` (through unified endpoint). Default: `direct` |
-| `scenarios[].inputTokens` | number | Yes | Target input token count |
-| `scenarios[].outputTokens` | number | Yes | Max tokens for response |
-| `scenarios[].concurrency` | number | Yes | Number of parallel requests |
-| `scenarios[].warmupRequests` | number | Yes | Unmeasured warmup requests |
-| `scenarios[].totalRequests` | number | Yes | Measured requests |
-| `scenarios[].slaThresholdMs` | number | No | SLA threshold for goodput calculation |
+| Field                        | Type   | Required | Description                                                                      |
+| ---------------------------- | ------ | -------- | -------------------------------------------------------------------------------- |
+| `name`                       | string | No       | Human-readable name for the benchmark run                                        |
+| `mode`                       | string | Yes      | `isolated` (run scenarios sequentially) or `contention` (run all simultaneously) |
+| `scenarios`                  | array  | Yes      | One or more scenarios to benchmark                                               |
+| `scenarios[].instanceId`     | string | Yes      | Model instance ID to benchmark                                                   |
+| `scenarios[].routingMode`    | string | No       | `direct` (to vLLM) or `proxy` (through unified endpoint). Default: `direct`      |
+| `scenarios[].inputTokens`    | number | Yes      | Target input token count                                                         |
+| `scenarios[].outputTokens`   | number | Yes      | Max tokens for response                                                          |
+| `scenarios[].concurrency`    | number | Yes      | Number of parallel requests                                                      |
+| `scenarios[].warmupRequests` | number | Yes      | Unmeasured warmup requests                                                       |
+| `scenarios[].totalRequests`  | number | Yes      | Measured requests                                                                |
+| `scenarios[].slaThresholdMs` | number | No       | SLA threshold for goodput calculation                                            |
 
 **Response (201 Created):**
+
 ```json
 {
   "benchmark": {
@@ -1142,13 +1367,14 @@ The Benchmark API allows you to run performance tests on loaded models, measurin
 
 **Query Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `page` | number | 1 | Page number |
-| `limit` | number | 20 | Results per page (max 100) |
-| `status` | string | all | Filter by status: `pending`, `running`, `completed`, `cancelled`, `failed` |
+| Parameter | Type   | Default | Description                                                                |
+| --------- | ------ | ------- | -------------------------------------------------------------------------- |
+| `page`    | number | 1       | Page number                                                                |
+| `limit`   | number | 20      | Results per page (max 100)                                                 |
+| `status`  | string | all     | Filter by status: `pending`, `running`, `completed`, `cancelled`, `failed` |
 
 **Response (200 OK):**
+
 ```json
 {
   "benchmarks": [
@@ -1180,6 +1406,7 @@ The Benchmark API allows you to run performance tests on loaded models, measurin
 Returns full benchmark details including scenarios and aggregated metrics.
 
 **Response (200 OK):**
+
 ```json
 {
   "benchmark": {
@@ -1242,17 +1469,18 @@ Real-time progress updates via Server-Sent Events.
 
 **Event Types:**
 
-| Event | Description |
-|-------|-------------|
-| `benchmark:started` | Benchmark run has started |
-| `scenario:started` | A scenario has started |
-| `scenario:warmup` | Warmup phase progress |
-| `scenario:progress` | Measured request progress |
-| `scenario:completed` | Scenario finished with metrics |
-| `benchmark:completed` | All scenarios complete |
-| `benchmark:failed` | Benchmark run failed |
+| Event                 | Description                    |
+| --------------------- | ------------------------------ |
+| `benchmark:started`   | Benchmark run has started      |
+| `scenario:started`    | A scenario has started         |
+| `scenario:warmup`     | Warmup phase progress          |
+| `scenario:progress`   | Measured request progress      |
+| `scenario:completed`  | Scenario finished with metrics |
+| `benchmark:completed` | All scenarios complete         |
+| `benchmark:failed`    | Benchmark run failed           |
 
 **Example SSE Event:**
+
 ```
 event: scenario:progress
 data: {"scenario_id":"uuid","completed":10,"total":20,"success_count":10,"error_count":0}
@@ -1262,18 +1490,19 @@ data: {"scenario_id":"uuid","metrics":{"ttft_avg":45.2,"tps_avg":156.8,...}}
 ```
 
 **Example (JavaScript):**
+
 ```javascript
-const eventSource = new EventSource('/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events');
+const eventSource = new EventSource('/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events')
 
 eventSource.addEventListener('scenario:progress', (event) => {
-  const data = JSON.parse(event.data);
-  console.log(`Progress: ${data.completed}/${data.total}`);
-});
+  const data = JSON.parse(event.data)
+  console.log(`Progress: ${data.completed}/${data.total}`)
+})
 
 eventSource.addEventListener('benchmark:completed', (event) => {
-  console.log('Benchmark complete!');
-  eventSource.close();
-});
+  console.log('Benchmark complete!')
+  eventSource.close()
+})
 ```
 
 ### Delete a Benchmark Run
@@ -1281,6 +1510,7 @@ eventSource.addEventListener('benchmark:completed', (event) => {
 **Endpoint:** `DELETE /api/benchmarks/{id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -1297,6 +1527,7 @@ The Memory Profile API allows you to save and retrieve GPU memory footprints for
 **Endpoint:** `GET /api/memory/profiles`
 
 **Response (200 OK):**
+
 ```json
 {
   "profiles": [
@@ -1308,8 +1539,8 @@ The Memory Profile API allows you to save and retrieve GPU memory footprints for
       "total_gpu_memory_gib": 1.22,
       "weights_memory_gib": 0.27,
       "cuda_graphs_gib": 0.55,
-      "overhead_memory_gib": 0.40,
-      "kv_cache_available_gib": 5.70,
+      "overhead_memory_gib": 0.4,
+      "kv_cache_available_gib": 5.7,
       "gpu_name": "NVIDIA GeForce RTX 4090",
       "gpu_total_memory_gib": 24.0,
       "created_at": "2025-11-29T12:00:00Z"
@@ -1326,6 +1557,7 @@ The Memory Profile API allows you to save and retrieve GPU memory footprints for
 Create a profile from a running model instance:
 
 **Request Body:**
+
 ```json
 {
   "instanceId": "smollm2-135m-abc123",
@@ -1350,6 +1582,7 @@ Or create manually with explicit values:
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "profile": {
@@ -1360,8 +1593,8 @@ Or create manually with explicit values:
     "total_gpu_memory_gib": 1.22,
     "weights_memory_gib": 0.27,
     "cuda_graphs_gib": 0.55,
-    "overhead_memory_gib": 0.40,
-    "kv_cache_available_gib": 5.70,
+    "overhead_memory_gib": 0.4,
+    "kv_cache_available_gib": 5.7,
     "gpu_name": "NVIDIA GeForce RTX 4090",
     "gpu_total_memory_gib": 24.0,
     "created_at": "2025-11-29T12:00:00Z"
@@ -1377,13 +1610,14 @@ Find a profile by model configuration (useful before loading a model).
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `model_path` | string | Yes | Model path to lookup |
-| `max_tokens` | number | Yes | Max tokens configuration |
-| `gpu_name` | string | Yes | GPU name (e.g., "NVIDIA GeForce RTX 4090") |
+| Parameter    | Type   | Required | Description                                |
+| ------------ | ------ | -------- | ------------------------------------------ |
+| `model_path` | string | Yes      | Model path to lookup                       |
+| `max_tokens` | number | Yes      | Max tokens configuration                   |
+| `gpu_name`   | string | Yes      | GPU name (e.g., "NVIDIA GeForce RTX 4090") |
 
 **Example:**
+
 ```bash
 curl "http://localhost:3000/api/memory/profiles/lookup?model_path=HuggingFaceTB/SmolLM2-135M-Instruct&max_tokens=2048&gpu_name=NVIDIA%20GeForce%20RTX%204090"
 ```
@@ -1399,6 +1633,7 @@ curl "http://localhost:3000/api/memory/profiles/lookup?model_path=HuggingFaceTB/
 Check if a model will fit in available GPU memory before loading.
 
 **Request Body:**
+
 ```json
 {
   "modelPath": "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -1407,6 +1642,7 @@ Check if a model will fit in available GPU memory before loading.
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "warning_level": "ok",
@@ -1421,18 +1657,19 @@ Check if a model will fit in available GPU memory before loading.
 
 **Warning Levels:**
 
-| Level | Description |
-|-------|-------------|
-| `ok` | Model should fit with comfortable headroom |
+| Level     | Description                                               |
+| --------- | --------------------------------------------------------- |
+| `ok`      | Model should fit with comfortable headroom                |
 | `caution` | Memory is tight, model may succeed but is close to limits |
-| `danger` | Model will not fit in available GPU memory |
-| `info` | No profile found for this configuration |
+| `danger`  | Model will not fit in available GPU memory                |
+| `info`    | No profile found for this configuration                   |
 
 ### Delete a Memory Profile
 
 **Endpoint:** `DELETE /api/memory/profiles/{id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -1449,6 +1686,7 @@ The Configuration API allows you to save and restore model configurations for qu
 **Endpoint:** `GET /api/configurations`
 
 **Response (200 OK):**
+
 ```json
 {
   "configurations": [
@@ -1470,6 +1708,7 @@ The Configuration API allows you to save and restore model configurations for qu
 **Endpoint:** `GET /api/configurations/{id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "configuration": {
@@ -1502,6 +1741,7 @@ The Configuration API allows you to save and restore model configurations for qu
 Saves current running models as a configuration preset.
 
 **Request Body:**
+
 ```json
 {
   "name": "Production Models",
@@ -1510,6 +1750,7 @@ Saves current running models as a configuration preset.
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "configuration": {
@@ -1530,6 +1771,7 @@ Unloads all current models and loads models from the saved configuration.
 > **Note:** Models sharing GPUs are loaded sequentially to prevent vLLM memory calculation conflicts. Models on disjoint GPUs load in parallel for faster restoration.
 
 **Response (202 Accepted):**
+
 ```json
 {
   "status": "started",
@@ -1544,6 +1786,7 @@ Unloads all current models and loads models from the saved configuration.
 **Endpoint:** `DELETE /api/configurations/{id}`
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -1554,6 +1797,7 @@ Unloads all current models and loads models from the saved configuration.
 ---
 
 **See Also:**
+
 - [Architecture](./architecture.md) - System architecture details
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
 - [OpenAPI Specification](../specs/001-multi-model-platform/contracts/) - Full API schema (when available)

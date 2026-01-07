@@ -8,7 +8,7 @@
 
 1. [Fastify Best Practices for TypeScript](#1-fastify-best-practices-for-typescript)
 2. [KVCached Subprocess Management](#2-kvcached-subprocess-management)
-3. [OAuth/OIDC Integration](#3-oauthoidc-integration)
+3. [OAuth 2.0 Integration](#3-oauth-20-integration)
 4. [Streaming Proxy Implementation](#4-streaming-proxy-implementation)
 5. [Prometheus Metrics in Fastify](#5-prometheus-metrics-in-fastify)
 6. [PatternFly 6 + Vite Setup](#6-patternfly-6--vite-setup)
@@ -272,12 +272,12 @@ export class ModelManager extends EventEmitter {
 
 ---
 
-## 3. OAuth/OIDC Integration
+## 3. OAuth 2.0 Integration
 
-### Decision: Use `@fastify/oauth2` with Keycloak/generic OIDC provider
+### Decision: Use manual OAuth 2.0 flow for OpenShift compatibility
 
 **Rationale:**
-- Enterprise-grade authentication via OAuth 2.0 / OIDC (constitution requirement)
+- Enterprise-grade authentication via OAuth 2.0 (constitution requirement)
 - Supports role-based access control via JWT claims
 - Compatible with Keycloak, Auth0, Okta, Azure AD
 - Fastify-native plugin with TypeScript support
@@ -299,7 +299,7 @@ export default fp(async (fastify) => {
 
   // Register OAuth2 plugin
   await fastify.register(oauth2, {
-    name: 'oidcAuth',
+    name: 'oauth2Auth',
     scope: ['openid', 'profile', 'email'],
     credentials: {
       client: {
@@ -311,7 +311,7 @@ export default fp(async (fastify) => {
     startRedirectPath: '/auth/login',
     callbackUri: `${process.env.API_BASE_URL}/auth/callback`,
     discovery: {
-      issuer: process.env.OIDC_ISSUER_URL!, // e.g., https://keycloak.example.com/realms/myrealm
+      issuer: process.env.OAUTH_ISSUER_URL!, // e.g., https://oauth-openshift.apps.example.com
     },
   })
 
@@ -357,7 +357,8 @@ fastify.get('/api/models', {
 **Required Environment Variables:**
 - `OAUTH_CLIENT_ID`: OAuth client ID
 - `OAUTH_CLIENT_SECRET`: OAuth client secret
-- `OIDC_ISSUER_URL`: OIDC issuer URL (e.g., Keycloak realm)
+- `OAUTH_ISSUER_URL`: OAuth issuer URL (e.g., OpenShift OAuth server)
+- `K8S_API_URL`: Kubernetes API URL for user info lookup
 - `JWT_SECRET`: Secret for signing/verifying JWTs
 - `API_BASE_URL`: Base URL for callback redirect
 
@@ -885,7 +886,7 @@ export const ModelDashboard: React.FC = () => {
 
 ```json
 {
-  "name": "@vllm-stacker/backend",
+  "name": "@sardeenz/backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -896,8 +897,8 @@ export const ModelDashboard: React.FC = () => {
   },
   "dependencies": {
     "fastify": "^5.1.0",
-    "@vllm-stacker/types": "workspace:*",
-    "@vllm-stacker/utils": "workspace:*"
+    "@sardeenz/types": "workspace:*",
+    "@sardeenz/utils": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
@@ -927,8 +928,8 @@ export const ModelDashboard: React.FC = () => {
     "sourceMap": true,
     "composite": true,
     "paths": {
-      "@vllm-stacker/types": ["./packages/types/src"],
-      "@vllm-stacker/utils": ["./packages/utils/src"]
+      "@sardeenz/types": ["./packages/types/src"],
+      "@sardeenz/utils": ["./packages/utils/src"]
     }
   }
 }
@@ -953,7 +954,7 @@ export const ModelDashboard: React.FC = () => {
 |------|----------|------------------|-----------|
 | **Backend Framework** | Fastify with TypeScript | `fastify@^5.1.0` | Performance (<50ms routing), TypeScript support, OpenAPI integration |
 | **Process Management** | Direct subprocess | Node.js `child_process` | Full control, no downtime on model changes, KVCached compatible |
-| **Authentication** | OAuth 2.0 / OIDC | `@fastify/oauth2@^8.1.0` | Enterprise-grade auth, RBAC via JWT claims, SSO support |
+| **Authentication** | OAuth 2.0 | Manual OAuth flow | Enterprise-grade auth, RBAC via JWT claims, OpenShift OAuth compatible |
 | **Streaming Proxy** | Fastify reply.hijack() | Built-in | Minimal latency, direct TCP passthrough |
 | **Metrics** | Prometheus | `fastify-metrics@^11.0.0` | Industry standard, custom metrics support |
 | **Frontend** | React + PatternFly 6 + Vite | `vite@^6.0.0`, `@patternfly/react-core@^6.0.0` | Fast dev server, enterprise UI components, TypeScript support |

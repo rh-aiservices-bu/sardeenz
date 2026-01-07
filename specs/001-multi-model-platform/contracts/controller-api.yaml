@@ -10,7 +10,7 @@ info:
     - Query model status and resource usage
     - Monitor model health and performance
 
-    **Authentication**: OAuth 2.0 / OIDC required for all endpoints.
+    **Authentication**: OAuth 2.0 required for all endpoints.
     **Roles**:
     - `admin`: Full access (load, unload, configure)
     - `admin-readonly`: Read-only access (list, status, metrics)
@@ -389,7 +389,7 @@ components:
   securitySchemes:
     OAuth2:
       type: oauth2
-      description: OAuth 2.0 / OIDC authentication with role-based access control
+      description: OAuth 2.0 authentication with role-based access control
       flows:
         authorizationCode:
           authorizationUrl: https://keycloak.example.com/realms/vllm/protocol/openid-connect/auth

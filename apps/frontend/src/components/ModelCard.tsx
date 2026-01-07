@@ -26,6 +26,7 @@ import { ModelStatusBadge } from './ModelStatusBadge'
 import { ViewLogsDialog } from './ViewLogsDialog'
 import { MemoryDetailsModal } from './MemoryDetailsModal'
 import { useNotifications } from '../contexts/NotificationContext'
+import { useAuth } from '../contexts/AuthContext'
 
 interface ModelCardProps {
   model: ModelInstanceDTO
@@ -39,6 +40,7 @@ interface ModelCardProps {
  */
 export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardProps) {
   const { addNotification } = useNotifications()
+  const { canWrite } = useAuth()
   const previousErrorRef = useRef<string | null>(null)
   const [logsModalOpen, setLogsModalOpen] = useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
@@ -200,8 +202,9 @@ export function ModelCard({ model, onUnload, isUnloading = false }: ModelCardPro
           variant="danger"
           icon={<TrashIcon />}
           onClick={handleUnloadClick}
-          isDisabled={model.status === 'stopping' || isUnloading}
+          isDisabled={model.status === 'stopping' || isUnloading || !canWrite}
           isLoading={isUnloading}
+          title={!canWrite ? 'You do not have permission to unload models' : undefined}
         >
           {isUnloading
             ? (isFailed ? 'Removing...' : 'Unloading...')

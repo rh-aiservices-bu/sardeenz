@@ -73,8 +73,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const {
@@ -170,8 +169,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { model_path } = request.params
@@ -243,8 +241,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           200: ListModelsResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin-readonly'),
+      onRequest: fastify.requireRole('admin-readonly'),
       config: { logRequests: false },
     },
     async () => {
@@ -273,8 +270,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin-readonly'),
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request) => {
       const { model_path } = request.params
@@ -381,8 +377,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin-readonly'),
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request) => {
       const { model_path } = request.params
@@ -418,8 +413,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { instance_id } = request.params
@@ -506,6 +500,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request) => {
       const { instance_id } = request.params

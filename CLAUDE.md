@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **sardeenz** is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of vLLM (inference engine) and KVCached (GPU memory sharing), it allows efficient multi-model hosting on a single GPU.
 
 **Core Components:**
+
 - **Controller API**: Dynamically load/unload models, query status, manage GPU memory (Fastify + TypeScript)
   - Real-time model load progress via SSE events
   - Intelligent error extraction from vLLM logs
@@ -17,6 +18,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
 - **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
 - **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes
+- **Authentication**: Dual-auth model separating admin (JWT) from inference (optional API key)
+  - Admin: Three modes (`none`, `simple`, `oauth`) via `AUTH_MODE` for dashboard/controller API
+  - Inference: Optional `INFERENCE_API_KEY` for OpenAI-compatible endpoints (`/v1/*`)
 
 **Documentation:** See [`docs/`](./docs/) for detailed architecture, API guides, and deployment instructions.
 
@@ -41,6 +45,7 @@ npm run dev
 ## Architecture
 
 This project uses an npm workspace monorepo structure:
+
 - `apps/backend` - Fastify backend (Controller API + Proxy)
 - `apps/frontend` - React + PatternFly dashboard
 - `packages/types` - Shared TypeScript types
@@ -48,6 +53,7 @@ This project uses an npm workspace monorepo structure:
 - `packages/utils` - Shared utilities
 
 **Key Design Decisions:**
+
 - Direct vLLM subprocess management (no Docker-in-Docker) for zero-downtime model loading
 - Hybrid storage: in-memory for runtime state, SQLite for benchmarks/profiles persistence
 - OpenAI-compatible API via vLLM native format

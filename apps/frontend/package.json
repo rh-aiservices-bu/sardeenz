@@ -1,6 +1,5 @@
 {
   "name": "@sardeenz/frontend",
-  "version": "0.1.0",
   "description": "Frontend dashboard for Sardeenz",
   "private": true,
   "type": "module",

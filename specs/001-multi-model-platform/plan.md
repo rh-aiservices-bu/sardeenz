@@ -21,7 +21,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - **Monorepo**: npm workspaces (apps/backend, apps/frontend, packages/types)
 - **Container**: Based on `quay.io/vllm/vllm-cuda:0.11.2` with Node.js 22 added
 - **Process Management**: Direct subprocess spawning with KVCached memory sharing (NOT using KVCached Controller)
-- **Auth**: OAuth 2.0 / OIDC with RBAC (admin, admin-readonly roles)
+- **Auth**: OAuth 2.0 with RBAC (admin, admin-readonly roles)
 
 ## Technical Context
 
@@ -58,7 +58,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Constraints**:
 - GPU memory: Shared via KVCached, fair allocation required (prevent OOM)
 - No database dependency for PoC (in-memory storage acceptable)
-- OAuth/OIDC integration required from start (security by design)
+- OAuth 2.0 integration required from start (security by design)
 - OpenAI-compatible API format (enables drop-in replacement)
 - Stateless operation (container restarts = clean state)
 
@@ -129,7 +129,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 
 **Status**: **COMPLIANT**
 
-- ✅ OAuth 2.0 / OIDC integration via `@fastify/oauth2`
+- ✅ OAuth 2.0 integration via manual OAuth flow (OpenShift compatible)
 - ✅ RBAC roles defined: `admin` (full access), `admin-readonly` (read-only)
 - ✅ Role enforcement at endpoint level (decorators)
 - ✅ JWT claims validation for group membership
@@ -264,7 +264,7 @@ specs/[###-feature]/
 │   │   │   │   ├── metrics.ts          # Prometheus metrics collection
 │   │   │   │   └── proxy-router.ts     # Request routing to model instances
 │   │   │   └── plugins/           # Fastify plugins
-│   │   │       ├── auth.ts        # OAuth/OIDC + RBAC
+│   │   │       ├── auth.ts        # OAuth 2.0 + RBAC
 │   │   │       ├── swagger.ts     # OpenAPI documentation
 │   │   │       └── metrics.ts     # Prometheus metrics plugin
 │   │   ├── tests/                 # Backend tests

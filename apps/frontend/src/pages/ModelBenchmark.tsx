@@ -21,6 +21,7 @@ import {
 } from '../components/benchmark'
 import type { BenchmarkFormConfig, InitialBenchmarkConfig } from '../components/benchmark'
 import { apiClient, extractErrorMessage } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 /** Performance tab view state machine */
 type PerformanceView = 'list' | 'form' | 'running' | 'results'
@@ -30,6 +31,7 @@ type PerformanceView = 'list' | 'form' | 'running' | 'results'
  * Performance tab supports running benchmarks with real-time progress.
  */
 function ModelBenchmark() {
+  const { canWrite } = useAuth()
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0)
 
   // Performance tab state
@@ -149,7 +151,12 @@ function ModelBenchmark() {
               style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
             >
               <FlexItem>
-                <Button variant="primary" onClick={handleStartNewBenchmark}>
+                <Button
+                  variant="primary"
+                  onClick={handleStartNewBenchmark}
+                  isDisabled={!canWrite}
+                  title={!canWrite ? 'You do not have permission to run benchmarks' : undefined}
+                >
                   New Benchmark
                 </Button>
               </FlexItem>

@@ -23,7 +23,7 @@ The frontend communicates with the **Controller API** (`http://localhost:3000/ap
 - Access operation audit trail
 
 **Key Requirements:**
-- OAuth/OIDC authentication with JWT bearer tokens
+- OAuth 2.0 authentication with JWT bearer tokens
 - Role-based access control (admin, admin-readonly)
 - Automatic token refresh
 - Graceful error handling
@@ -38,7 +38,7 @@ src/api/
 ├── client.ts          # Axios instance with interceptors
 ├── models.ts          # Model lifecycle endpoints
 ├── metrics.ts         # Metrics endpoints
-├── types.ts           # API response types (imports from @vllm-stacker/types)
+├── types.ts           # API response types (imports from @sardeenz/types)
 └── index.ts           # Re-export all APIs
 ```
 
@@ -111,7 +111,7 @@ VITE_API_BASE_URL=/api/v1
 
 ## Authentication Integration
 
-### OAuth/OIDC Flow
+### OAuth 2.0 Flow
 
 The frontend delegates OAuth authentication to the backend:
 
@@ -241,7 +241,7 @@ export const useAuth = (): AuthContextType => {
 
 ```tsx
 import { apiClient } from './client';
-import { ModelInstance } from '@vllm-stacker/types';
+import { ModelInstance } from '@sardeenz/types';
 
 export interface LoadModelRequest {
   modelPath: string;
@@ -384,7 +384,7 @@ export * from './types';
 ```tsx
 import { useState, useEffect, useCallback } from 'react';
 import { modelsApi } from '../api/models';
-import { ModelInstance } from '@vllm-stacker/types';
+import { ModelInstance } from '@sardeenz/types';
 
 interface UseModelsResult {
   models: ModelInstance[];
@@ -439,7 +439,7 @@ export function useModels(
 ```tsx
 import { useState, useEffect } from 'react';
 import { modelsApi } from '../api/models';
-import { ModelInstance } from '@vllm-stacker/types';
+import { ModelInstance } from '@sardeenz/types';
 
 interface UseModelDetailsResult {
   model: ModelInstance | null;
@@ -674,7 +674,7 @@ export type {
   ModelConfiguration,
   ResourceMetrics,
   ControllerOperation,
-} from '@vllm-stacker/types';
+} from '@sardeenz/types';
 
 // Frontend-specific types
 export interface ModelFormData {

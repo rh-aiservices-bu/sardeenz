@@ -8,6 +8,9 @@ import { config } from '../config.js'
  */
 export default async function directProxyRoutes(fastify: FastifyInstance) {
   const debugStreaming = config.debugStreaming
+
+  // Apply inference API key authentication to all routes in this plugin
+  fastify.addHook('preHandler', fastify.authenticateInference)
   /**
    * ALL /api/direct/:port/* - Lightweight port-based proxy
    * Forwards requests directly to localhost:${port}/${path}
@@ -171,7 +174,13 @@ export default async function directProxyRoutes(fastify: FastifyInstance) {
             if (debugStreaming) {
               const durationMs = Date.now() - streamStartTime
               fastify.log.info(
-                { stage: 'stream_complete', targetUrl, totalChunks: chunkIndex, totalBytes, durationMs },
+                {
+                  stage: 'stream_complete',
+                  targetUrl,
+                  totalChunks: chunkIndex,
+                  totalBytes,
+                  durationMs,
+                },
                 `SSE Debug: Stream complete - ${chunkIndex} chunks, ${totalBytes} bytes, ${durationMs}ms (direct proxy)`
               )
             }

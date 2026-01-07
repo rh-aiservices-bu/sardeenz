@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Role-Based Access Control (RBAC)
+
+- Implemented RBAC with two roles: `admin` (full access) and `admin-readonly` (read-only)
+- Backend route-level authorization via `fastify.requireRole()` hooks on all API routes
+- OAuth group mapping: `sardeenz-admins` → `admin`, `sardeenz-admins-readonly` → `admin-readonly`
+- Users with no matching groups receive 403 with message to contact administrator
+- HuggingFace token masking for read-only users (sees masked placeholder instead of real token)
+- Frontend `AuthContext` enhanced with `canWrite` helper for conditional UI rendering
+- User dropdown displays role label (e.g., "admin" or "admin-readonly")
+- Write action buttons disabled with tooltips for read-only users across all components:
+  - Load/Unload models, Save/Load/Delete configurations
+  - Start/Delete benchmarks, Delete memory profiles
+  - Modify settings (HF token)
+
 ### Model Configuration Management
 
 - Added persistent model configuration storage with SQLite

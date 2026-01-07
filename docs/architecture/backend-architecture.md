@@ -15,6 +15,7 @@ This document provides detailed backend architecture specifications for the sard
 ## Overview
 
 The backend is a Fastify server providing:
+
 - **Controller API**: Model lifecycle management, GPU selection, benchmarking
 - **Unified Proxy**: OpenAI-compatible inference routing with <50ms overhead target
 - **SSE Events**: Real-time status updates during model operations
@@ -63,13 +64,13 @@ Singleton for SSE event distribution:
 
 Intelligent extraction of meaningful errors from vLLM output:
 
-| Error Pattern | Description |
-|---------------|-------------|
-| CUDA OOM | Memory allocation failures with details |
-| Model not found | Missing model paths or files |
-| Port conflict | Address already in use |
-| CUDA/PyTorch mismatch | Version compatibility issues |
-| Generic exception | Python traceback extraction |
+| Error Pattern         | Description                             |
+| --------------------- | --------------------------------------- |
+| CUDA OOM              | Memory allocation failures with details |
+| Model not found       | Missing model paths or files            |
+| Port conflict         | Address already in use                  |
+| CUDA/PyTorch mismatch | Version compatibility issues            |
+| Generic exception     | Python traceback extraction             |
 
 Falls back to last stderr lines with exit code if no pattern matches.
 
@@ -79,22 +80,22 @@ Parses vLLM process logs to extract memory metrics and process information after
 
 **Memory Metrics Patterns:**
 
-| Log Pattern | Extracted Field |
-|-------------|-----------------|
-| `Model loading took X.XX GiB` | `weightsMemoryGiB` |
-| `Graph capturing finished...took X.XX GiB` | `cudaGraphMemoryGiB` |
-| `Available KV cache memory: X.XX GiB` | `kvCacheAvailableGiB` |
-| `GPU KV cache size: N tokens` | Used for per-request calculation |
-| `Using max model len N` | `maxModelLen` |
+| Log Pattern                                | Extracted Field                  |
+| ------------------------------------------ | -------------------------------- |
+| `Model loading took X.XX GiB`              | `weightsMemoryGiB`               |
+| `Graph capturing finished...took X.XX GiB` | `cudaGraphMemoryGiB`             |
+| `Available KV cache memory: X.XX GiB`      | `kvCacheAvailableGiB`            |
+| `GPU KV cache size: N tokens`              | Used for per-request calculation |
+| `Using max model len N`                    | `maxModelLen`                    |
 
 The `kvCachePerRequestMiB` is calculated as: `(kvCacheAvailableGiB * 1024) / totalTokens * maxModelLen`
 
 **Process ID Patterns:**
 
-| Log Pattern | Extracted Field | Description |
-|-------------|-----------------|-------------|
+| Log Pattern            | Extracted Field | Description                                         |
+| ---------------------- | --------------- | --------------------------------------------------- |
 | `EngineCore_DP0 pid=N` | `engineCorePid` | The vLLM EngineCore process that allocates GPU VRAM |
-| `APIServer pid=N` | `processId` | The main API server process (from spawn) |
+| `APIServer pid=N`      | `processId`     | The main API server process (from spawn)            |
 
 Metrics are parsed once when the model transitions to `active` status and stored in the `ModelInstance` fields. Returns `null` if critical metrics cannot be parsed.
 
@@ -137,6 +138,22 @@ Request routing for inference proxy:
 - **Model lookup**: Resolves model name to running instance
 - **Round-robin**: Load balances across multiple instances of same model
 - **Metrics tracking**: Records request latency and counts
+
+### Inference Auth Plugin (`src/plugins/inference-auth.ts`)
+
+Separate authentication for inference endpoints:
+
+- **Dual-auth model**: Inference endpoints use API key auth, not JWT
+- **Optional protection**: When `INFERENCE_API_KEY` is empty, inference endpoints are open
+- **OpenAI-compatible**: Uses `Authorization: Bearer <key>` header format
+- **Route detection**: `isInferenceRoute()` helper identifies inference endpoints (`/v1/*`, `/api/direct/*`, etc.)
+- **Frontend integration**: API key passed to frontend after admin login for seamless testing
+
+**Protected Routes:**
+
+- `/v1/*` - OpenAI-compatible endpoints
+- `/api/direct/:port/*` - Direct port-based proxy
+- `/tokenize`, `/detokenize`, `/pooling`, `/classification`, `/score`, `/re-rank`
 
 ### ModelConfigurationStore (`src/stores/model-configuration-store.ts`)
 
@@ -271,7 +288,7 @@ The backend implements quiet logging to reduce noise from frequently-polled endp
 
 ```typescript
 interface FastifyContextConfig {
-  logRequests?: boolean  // false = quiet mode
+  logRequests?: boolean // false = quiet mode
 }
 ```
 
