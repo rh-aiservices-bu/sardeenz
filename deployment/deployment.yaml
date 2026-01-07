@@ -33,7 +33,7 @@ spec:
 
       containers:
         - name: sardeenz
-          image: quay.io/sardeenz/sardeenz:latest
+          image: quay.io/rh-aiservices-bu/sardeenz:latest
           imagePullPolicy: Always
 
           ports:
@@ -45,6 +45,9 @@ spec:
               protocol: TCP
 
           env:
+            # =================================================================
+            # Server Configuration (from ConfigMap)
+            # =================================================================
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
@@ -65,6 +68,81 @@ spec:
                 configMapKeyRef:
                   name: sardeenz-config
                   key: LOG_LEVEL
+
+            # =================================================================
+            # Authentication Configuration
+            # =================================================================
+            - name: AUTH_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: AUTH_MODE
+            - name: ADMIN_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: ADMIN_USERNAME
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: admin-password
+                  optional: true
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: jwt-secret
+                  optional: true
+            - name: JWT_EXPIRATION_HOURS
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: JWT_EXPIRATION_HOURS
+            - name: API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: API_BASE_URL
+                  optional: true
+
+            # OAuth credentials (from Secret)
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: client-id
+                  optional: true
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: client-secret
+                  optional: true
+            - name: OAUTH_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: issuer-url
+                  optional: true
+            - name: K8S_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: k8s-api-url
+                  optional: true
+
+            # Inference API key (optional)
+            - name: INFERENCE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: inference-api-key
+                  optional: true
+
+            # =================================================================
+            # KVCached Configuration (from ConfigMap)
+            # =================================================================
             - name: ENABLE_KVCACHED
               valueFrom:
                 configMapKeyRef:
@@ -75,6 +153,10 @@ spec:
                 configMapKeyRef:
                   name: sardeenz-config
                   key: KVCACHED_AUTOPATCH
+
+            # =================================================================
+            # vLLM Configuration (from ConfigMap)
+            # =================================================================
             - name: VLLM_BASE_PORT
               valueFrom:
                 configMapKeyRef:
@@ -85,6 +167,41 @@ spec:
                 configMapKeyRef:
                   name: sardeenz-config
                   key: VLLM_MAX_INSTANCES
+            - name: VLLM_STARTUP_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: VLLM_STARTUP_TIMEOUT
+
+            # =================================================================
+            # Optional Features (from ConfigMap)
+            # =================================================================
+            - name: LOCAL_MODELS_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: LOCAL_MODELS_PATH
+                  optional: true
+            - name: DEBUG_STREAMING
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: DEBUG_STREAMING
+                  optional: true
+
+            # =================================================================
+            # HuggingFace Configuration (from Secret)
+            # =================================================================
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: hf-token
+                  optional: true
+
+            # =================================================================
+            # Container Paths
+            # =================================================================
             # HuggingFace cache location (for model downloads)
             - name: HF_HOME
               value: "/opt/app-root/models"
@@ -98,32 +215,6 @@ spec:
               value: "/opt/app-root/src/.cache"
             - name: FLASHINFER_WORKSPACE_DIR
               value: "/opt/app-root/src/.cache/flashinfer"
-            # HuggingFace token for gated models (optional)
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: sardeenz-hf-token
-                  key: token
-                  optional: true
-            # OAuth credentials from Secret
-            - name: OAUTH_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: sardeenz-oauth
-                  key: client-id
-                  optional: true
-            - name: OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: sardeenz-oauth
-                  key: client-secret
-                  optional: true
-            - name: OAUTH_ISSUER_URL
-              valueFrom:
-                secretKeyRef:
-                  name: sardeenz-oauth
-                  key: issuer-url
-                  optional: true
 
           # Resource requests and limits
           resources:

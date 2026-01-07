@@ -226,7 +226,7 @@ docker run -d \
 1. **GPU-enabled OpenShift cluster** with NVIDIA GPU Operator installed
 2. **Namespace** with GPU quota allocated
 3. **Image registry access** (e.g., Quay.io)
-4. **Persistent storage** for model files (optional, can use S3/object storage)
+4. **Persistent storage** - App Data PVC required for SQLite database; Model Cache PVC optional (only if downloading from HuggingFace)
 
 ### Deploy with GPU
 
@@ -397,10 +397,10 @@ spec:
 
 **5. Create PersistentVolumeClaims:**
 
-Two PVCs are required:
+The deployment uses two PVCs. Only the App Data PVC is required:
 
-- **Model Cache PVC** (`model-cache-pvc`): Stores downloaded HuggingFace models
-- **App Data PVC** (`sardeenz-app-data`): Stores SQLite database and other persistent app data
+- **App Data PVC** (`sardeenz-app-data`): **Required.** Stores SQLite database and other persistent app data
+- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for alternatives.
 
 **Model Cache PVC (`pvc-model-cache.yaml`):**
 
@@ -462,8 +462,8 @@ oc create secret generic oauth-config \
 **7. Deploy:**
 
 ```bash
-oc apply -f pvc-model-cache.yaml
-oc apply -f pvc-app-data.yaml
+oc apply -f pvc-app-data.yaml              # Required: application data
+oc apply -f pvc-model-cache.yaml           # Optional: only if downloading from HuggingFace
 oc apply -f deployment.yaml
 oc apply -f service.yaml
 oc apply -f route.yaml

@@ -270,14 +270,14 @@ This is a monorepo with npm workspaces:
 
 ### OpenShift Deployment for User Story 4
 
-- [X] T144 [P] [US4] Create OpenShift Deployment manifest in k8s/deployment.yaml
-- [X] T145 [P] [US4] Create OpenShift Service manifest in k8s/service.yaml
-- [X] T146 [P] [US4] Create OpenShift Route manifest in k8s/route.yaml
-- [X] T147 [US4] Configure GPU node selector in k8s/deployment.yaml
-- [X] T148 [US4] Configure resource requests and limits in k8s/deployment.yaml
-- [X] T149 [US4] Configure liveness and readiness probes in k8s/deployment.yaml
-- [X] T150 [US4] Add ConfigMap for environment variables in k8s/configmap.yaml
-- [X] T151 [US4] Add Secret for OAuth credentials in k8s/secret.yaml (template)
+- [X] T144 [P] [US4] Create OpenShift Deployment manifest in deployment/deployment.yaml
+- [X] T145 [P] [US4] Create OpenShift Service manifest in deployment/service.yaml
+- [X] T146 [P] [US4] Create OpenShift Route manifest in deployment/route.yaml
+- [X] T147 [US4] Configure GPU node selector in deployment/deployment.yaml
+- [X] T148 [US4] Configure resource requests and limits in deployment/deployment.yaml
+- [X] T149 [US4] Configure liveness and readiness probes in deployment/deployment.yaml
+- [X] T150 [US4] Add ConfigMap for environment variables in deployment/configmap.yaml
+- [X] T151 [US4] Add Secret for OAuth credentials in deployment/secret.yaml (template)
 
 ### Container Testing for User Story 4
 
