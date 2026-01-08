@@ -223,3 +223,98 @@ export async function getDescendantPids(parentPid: number): Promise<number[]> {
 
   return descendants
 }
+
+/**
+ * Find all vLLM-related processes by port number.
+ * Searches for processes containing 'vllm' with --port=<port> in their args.
+ * This is more reliable than tree-walking for processes that may have
+ * escaped the parent-child hierarchy (e.g., Python multiprocessing workers).
+ */
+export async function findVllmProcessesByPort(port: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const pids: number[] = []
+
+    // Use ps to find all processes with their args
+    const ps = spawn('ps', ['-eo', 'pid,args'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+
+    ps.stdout?.on('data', (data) => {
+      stdout += data.toString()
+    })
+
+    ps.on('error', () => {
+      resolve([])
+    })
+
+    ps.on('exit', () => {
+      const lines = stdout.split('\n').slice(1) // Skip header
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+
+        // Only consider vLLM processes
+        if (!trimmed.includes('vllm')) continue
+
+        // Skip grep/ps itself
+        if (trimmed.includes('grep') || trimmed.includes('ps -eo')) continue
+
+        // Check if this process has the target port
+        const portPattern = new RegExp(`--port[=\\s]?${port}(?:\\s|$)`)
+        if (!portPattern.test(trimmed)) continue
+
+        // Extract PID (first token)
+        const tokens = trimmed.split(/\s+/)
+        const pid = parseInt(tokens[0], 10)
+        if (isNaN(pid)) continue
+
+        // Skip self
+        if (pid === process.pid) continue
+
+        pids.push(pid)
+      }
+
+      resolve(pids)
+    })
+  })
+}
+
+/**
+ * Find all processes with a specific environment variable.
+ * Reads /proc/<pid>/environ for each process on the system.
+ * This is useful for finding child processes that may have re-parented to init
+ * but still carry the inherited environment variable.
+ */
+export async function findProcessesByEnvMarker(envName: string, envValue: string): Promise<number[]> {
+  const pids: number[] = []
+  const marker = `${envName}=${envValue}`
+
+  try {
+    const procDirs = await fs.promises.readdir('/proc')
+
+    for (const dir of procDirs) {
+      const pid = parseInt(dir, 10)
+      if (isNaN(pid)) continue
+
+      // Skip self
+      if (pid === process.pid) continue
+
+      try {
+        // /proc/<pid>/environ contains null-separated KEY=value pairs
+        const environ = await fs.promises.readFile(`/proc/${pid}/environ`, 'utf-8')
+        if (environ.includes(marker)) {
+          pids.push(pid)
+        }
+      } catch {
+        // Process may have exited or we don't have permission
+      }
+    }
+  } catch {
+    // /proc not accessible (non-Linux system)
+  }
+
+  return pids
+}

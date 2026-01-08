@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import type { ModelInstance, ModelStatus } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
-import { getNextPort, killProcessImmediate, isProcessRunning, getDescendantPids } from '../utils/process.js'
+import { getNextPort, killProcessImmediate, isProcessRunning, getDescendantPids, findVllmProcessesByPort, findProcessesByEnvMarker } from '../utils/process.js'
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
 import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
@@ -179,6 +179,7 @@ export class ModelManager extends EventEmitter {
       const proc = spawn('vllm', allArgs, {
         env: {
           ...process.env,
+          SARDEENZ_INSTANCE_ID: instanceId, // Marker for process cleanup on unload
           CUDA_VISIBLE_DEVICES: targetGpuIds.join(','), // GPU restriction
           ENABLE_KVCACHED: enableKvcached ? 'true' : 'false',
           KVCACHED_AUTOPATCH: config.kvcachedAutopatch && enableKvcached ? '1' : '0',
@@ -547,6 +548,51 @@ export class ModelManager extends EventEmitter {
       // the shared KVCached IPC segment (kvcached_mem_info)
       await killProcessImmediate(proc)
 
+      // Explicitly kill EngineCore if tracked (may not be a descendant of the main process)
+      if (instance.engineCorePid) {
+        try {
+          process.kill(instance.engineCorePid, 'SIGKILL')
+          this.logger.debug({ instanceId: instance.id, engineCorePid: instance.engineCorePid }, 'Killed EngineCore process')
+        } catch {
+          // Process may have already exited
+        }
+      }
+
+      // Find and kill any remaining processes with our instance marker env var
+      // This catches ALL child processes (EngineCore, tensor parallelism workers)
+      // even if they re-parented to init and don't appear in the process tree
+      const markedPids = await findProcessesByEnvMarker('SARDEENZ_INSTANCE_ID', instance.id)
+      if (markedPids.length > 0) {
+        this.logger.info(
+          { instanceId: instance.id, markedPids },
+          'Found processes with instance marker, killing them'
+        )
+        for (const pid of markedPids) {
+          try {
+            process.kill(pid, 'SIGKILL')
+          } catch {
+            // Process may have already exited
+          }
+        }
+      }
+
+      // Also try port-based discovery as a fallback for older instances
+      // that were started before the marker was added
+      const portPids = await findVllmProcessesByPort(instance.port)
+      if (portPids.length > 0) {
+        this.logger.info(
+          { instanceId: instance.id, portPids, port: instance.port },
+          'Found remaining vLLM processes by port, killing them'
+        )
+        for (const pid of portPids) {
+          try {
+            process.kill(pid, 'SIGKILL')
+          } catch {
+            // Process may have already exited
+          }
+        }
+      }
+
       // Note: We intentionally do NOT delete the IPC segment here.
       // All models share 'kvcached_mem_info' - it's only deleted on server shutdown.
 
@@ -775,4 +821,18 @@ export class ModelManager extends EventEmitter {
       lineCount: buffer.length,
     }
   }
+}
+
+// Singleton instance
+let _modelManagerInstance: ModelManager | null = null
+
+/**
+ * Get the singleton ModelManager instance.
+ * This ensures all routes share the same instance and its processes Map.
+ */
+export function getModelManager(logger: Logger): ModelManager {
+  if (!_modelManagerInstance) {
+    _modelManagerInstance = new ModelManager(logger)
+  }
+  return _modelManagerInstance
 }

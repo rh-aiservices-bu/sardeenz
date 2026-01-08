@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { SSEEvent, SSEEventType, LogEvent, StatusEvent } from '@sardeenz/types'
+import { apiClient } from '../services/api'
 
 export interface UseInstanceEventsOptions {
   /** Instance ID to subscribe to. Pass null to not connect */
@@ -91,6 +92,12 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
       params.set('types', currentEventTypes.join(','))
     }
     params.set('replay_logs', String(replayLogsRef.current))
+
+    // Add auth token for SSE (EventSource can't send Authorization header)
+    const token = apiClient.getAuthToken()
+    if (token) {
+      params.set('token', token)
+    }
 
     const url = `${baseURL}/api/models/instances/${instanceId}/events?${params}`
 

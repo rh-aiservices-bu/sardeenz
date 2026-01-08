@@ -61,6 +61,17 @@ async function authPlugin(fastify: FastifyInstance) {
         return
       }
 
+      // Check for token in query params (fallback for EventSource/SSE which can't send headers)
+      const queryToken = (request.query as { token?: string })?.token
+      if (queryToken) {
+        try {
+          request.user = fastify.jwt.verify<JWTPayload>(queryToken)
+          return
+        } catch {
+          // Fall through to standard error handling
+        }
+      }
+
       try {
         await request.jwtVerify()
       } catch {
