@@ -15,6 +15,7 @@ commonLabels:
 # Resources to deploy
 resources:
   - pvc.yaml
+  - pvc-app-data.yaml
   - configmap.yaml
   - secret.yaml
   - deployment.yaml
@@ -37,6 +38,6 @@ images:
 # Secret generator (alternative to secret.yaml)
 # Uncomment to generate Secret from env file (DO NOT commit this file)
 # secretGenerator:
-#   - name: sardeenz-oauth
+#   - name: sardeenz-secrets
 #     envs:
-#       - oauth.env
+#       - secrets.env

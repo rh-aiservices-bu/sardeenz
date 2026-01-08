@@ -57,8 +57,16 @@ frontend/
 │   │   ├── Layout/      # AppLayout, NavSidebar
 │   │   ├── LoadConfigurationDialog.tsx   # Load saved model configurations
 │   │   ├── SaveConfigurationDialog.tsx   # Save current models as configuration
-│   │   └── LoadModelDialog.tsx           # Load individual models
+│   │   ├── LoadModelDialog.tsx           # Load individual models
+│   │   └── ProtectedRoute.tsx            # Auth-based route guard
+│   ├── contexts/        # React Context providers
+│   │   ├── AuthContext.tsx           # Authentication state management
+│   │   ├── NotificationContext.tsx   # Toast notifications
+│   │   └── ConnectionContext.tsx     # Backend connection status
 │   ├── pages/           # Route-specific pages
+│   │   ├── Login.tsx         # Login page (simple & OAuth modes)
+│   │   ├── OAuthCallback.tsx # OAuth redirect handler
+│   │   └── ...
 │   ├── services/        # API client layer
 │   ├── App.tsx          # Root component with routing
 │   └── main.tsx         # Entry point

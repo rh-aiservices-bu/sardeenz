@@ -87,6 +87,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           200: ListMemoryProfilesResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
       const { profiles, total } = store.listProfiles()
@@ -113,6 +114,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { model_path, max_tokens, gpu_name } = request.query
@@ -146,6 +148,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -181,6 +184,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const body = request.body
@@ -320,6 +324,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -358,6 +363,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin'),
     },
     async (request, reply) => {
       const { id } = request.params
@@ -395,6 +401,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
           200: MemoryCheckResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request) => {
       const { model_path, max_tokens, gpu_name } = request.body

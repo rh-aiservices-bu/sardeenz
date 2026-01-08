@@ -67,8 +67,7 @@ export default async function gpuRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin-readonly'),
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (_request, reply) => {
       try {
@@ -100,6 +99,7 @@ export default async function gpuRoutes(fastify: FastifyInstance) {
           500: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (_request, reply) => {
       try {

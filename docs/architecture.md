@@ -29,7 +29,7 @@ Sardeenz is a multi-model management platform designed to:
 │              (React + PatternFly 6 UI)                      │
 │                  (served on Port 3000)                      │
 └────────────────┬────────────────────────────────────────────┘
-                 │ HTTPS (OAuth/OIDC)
+                 │ HTTPS (OAuth 2.0)
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Fastify Backend (Port 3000)                    │
@@ -75,7 +75,7 @@ Sardeenz is a multi-model management platform designed to:
 | **Language** | TypeScript | 5.7+ | Type-safe development (strict mode) |
 | **Framework** | Fastify | 5.1+ | High-performance HTTP server |
 | **Database** | SQLite | 3.x | Benchmark/profile persistence (better-sqlite3) |
-| **Auth** | @fastify/oauth2 | Latest | OAuth 2.0 / OIDC integration |
+| **Auth** | @fastify/jwt | Latest | JWT-based OAuth 2.0 integration |
 | **Metrics** | fastify-metrics | Latest | Prometheus-format metrics |
 | **API Docs** | @fastify/swagger | Latest | OpenAPI 3.1 specification |
 | **Process Mgmt** | child_process | Built-in | vLLM subprocess management |
@@ -164,7 +164,7 @@ sardeenz/
 - `GET /api/memory/profiles/{id}` - Get a specific profile
 - `DELETE /api/memory/profiles/{id}` - Delete a profile
 
-**Authentication:** OAuth 2.0 / OIDC with RBAC
+**Authentication:** OAuth 2.0 with RBAC
 - `admin` role: Full control (load/unload)
 - `admin-readonly` role: Read-only access
 
@@ -492,8 +492,8 @@ For detailed KVCached documentation, see [`kvcached/README.md`](./kvcached/READM
 
 ### Authentication
 
-**Controller API:** OAuth 2.0 / OIDC with JWT tokens
-- Keycloak / Auth0 / Okta compatible
+**Controller API:** OAuth 2.0 with JWT tokens
+- OpenShift OAuth compatible
 - RBAC roles encoded in JWT claims
 
 **Proxy API:** Assumes gateway-level authentication
@@ -563,7 +563,7 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 1. **Type Safety & Monorepo**: TypeScript strict mode, workspace structure
 2. **Performance-First**: <50ms routing, streaming support, connection pooling
 3. **API-First Design**: OpenAPI 3.1 specs, URL versioning
-4. **Security by Design**: OAuth/OIDC + RBAC from day 1
+4. **Security by Design**: OAuth 2.0 + RBAC from day 1
 5. **Container-Native**: Docker-first development, GPU-aware containers
 6. **Observability**: Prometheus metrics, structured logging, health endpoints
 7. **Simplicity & Pragmatism**: YAGNI principle, integration tests mandatory

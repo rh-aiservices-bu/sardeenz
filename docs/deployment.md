@@ -8,6 +8,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 - [Container Build](#container-build)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
+- [Authentication and RBAC](#authentication-and-rbac)
 - [Configuration](#configuration)
 - [Health Checks](#health-checks)
 - [Monitoring](#monitoring)
@@ -17,22 +18,22 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 
 ### Hardware Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **CPU** | 8 cores | 16+ cores |
-| **RAM** | 16 GB | 32+ GB |
-| **GPU** | NVIDIA with 8GB VRAM | 24GB+ VRAM (A10, A100, H100) |
-| **Storage** | 50 GB | 100+ GB SSD |
+| Component   | Minimum              | Recommended                  |
+| ----------- | -------------------- | ---------------------------- |
+| **CPU**     | 8 cores              | 16+ cores                    |
+| **RAM**     | 16 GB                | 32+ GB                       |
+| **GPU**     | NVIDIA with 8GB VRAM | 24GB+ VRAM (A10, A100, H100) |
+| **Storage** | 50 GB                | 100+ GB SSD                  |
 
 ### Software Requirements
 
-| Software | Version | Purpose |
-|----------|---------|---------|
-| **Docker** | 24.x+ | Container runtime |
+| Software                     | Version | Purpose                  |
+| ---------------------------- | ------- | ------------------------ |
+| **Docker**                   | 24.x+   | Container runtime        |
 | **NVIDIA Container Toolkit** | 1.14.x+ | GPU access in containers |
-| **CUDA** | 12.x | GPU compute |
-| **OpenShift** (optional) | 4.12+ | Production orchestration |
-| **kubectl** (optional) | 1.28+ | Kubernetes CLI |
+| **CUDA**                     | 12.x    | GPU compute              |
+| **OpenShift** (optional)     | 4.12+   | Production orchestration |
+| **kubectl** (optional)       | 1.28+   | Kubernetes CLI           |
 
 ### GPU Node Setup
 
@@ -66,6 +67,7 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ### Dockerfile Structure
 
 The unified container image includes:
+
 - **Base:** `quay.io/vllm/vllm-cuda:0.11.0` (CUDA 12.x + Python 3.12 + vLLM)
 - **Node.js 22.x** (added layer)
 - **Backend** (Fastify TypeScript app)
@@ -96,7 +98,7 @@ docker build \
 
 ### Multi-Stage Build Example
 
-*Note: This is a conceptual Dockerfile structure. Actual implementation may vary.*
+_Note: This is a conceptual Dockerfile structure. Actual implementation may vary._
 
 ```dockerfile
 # Stage 1: Build frontend
@@ -162,20 +164,20 @@ CMD ["node", "backend/index.js"]
 version: '3.8'
 
 services:
-  vllm-stacker:
+  sardeenz:
     image: sardeenz:latest
     ports:
-      - "3000:3000"  # Unified API (Controller + Proxy + Frontend)
+      - '3000:3000' # Unified API (Controller + Proxy + Frontend)
     environment:
       - NODE_ENV=development
       - ENABLE_KVCACHED=true
       - KVCACHED_AUTOPATCH=1
       - LOG_LEVEL=debug
       - HF_HOME=/opt/app-root/models
-      - OAUTH_ENABLED=false  # Disable auth for local dev
+      - AUTH_MODE=none # Disable auth for local dev
     volumes:
-      - ./models:/opt/app-root/models  # Mount local models directory for HF cache
-      - /tmp/kvcached:/tmp/kvcached  # KVCached IPC directory
+      - ./models:/opt/app-root/models # Mount local models directory for HF cache
+      - /tmp/kvcached:/tmp/kvcached # KVCached IPC directory
     deploy:
       resources:
         reservations:
@@ -184,7 +186,7 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -206,7 +208,7 @@ docker compose down
 
 ```bash
 docker run -d \
-  --name vllm-stacker \
+  --name sardeenz \
   --gpus all \
   -p 3000:3000 \
   -e ENABLE_KVCACHED=true \
@@ -224,14 +226,14 @@ docker run -d \
 1. **GPU-enabled OpenShift cluster** with NVIDIA GPU Operator installed
 2. **Namespace** with GPU quota allocated
 3. **Image registry access** (e.g., Quay.io)
-4. **Persistent storage** for model files (optional, can use S3/object storage)
+4. **Persistent storage** - App Data PVC required for SQLite database; Model Cache PVC optional (only if downloading from HuggingFace)
 
 ### Deploy with GPU
 
 **1. Create Namespace:**
 
 ```bash
-oc new-project vllm-stacker
+oc new-project sardeenz
 ```
 
 **2. Create Deployment:**
@@ -242,112 +244,112 @@ oc new-project vllm-stacker
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-stacker
-  namespace: vllm-stacker
+  name: sardeenz
+  namespace: sardeenz
   labels:
-    app: vllm-stacker
+    app: sardeenz
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-stacker
+      app: sardeenz
   template:
     metadata:
       labels:
-        app: vllm-stacker
+        app: sardeenz
     spec:
       containers:
-      - name: vllm-stacker
-        image: quay.io/your-org/sardeenz:latest
-        ports:
-        - containerPort: 3000
-          name: http
-          protocol: TCP
-        env:
-        - name: NODE_ENV
-          value: "production"
-        - name: ENABLE_KVCACHED
-          value: "true"
-        - name: KVCACHED_AUTOPATCH
-          value: "1"
-        - name: HF_HOME
-          value: "/opt/app-root/models"
-        - name: SARDEENZ_DB_PATH
-          value: "/opt/app-root/src/data/sardeenz.db"
-        - name: HF_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-token
-              key: token
-              optional: true
-        - name: LOG_LEVEL
-          value: "info"
-        - name: OAUTH_ISSUER_URL
-          valueFrom:
-            secretKeyRef:
-              name: oauth-config
-              key: issuer-url
-        - name: OAUTH_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: oauth-config
-              key: client-id
-        - name: OAUTH_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: oauth-config
-              key: client-secret
-        resources:
-          requests:
-            memory: "16Gi"
-            cpu: "4"
-            nvidia.com/gpu: "1"
-          limits:
-            memory: "32Gi"
-            cpu: "8"
-            nvidia.com/gpu: "1"
-        volumeMounts:
-        - name: model-cache
-          mountPath: /opt/app-root/models
-        - name: app-data
-          mountPath: /opt/app-root/src
-        - name: kvcached-ipc
-          mountPath: /tmp/kvcached
-        livenessProbe:
-          httpGet:
-            path: /api/health/live
-            port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/health/ready
-            port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+        - name: sardeenz
+          image: quay.io/your-org/sardeenz:latest
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: ENABLE_KVCACHED
+              value: 'true'
+            - name: KVCACHED_AUTOPATCH
+              value: '1'
+            - name: HF_HOME
+              value: '/opt/app-root/models'
+            - name: SARDEENZ_DB_PATH
+              value: '/opt/app-root/src/data/sardeenz.db'
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+                  optional: true
+            - name: LOG_LEVEL
+              value: 'info'
+            - name: OAUTH_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oauth-config
+                  key: issuer-url
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth-config
+                  key: client-id
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth-config
+                  key: client-secret
+          resources:
+            requests:
+              memory: '16Gi'
+              cpu: '4'
+              nvidia.com/gpu: '1'
+            limits:
+              memory: '32Gi'
+              cpu: '8'
+              nvidia.com/gpu: '1'
+          volumeMounts:
+            - name: model-cache
+              mountPath: /opt/app-root/models
+            - name: app-data
+              mountPath: /opt/app-root/src
+            - name: kvcached-ipc
+              mountPath: /tmp/kvcached
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
-      - name: model-cache
-        persistentVolumeClaim:
-          claimName: model-cache-pvc
-      - name: app-data
-        persistentVolumeClaim:
-          claimName: sardeenz-app-data
-      - name: kvcached-ipc
-        emptyDir:
-          medium: Memory
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: model-cache-pvc
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: sardeenz-app-data
+        - name: kvcached-ipc
+          emptyDir:
+            medium: Memory
       securityContext:
         fsGroup: 0
         runAsNonRoot: true
       nodeSelector:
-        nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.present: 'true'
       tolerations:
-      - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
 ```
 
 **3. Create Service:**
@@ -358,16 +360,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-stacker
-  namespace: vllm-stacker
+  name: sardeenz
+  namespace: sardeenz
 spec:
   selector:
-    app: vllm-stacker
+    app: sardeenz
   ports:
-  - name: http
-    port: 3000
-    targetPort: 3000
-    protocol: TCP
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
   type: ClusterIP
 ```
 
@@ -379,13 +381,13 @@ spec:
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: vllm-stacker
-  namespace: vllm-stacker
+  name: sardeenz
+  namespace: sardeenz
 spec:
-  host: vllm-stacker.apps.your-cluster.com
+  host: sardeenz.apps.your-cluster.com
   to:
     kind: Service
-    name: vllm-stacker
+    name: sardeenz
   port:
     targetPort: http
   tls:
@@ -395,9 +397,10 @@ spec:
 
 **5. Create PersistentVolumeClaims:**
 
-Two PVCs are required:
-- **Model Cache PVC** (`model-cache-pvc`): Stores downloaded HuggingFace models
-- **App Data PVC** (`sardeenz-app-data`): Stores SQLite database and other persistent app data
+The deployment uses two PVCs. Only the App Data PVC is required:
+
+- **App Data PVC** (`sardeenz-app-data`): **Required.** Stores SQLite database and other persistent app data
+- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for alternatives.
 
 **Model Cache PVC (`pvc-model-cache.yaml`):**
 
@@ -408,10 +411,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: model-cache-pvc
-  namespace: vllm-stacker
+  namespace: sardeenz
 spec:
   accessModes:
-  - ReadWriteOnce
+    - ReadWriteOnce
   resources:
     requests:
       storage: 100Gi
@@ -429,13 +432,13 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: sardeenz-app-data
-  namespace: vllm-stacker
+  namespace: sardeenz
 spec:
   accessModes:
-  - ReadWriteOnce
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi  # Small - just for SQLite database
+      storage: 1Gi # Small - just for SQLite database
 ```
 
 > **Note:** 1Gi is sufficient for the SQLite database which stores benchmark results and memory profiles.
@@ -446,90 +449,216 @@ spec:
 # HuggingFace token (optional, for gated models like Llama, Mistral)
 oc create secret generic hf-token \
   --from-literal=token=hf_your_token_here \
-  -n vllm-stacker
+  -n sardeenz
 
 # OAuth configuration (optional)
 oc create secret generic oauth-config \
   --from-literal=issuer-url=https://your-keycloak.com/auth/realms/vllm \
-  --from-literal=client-id=vllm-stacker \
+  --from-literal=client-id=sardeenz \
   --from-literal=client-secret=your-secret-here \
-  -n vllm-stacker
+  -n sardeenz
 ```
 
 **7. Deploy:**
 
 ```bash
-oc apply -f pvc-model-cache.yaml
-oc apply -f pvc-app-data.yaml
+oc apply -f pvc-app-data.yaml              # Required: application data
+oc apply -f pvc-model-cache.yaml           # Optional: only if downloading from HuggingFace
 oc apply -f deployment.yaml
 oc apply -f service.yaml
 oc apply -f route.yaml
 
 # Check deployment status
-oc get pods -n vllm-stacker -w
+oc get pods -n sardeenz -w
 
 # View logs
-oc logs -f deployment/vllm-stacker -n vllm-stacker
+oc logs -f deployment/sardeenz -n sardeenz
 ```
 
 ### Scaling Considerations
 
 **Single Pod Deployment (Current Design):**
+
 - One pod manages all model instances
 - Stateless design (no shared state between pods)
 - Scale by deploying multiple independent instances
 
 **Future: Multi-Pod Deployment:**
+
 - Shared model registry (e.g., Redis, PostgreSQL)
 - Sticky sessions for proxy routing
 - Distributed model scheduling
+
+## Authentication and RBAC
+
+Sardeenz supports three authentication modes for the admin dashboard:
+
+| Mode     | Use Case                       | Configuration                              |
+| -------- | ------------------------------ | ------------------------------------------ |
+| `none`   | Development, testing           | No auth required                           |
+| `simple` | Single-admin deployments       | Username/password with JWT                 |
+| `oauth`  | Enterprise with OpenShift SSO  | OpenShift OAuth 2.0 with group-based RBAC  |
+
+### OpenShift OAuth Setup
+
+For production deployments, OAuth mode integrates with OpenShift's authentication system and uses group membership for role-based access control.
+
+#### 1. Create OpenShift Groups
+
+Users must belong to specific OpenShift groups to access the dashboard:
+
+| Group                      | Role             | Access Level            |
+| -------------------------- | ---------------- | ----------------------- |
+| `sardeenz-admins`          | `admin`          | Full read/write access  |
+| `sardeenz-admins-readonly` | `admin-readonly` | Read-only access        |
+
+**Create the groups:**
+
+```bash
+# Create admin group (full access)
+oc adm groups new sardeenz-admins
+
+# Create read-only group
+oc adm groups new sardeenz-admins-readonly
+```
+
+#### 2. Add Users to Groups
+
+```bash
+# Add users to admin group
+oc adm groups add-users sardeenz-admins user1@example.com user2@example.com
+
+# Add users to read-only group
+oc adm groups add-users sardeenz-admins-readonly readonly-user@example.com
+
+# Verify group membership
+oc get group sardeenz-admins -o yaml
+oc get group sardeenz-admins-readonly -o yaml
+```
+
+#### 3. Create OAuth Client
+
+Register Sardeenz as an OAuth client with OpenShift:
+
+**`oauth-client.yaml`:**
+
+```yaml
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: sardeenz
+grantMethod: auto
+redirectURIs:
+  - https://sardeenz.apps.your-cluster.com/api/auth/callback
+secret: your-oauth-client-secret
+```
+
+```bash
+oc apply -f oauth-client.yaml
+```
+
+#### 4. Configure Environment Variables
+
+```bash
+# Create OAuth secret
+oc create secret generic oauth-config \
+  --from-literal=issuer-url=https://oauth-openshift.apps.your-cluster.com \
+  --from-literal=client-id=sardeenz \
+  --from-literal=client-secret=your-oauth-client-secret \
+  -n sardeenz
+
+# Create JWT secret
+oc create secret generic jwt-config \
+  --from-literal=secret=$(openssl rand -base64 32) \
+  -n sardeenz
+```
+
+Add to deployment (see example in OpenShift Deployment section above).
+
+### Access Denied Handling
+
+When a user authenticates via OAuth but is not a member of either `sardeenz-admins` or `sardeenz-admins-readonly`:
+
+1. **Authentication succeeds** - User is verified by OpenShift
+2. **Authorization fails** - User lacks required group membership
+3. **Access Denied page** - User is redirected to an informative error page
+
+The Access Denied page explains:
+
+- The user is not in any authorized groups
+- Which groups are required (`sardeenz-admins` or `sardeenz-admins-readonly`)
+- Instructions to contact an OpenShift administrator
+
+**To grant access:** An OpenShift cluster administrator must add the user to one of the authorized groups:
+
+```bash
+# Grant full admin access
+oc adm groups add-users sardeenz-admins user@example.com
+
+# Grant read-only access
+oc adm groups add-users sardeenz-admins-readonly user@example.com
+```
+
+After being added to a group, the user can click "Try Again" on the Access Denied page to re-authenticate.
+
+### RBAC Permissions
+
+For detailed permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-roles).
 
 ## Configuration
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `NODE_ENV` | No | `development` | Environment mode (`development`, `production`) |
-| `PORT` | No | `3000` | Unified API port (Controller + Proxy + Frontend) |
-| `HF_HOME` | Yes | - | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`) |
-| `HF_TOKEN` | No | - | HuggingFace token for accessing gated models (e.g., Llama, Mistral) |
-| `SARDEENZ_DB_PATH` | No | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`) |
-| `ENABLE_KVCACHED` | Yes | `true` | Enable KVCached memory sharing |
-| `KVCACHED_AUTOPATCH` | No | `1` | Auto-patch vLLM for KVCached |
-| `LOG_LEVEL` | No | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
-| `OAUTH_ENABLED` | No | `true` | Enable OAuth authentication |
-| `OAUTH_ISSUER_URL` | If OAuth enabled | - | OIDC issuer URL |
-| `OAUTH_CLIENT_ID` | If OAuth enabled | - | OAuth client ID |
-| `OAUTH_CLIENT_SECRET` | If OAuth enabled | - | OAuth client secret |
-| `PROMETHEUS_ENABLED` | No | `true` | Enable Prometheus metrics |
-| `MAX_MODELS` | No | `10` | Maximum concurrent models |
-| `GPU_MEMORY_RESERVE` | No | `2.0` | GPU memory reserved for CUDA (GB) |
+| Variable               | Required            | Default            | Description                                                                                                                      |
+| ---------------------- | ------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`             | No                  | `development`      | Environment mode (`development`, `production`)                                                                                   |
+| `PORT`                 | No                  | `3000`             | Unified API port (Controller + Proxy + Frontend)                                                                                 |
+| `HF_HOME`              | Yes                 | -                  | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`)                                                   |
+| `HF_TOKEN`             | No                  | -                  | HuggingFace token for accessing gated models (e.g., Llama, Mistral)                                                              |
+| `SARDEENZ_DB_PATH`     | No                  | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`)                                    |
+| `ENABLE_KVCACHED`      | Yes                 | `true`             | Enable KVCached memory sharing                                                                                                   |
+| `KVCACHED_AUTOPATCH`   | No                  | `1`                | Auto-patch vLLM for KVCached                                                                                                     |
+| `LOG_LEVEL`            | No                  | `info`             | Logging level (`debug`, `info`, `warn`, `error`)                                                                                 |
+| `AUTH_MODE`            | No                  | `none`             | Authentication mode: `none` (disabled), `simple` (username/password), `oauth` (OAuth 2.0)                                        |
+| `ADMIN_USERNAME`       | No                  | `admin`            | Username for simple auth mode                                                                                                    |
+| `ADMIN_PASSWORD`       | If AUTH_MODE=simple | -                  | Password for simple auth mode                                                                                                    |
+| `JWT_SECRET`           | If AUTH_MODE!=none  | -                  | Secret for JWT token signing (use strong random value in production)                                                             |
+| `JWT_EXPIRATION_HOURS` | No                  | `8`                | JWT token expiration time in hours                                                                                               |
+| `OAUTH_ISSUER_URL`     | If AUTH_MODE=oauth  | -                  | OAuth issuer URL (e.g., OpenShift OAuth server URL)                                                                              |
+| `K8S_API_URL`          | If AUTH_MODE=oauth  | -                  | Kubernetes API URL for fetching user info                                                                                        |
+| `OAUTH_CLIENT_ID`      | If AUTH_MODE=oauth  | `sardeenz`         | OAuth2 client ID                                                                                                                 |
+| `OAUTH_CLIENT_SECRET`  | If AUTH_MODE=oauth  | -                  | OAuth2 client secret                                                                                                             |
+| `API_BASE_URL`         | If AUTH_MODE=oauth  | -                  | Base URL for OAuth callbacks (e.g., `https://your-domain.com`)                                                                   |
+| `INFERENCE_API_KEY`    | No                  | -                  | API key for inference endpoints. When set, `/v1/*` and `/api/direct/*` require `Authorization: Bearer <key>`. OpenAI-compatible. |
+| `PROMETHEUS_ENABLED`   | No                  | `true`             | Enable Prometheus metrics                                                                                                        |
+| `MAX_MODELS`           | No                  | `10`               | Maximum concurrent models                                                                                                        |
+| `GPU_MEMORY_RESERVE`   | No                  | `2.0`              | GPU memory reserved for CUDA (GB)                                                                                                |
 
 ### Configuration File (Future)
 
-*Note: Configuration file support is planned for future releases.*
+_Note: Configuration file support is planned for future releases._
 
 **`config.yaml`:**
 
 ```yaml
 server:
-  port: 3000  # Unified API port
-  routingOverheadTarget: 50  # ms (p95) for proxy routing
+  port: 3000 # Unified API port
+  routingOverheadTarget: 50 # ms (p95) for proxy routing
 
 auth:
   enabled: true
-  provider: oidc
-  issuerUrl: https://your-keycloak.com/auth/realms/vllm
-  clientId: vllm-stacker
+  provider: oauth
+  issuerUrl: https://oauth-openshift.apps.your-cluster.com
+  k8sApiUrl: https://api.your-cluster.com:6443
+  clientId: sardeenz
 
 gpu:
-  memoryReserve: 2.0  # GB
+  memoryReserve: 2.0 # GB
   maxModels: 5
 
 models:
   path: /models
-  preloadOnStartup: []  # Model IDs to preload
+  preloadOnStartup: [] # Model IDs to preload
 
 logging:
   level: info
@@ -558,6 +687,7 @@ livenessProbe:
 ```
 
 **Response (Healthy):**
+
 ```json
 {
   "status": "alive",
@@ -581,6 +711,7 @@ readinessProbe:
 ```
 
 **Response (Ready):**
+
 ```json
 {
   "status": "ready",
@@ -597,10 +728,11 @@ readinessProbe:
 Metrics are exposed at `http://localhost:3000/api/v1/metrics` in Prometheus format.
 
 **Key Metrics:**
-- `vllm_stacker_models_total{status}` - Total models by status
-- `vllm_stacker_gpu_memory_used_bytes{model_id}` - GPU memory per model
-- `vllm_stacker_requests_total{model_id,status}` - Request counts
-- `vllm_stacker_request_duration_ms{model_id}` - Request latency histogram
+
+- `sardeenz_models_total{status}` - Total models by status
+- `sardeenz_gpu_memory_used_bytes{model_id}` - GPU memory per model
+- `sardeenz_requests_total{model_id,status}` - Request counts
+- `sardeenz_request_duration_ms{model_id}` - Request latency histogram
 
 **ServiceMonitor (OpenShift):**
 
@@ -608,16 +740,16 @@ Metrics are exposed at `http://localhost:3000/api/v1/metrics` in Prometheus form
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: vllm-stacker
-  namespace: vllm-stacker
+  name: sardeenz
+  namespace: sardeenz
 spec:
   selector:
     matchLabels:
-      app: vllm-stacker
+      app: sardeenz
   endpoints:
-  - port: controller
-    path: /api/v1/metrics
-    interval: 30s
+    - port: controller
+      path: /api/v1/metrics
+      interval: 30s
 ```
 
 ### Grafana Dashboard
@@ -625,6 +757,7 @@ spec:
 Import dashboard for visualization (ID: TBD, to be published).
 
 **Key Panels:**
+
 - Model instance status (gauge)
 - GPU memory usage (time series)
 - Request latency (histogram)
@@ -671,35 +804,68 @@ oc exec -it <pod-name> -- curl http://localhost:3000/api/health
 
 **Solution:** Check for application errors in logs.
 
-**4. OAuth Authentication Errors**
+**4. Authentication Errors**
 
 ```bash
-# Verify OAuth secret
-oc get secret oauth-config -o yaml
+# Check auth mode
+oc exec -it <pod-name> -- env | grep AUTH_MODE
 
-# Check issuer URL reachability
-oc exec -it <pod-name> -- curl <issuer-url>/.well-known/openid-configuration
+# For OAuth: Verify secret and issuer URL
+oc get secret oauth-config -o yaml
+oc exec -it <pod-name> -- curl ${K8S_API_URL}/apis/user.openshift.io/v1/users/~
+
+# For simple mode: Verify credentials are set
+oc exec -it <pod-name> -- env | grep -E 'ADMIN_USERNAME|ADMIN_PASSWORD'
 ```
 
-**Solution:** Verify OAuth configuration and network policies.
+**Solution:** Verify auth configuration matches the `AUTH_MODE` setting.
+
+**5. Authorization Errors (Access Denied)**
+
+If users see the Access Denied page after OAuth login, they have successfully authenticated but are not members of any authorized groups.
+
+```bash
+# Check user's group membership
+oc get users <username> -o yaml
+
+# List members of sardeenz groups
+oc get group sardeenz-admins -o yaml
+oc get group sardeenz-admins-readonly -o yaml
+
+# Add user to appropriate group
+oc adm groups add-users sardeenz-admins <username>
+
+# Verify the groups exist
+oc get groups | grep sardeenz
+```
+
+**Common issues:**
+
+- **User not in any authorized group** → Add user to `sardeenz-admins` or `sardeenz-admins-readonly`
+- **Groups don't exist** → Create groups with `oc adm groups new sardeenz-admins`
+- **Group names misspelled** → Must be exactly `sardeenz-admins` or `sardeenz-admins-readonly`
+- **K8S_API_URL incorrect** → Verify URL and connectivity from pod
+
+**Solution:** Add user to the appropriate group, then have them click "Try Again" on the Access Denied page to re-authenticate.
 
 ### Debug Mode
 
 Enable debug logging:
 
 ```bash
-oc set env deployment/vllm-stacker LOG_LEVEL=debug
+oc set env deployment/sardeenz LOG_LEVEL=debug
 ```
 
 View detailed logs:
 
 ```bash
-oc logs -f deployment/vllm-stacker | jq .
+oc logs -f deployment/sardeenz | jq .
 ```
 
 ---
 
 **See Also:**
+
 - [Architecture](./architecture.md) - System architecture and design
 - [API Guide](./api-guide.md) - API usage examples
 - [KVCached Documentation](./kvcached/) - GPU memory sharing setup

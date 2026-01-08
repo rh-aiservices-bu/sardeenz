@@ -32,6 +32,7 @@ export default async function localModelsRoutes(fastify: FastifyInstance) {
           200: LocalModelsStatusResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
       return {
@@ -60,6 +61,7 @@ export default async function localModelsRoutes(fastify: FastifyInstance) {
           503: ErrorResponseSchema,
         },
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request, reply) => {
       if (!config.localModelsPath) {

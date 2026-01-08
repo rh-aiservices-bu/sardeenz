@@ -2,7 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-01-08
+
+### ✨ Authentication System
+
+- **Dual-auth model** separating admin dashboard from inference API authentication
+- **Admin auth modes**: Three modes via `AUTH_MODE` environment variable:
+  - `none`: No authentication (development/trusted environments)
+  - `simple`: Username/password with JWT tokens
+  - `oauth`: OAuth 2.0 / OpenID Connect (production-ready)
+- **Inference auth**: Optional `INFERENCE_API_KEY` for OpenAI-compatible endpoints (`/v1/*`)
+- **OAuth 2.0 support**: Full OpenID Connect flow with automatic token refresh
+- **Login page**: Clean PatternFly-based login UI with OAuth provider buttons
+- **Protected routes**: `ProtectedRoute` component for frontend route guards
+- **AuthContext**: React context with `isAuthenticated`, `user`, `canWrite` helpers
+- **JWT handling**: Secure token storage, automatic refresh, logout functionality
+
+### 🔒 Security Hardening
+
+- **Role-Based Access Control (RBAC)**: Two roles `admin` (full access) and `admin-readonly` (read-only)
+- **Backend authorization**: `fastify.requireRole()` hooks on all API routes
+- **OAuth group mapping**: `sardeenz-admins` → `admin`, `sardeenz-admins-readonly` → `admin-readonly`
+- **Access denied page**: Clear messaging for users without required permissions
+- **HuggingFace token masking**: Read-only users see masked placeholder instead of real token
+- **Write action guards**: Buttons disabled with tooltips for read-only users across all components
+
+### 📝 Deployment & Documentation
+
+- **Reorganized Kubernetes manifests**: Renamed `k8s/` → `deployment/` for clarity
+- **Enhanced configmap.yaml**: Auth environment variables with detailed comments
+- **New secret.yaml**: Template for sensitive auth configuration (JWT secrets, OAuth credentials)
+- **Updated deployment docs**: Comprehensive auth configuration guide
+- **API guide updates**: Authentication examples for all endpoints
+
+### 🎨 UI Enhancements
+
+- **GitHub project branding**: Star and fork icons with links to repository
+- **User dropdown**: Displays current username and role label
+- **Theme-aware icons**: SVG icons with light/dark mode variants
 
 ### Model Configuration Management
 

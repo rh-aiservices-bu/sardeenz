@@ -58,8 +58,7 @@ export default async function orphansRoutes(fastify: FastifyInstance) {
           200: OrphanScanResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
       const result = await orphanDetector.scan()
@@ -97,8 +96,7 @@ export default async function orphansRoutes(fastify: FastifyInstance) {
           404: ErrorResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async (request) => {
       const pid = parseInt(request.params.pid, 10)
@@ -133,8 +131,7 @@ export default async function orphansRoutes(fastify: FastifyInstance) {
           200: KillAllOrphansResponseSchema,
         },
       },
-      // TODO: Uncomment when auth is configured
-      // onRequest: fastify.requireRole('admin'),
+      onRequest: fastify.requireRole('admin'),
     },
     async () => {
       return orphanDetector.killAllOrphans()

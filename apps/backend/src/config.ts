@@ -3,18 +3,31 @@ import { config as dotenvConfig } from 'dotenv'
 // Load environment variables
 dotenvConfig()
 
+import type { AuthMode } from '@sardeenz/types'
+
 export interface Config {
   // Server configuration
   port: number
   host: string
   nodeEnv: string
 
-  // OAuth/OIDC configuration
+  // Authentication configuration
+  authMode: AuthMode
+  adminUsername: string
+  adminPassword: string
+  jwtSecret: string
+  jwtExpirationHours: number
+  apiBaseUrl: string
+  frontendUrl: string
+
+  // OAuth configuration (used when authMode is 'oauth')
   oauthClientId: string
   oauthClientSecret: string
-  oidcIssuerUrl: string
-  jwtSecret: string
-  apiBaseUrl: string
+  oauthIssuerUrl: string
+  k8sApiUrl: string
+
+  // Inference API key (optional, for protecting inference endpoints separately)
+  inferenceApiKey: string
 
   // vLLM configuration
   vllmBasePort: number
@@ -70,18 +83,42 @@ function getEnvBool(key: string, defaultValue: boolean): boolean {
   return value === 'true' || value === '1'
 }
 
+function getAuthMode(): AuthMode {
+  const mode = getEnv('AUTH_MODE', 'none')
+  if (mode !== 'none' && mode !== 'simple' && mode !== 'oauth') {
+    throw new Error(`Invalid AUTH_MODE: ${mode}. Must be 'none', 'simple', or 'oauth'`)
+  }
+  return mode
+}
+
 export const config: Config = {
   // Server configuration
   port: getEnvInt('PORT', 3000),
   host: getEnv('HOST', '0.0.0.0'),
   nodeEnv: getEnv('NODE_ENV', 'development'),
 
-  // OAuth/OIDC configuration (optional for development)
-  oauthClientId: getEnv('OAUTH_CLIENT_ID', 'sardeenz'),
-  oauthClientSecret: getEnv('OAUTH_CLIENT_SECRET', 'change-me-in-production'),
-  oidcIssuerUrl: getEnv('OIDC_ISSUER_URL', ''),
+  // Authentication configuration
+  authMode: getAuthMode(),
+  adminUsername: getEnv('ADMIN_USERNAME', 'admin'),
+  adminPassword: getEnv('ADMIN_PASSWORD', ''),
   jwtSecret: getEnv('JWT_SECRET', 'change-me-in-production'),
+  jwtExpirationHours: getEnvInt('JWT_EXPIRATION_HOURS', 8),
   apiBaseUrl: getEnv('API_BASE_URL', 'http://localhost:3000'),
+  frontendUrl: getEnv(
+    'FRONTEND_URL',
+    getEnv('NODE_ENV', 'development') === 'development'
+      ? 'http://localhost:5173'
+      : getEnv('API_BASE_URL', 'http://localhost:3000')
+  ),
+
+  // OAuth configuration (used when authMode is 'oauth')
+  oauthClientId: getEnv('OAUTH_CLIENT_ID', 'sardeenz'),
+  oauthClientSecret: getEnv('OAUTH_CLIENT_SECRET', ''),
+  oauthIssuerUrl: getEnv('OAUTH_ISSUER_URL', ''),
+  k8sApiUrl: getEnv('K8S_API_URL', ''),
+
+  // Inference API key (optional, for protecting inference endpoints separately)
+  inferenceApiKey: getEnv('INFERENCE_API_KEY', ''),
 
   // vLLM configuration
   vllmBasePort: getEnvInt('VLLM_BASE_PORT', 12346),
@@ -102,3 +139,38 @@ export const config: Config = {
   // Streaming debug
   debugStreaming: getEnvBool('DEBUG_STREAMING', false),
 }
+
+// Validate auth configuration
+function validateAuthConfig(): void {
+  if (config.authMode === 'simple') {
+    if (!config.adminPassword) {
+      throw new Error('ADMIN_PASSWORD is required when AUTH_MODE is "simple"')
+    }
+  }
+
+  if (config.authMode === 'oauth') {
+    if (!config.oauthIssuerUrl) {
+      throw new Error('OAUTH_ISSUER_URL is required when AUTH_MODE is "oauth"')
+    }
+    if (!config.oauthClientSecret) {
+      throw new Error('OAUTH_CLIENT_SECRET is required when AUTH_MODE is "oauth"')
+    }
+    if (!config.k8sApiUrl) {
+      throw new Error('K8S_API_URL is required when AUTH_MODE is "oauth"')
+    }
+  }
+
+  // CRITICAL: Block startup with default JWT secret in production
+  if (config.authMode !== 'none' && config.jwtSecret === 'change-me-in-production') {
+    if (config.nodeEnv === 'production') {
+      throw new Error(
+        'CRITICAL: JWT_SECRET must be set in production. ' +
+          'Using the default secret "change-me-in-production" is not allowed. ' +
+          'Generate a secure value with: openssl rand -hex 32'
+      )
+    }
+    console.warn('WARNING: Using default JWT_SECRET. This is insecure for production environments.')
+  }
+}
+
+validateAuthConfig()

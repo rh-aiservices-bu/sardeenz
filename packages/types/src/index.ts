@@ -24,3 +24,6 @@ export * from './schemas/benchmark.js'
 
 // Export model configuration validation schemas
 export * from './schemas/model-configuration.js'
+
+// Export authentication types
+export * from './auth.js'

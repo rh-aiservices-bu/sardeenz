@@ -5,14 +5,16 @@ This directory contains Kubernetes manifests for deploying Sardeenz to OpenShift
 ## Prerequisites
 
 - OpenShift 4.12+ or Kubernetes 1.26+ with GPU operator installed
-- NVIDIA GPU nodes with proper taints/labels
+- NVIDIA GPU nodes with proper taints/labels if needed
 - `oc` CLI (OpenShift) or `kubectl` (Kubernetes)
-- Access to container registry for pushing images
-- OAuth 2.0/OIDC provider (optional, for authentication)
+- Access to container registry for pushing images (optional, if you want to use your own build)
+- OAuth 2.0 provider (optional, for authentication)
 
 ## Quick Start
 
-### 1. Build and Push Container Image
+### 1. Build and Push Container Image (Optional)
+
+This step is only required if you want to use your own image instead of the one provided at quay.io/rh-aiservices-bu/sardeenz.
 
 ```bash
 # Build the unified container image
@@ -25,21 +27,52 @@ docker push quay.io/your-org/sardeenz:latest
 ### 2. Create Namespace
 
 ```bash
-oc new-project vllm-stacker
+oc new-project sardeenz
 # or
-kubectl create namespace vllm-stacker
+kubectl create namespace sardeenz
 ```
 
-### 3. Configure OAuth Credentials (Optional)
+### 3. Configure Secrets
 
-If using authentication, create the OAuth secret:
+Create the application secret based on your authentication mode. See [Authentication Modes](#authentication-modes) for details.
+
+**For no authentication (AUTH_MODE=none, default):**
 
 ```bash
-oc create secret generic vllm-stacker-oauth \
+# HuggingFace token (optional, only needed for gated models when downloading from HuggingFace)
+oc create secret generic sardeenz-secrets \
+  --from-literal=hf-token=$HF_TOKEN \
+  -n sardeenz
+```
+
+**For simple authentication (AUTH_MODE=simple):**
+
+```bash
+oc create secret generic sardeenz-secrets \
+  --from-literal=jwt-secret=$(openssl rand -base64 32) \
+  --from-literal=admin-password=YOUR_SECURE_PASSWORD \
+  --from-literal=hf-token=$HF_TOKEN \
+  -n sardeenz
+```
+
+**For OAuth 2.0 (AUTH_MODE=oauth):**
+
+```bash
+oc create secret generic sardeenz-secrets \
   --from-literal=client-id=$OAUTH_CLIENT_ID \
   --from-literal=client-secret=$OAUTH_CLIENT_SECRET \
   --from-literal=issuer-url=$OAUTH_ISSUER_URL \
-  -n vllm-stacker
+  --from-literal=jwt-secret=$(openssl rand -base64 32) \
+  --from-literal=k8s-api-url=https://api.cluster.example.com:6443 \
+  --from-literal=hf-token=$HF_TOKEN \
+  -n sardeenz
+```
+
+**Optional: Add inference API key (works with any auth mode):**
+
+```bash
+# Add to any of the above commands:
+# --from-literal=inference-api-key=YOUR_API_KEY
 ```
 
 Or edit `secret.yaml` and replace placeholder values before applying.
@@ -49,37 +82,38 @@ Or edit `secret.yaml` and replace placeholder values before applying.
 ```bash
 # Edit kustomization.yaml to set your image registry
 # Then apply all resources
-oc apply -k k8s/
+oc apply -k deployment/
 # or
-kubectl apply -k k8s/
+kubectl apply -k deployment/
 ```
 
 ### 5. Deploy Using Individual Manifests
 
 ```bash
 # Apply in this order
-oc apply -f k8s/pvc.yaml
-oc apply -f k8s/configmap.yaml
-oc apply -f k8s/secret.yaml  # Skip if using `oc create secret`
-oc apply -f k8s/deployment.yaml
-oc apply -f k8s/service.yaml
-oc apply -f k8s/route.yaml
+oc apply -f deployment/pvc.yaml            # Optional: Only if downloading models from HuggingFace
+oc apply -f deployment/pvc-app-data.yaml   # Required: Application data (SQLite, cache)
+oc apply -f deployment/configmap.yaml
+oc apply -f deployment/secret.yaml         # Skip if using `oc create secret`
+oc apply -f deployment/deployment.yaml     # Must be adapted based on storage choices (see Storage section)
+oc apply -f deployment/service.yaml
+oc apply -f deployment/route.yaml
 ```
 
 ### 6. Verify Deployment
 
 ```bash
 # Check deployment status
-oc get deployment sardeenz -n vllm-stacker
+oc get deployment sardeenz -n sardeenz
 
 # Check pod status (should show GPU assigned)
-oc get pods -n vllm-stacker -o wide
+oc get pods -n sardeenz -o wide
 
 # Check logs
-oc logs -f deployment/sardeenz -n vllm-stacker
+oc logs -f deployment/sardeenz -n sardeenz
 
 # Get external URL (OpenShift only)
-oc get route sardeenz -n vllm-stacker -o jsonpath='{.spec.host}'
+oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 ```
 
 ## Manifest Files
@@ -98,11 +132,13 @@ oc get route sardeenz -n vllm-stacker -o jsonpath='{.spec.host}'
   - Edge TLS termination
   - 5-minute timeout for long-running inference
 
-- **`pvc.yaml`** - PersistentVolumeClaim for Hugging Face model cache (100Gi)
+- **`pvc.yaml`** - PersistentVolumeClaim for HuggingFace model cache (100Gi). Optional: only needed if downloading models from HuggingFace. See [Storage Configuration](#storage-configuration).
+
+- **`pvc-app-data.yaml`** - PersistentVolumeClaim for application data (SQLite database, cache)
 
 - **`configmap.yaml`** - Application configuration (non-sensitive)
 
-- **`secret.yaml`** - OAuth credentials template (sensitive)
+- **`secret.yaml`** - Secrets template (JWT, OAuth, API keys, HF token)
 
 - **`kustomization.yaml`** - Kustomize configuration for environment overlays
 
@@ -110,7 +146,7 @@ oc get route sardeenz -n vllm-stacker -o jsonpath='{.spec.host}'
 
 ### Environment Variables
 
-Configured via `configmap.yaml`:
+#### ConfigMap Variables (configmap.yaml)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -118,10 +154,30 @@ Configured via `configmap.yaml`:
 | `PORT` | `3000` | Backend API port |
 | `HOST` | `0.0.0.0` | Backend bind address |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
+| `AUTH_MODE` | `none` | Authentication mode: `none`, `simple`, `oauth` |
+| `ADMIN_USERNAME` | `admin` | Username for simple auth mode |
+| `JWT_EXPIRATION_HOURS` | `8` | JWT token lifetime in hours |
+| `API_BASE_URL` | - | Base URL for OAuth callbacks (your route URL) |
 | `ENABLE_KVCACHED` | `true` | Enable KVCached GPU memory sharing |
 | `KVCACHED_AUTOPATCH` | `1` | Auto-patch vLLM for KVCached |
 | `VLLM_BASE_PORT` | `12346` | Starting port for vLLM instances |
 | `VLLM_MAX_INSTANCES` | `10` | Maximum concurrent model instances |
+| `VLLM_STARTUP_TIMEOUT` | `1800000` | Model startup timeout in ms (30 min default) |
+| `LOCAL_MODELS_PATH` | - | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
+| `DEBUG_STREAMING` | `false` | Enable SSE streaming debug logs |
+
+#### Secret Variables (secret.yaml)
+
+| Variable | Description |
+|----------|-------------|
+| `jwt-secret` | Secret for JWT token signing (required if AUTH_MODE ≠ none) |
+| `admin-password` | Password for simple auth mode |
+| `client-id` | OAuth client ID |
+| `client-secret` | OAuth client secret |
+| `issuer-url` | OAuth provider URL |
+| `k8s-api-url` | Kubernetes API URL for OAuth user info |
+| `inference-api-key` | API key for `/v1/*` endpoints (optional, separate from admin auth) |
+| `hf-token` | HuggingFace token for gated models |
 
 ### Resource Limits
 
@@ -211,21 +267,132 @@ readinessProbe:
 
 ## Storage
 
-### Persistent Volume Claim
+Storage requirements depend on how you source your models. Only the Application Data PVC is always required.
 
-The deployment requires a PVC for caching Hugging Face models:
+### Required Storage
 
-- **Name:** `vllm-stacker-model-cache`
+#### Application Data (pvc-app-data.yaml)
+
+- **Name:** `sardeenz-app-data`
+- **Size:** 10Gi
+- **Access Mode:** ReadWriteOnce
+- **Mount Path:** `/opt/app-root/src`
+- **Contents:** SQLite database, cache directories, Python venv
+
+**This PVC is always required** for application state persistence.
+
+### Optional Storage
+
+Choose based on your model source strategy:
+
+#### Option A: HuggingFace Model Cache (pvc.yaml)
+
+Use this if you download models from HuggingFace at runtime.
+
+- **Name:** `sardeenz-model-cache`
 - **Size:** 100Gi (adjust based on model sizes)
 - **Access Mode:** ReadWriteOnce
-- **Mount Path:** `/root/.cache/huggingface`
+- **Mount Path:** `/opt/app-root/models` (sets `HF_HOME`)
 
 **Model size reference:**
 - 7B models: ~14GB
 - 13B models: ~26GB
 - 70B models: ~140GB
 
-**To use a specific storage class:**
+#### Option B: Local/Pre-downloaded Models
+
+Use this for air-gapped environments or when models are pre-downloaded to shared storage.
+
+- Mount your models directory (hostPath, NFS, or external PVC)
+- Set `LOCAL_MODELS_PATH` in ConfigMap to point to the mount path
+- No need for `pvc.yaml` if not downloading from HuggingFace
+
+#### Option C: Both Sources
+
+You can use both HuggingFace downloads and local models simultaneously by configuring both storage options.
+
+### Storage Configuration
+
+The `deployment.yaml` must be adapted based on your storage choices. Below are the volume configurations for each scenario.
+
+#### Scenario A: HuggingFace Downloads Only (Default)
+
+This is the default configuration in `deployment.yaml`:
+
+```yaml
+volumes:
+  - name: huggingface-cache
+    persistentVolumeClaim:
+      claimName: sardeenz-model-cache
+  - name: app-data
+    persistentVolumeClaim:
+      claimName: sardeenz-app-data
+
+volumeMounts:
+  - name: huggingface-cache
+    mountPath: /opt/app-root/models
+  - name: app-data
+    mountPath: /opt/app-root/src
+```
+
+**ConfigMap:** Leave `LOCAL_MODELS_PATH` empty.
+
+#### Scenario B: Local Models Only
+
+Remove the HuggingFace cache volume and add your local models mount:
+
+```yaml
+volumes:
+  - name: local-models
+    persistentVolumeClaim:
+      claimName: your-models-pvc  # Or use hostPath, NFS, etc.
+  - name: app-data
+    persistentVolumeClaim:
+      claimName: sardeenz-app-data
+
+volumeMounts:
+  - name: local-models
+    mountPath: /mnt/models
+    readOnly: true
+  - name: app-data
+    mountPath: /opt/app-root/src
+```
+
+**ConfigMap:** Set `LOCAL_MODELS_PATH: "/mnt/models"`.
+
+**Skip applying `pvc.yaml`** since you're not using HuggingFace downloads.
+
+#### Scenario C: Both Sources
+
+Mount both volumes:
+
+```yaml
+volumes:
+  - name: huggingface-cache
+    persistentVolumeClaim:
+      claimName: sardeenz-model-cache
+  - name: local-models
+    persistentVolumeClaim:
+      claimName: your-models-pvc
+  - name: app-data
+    persistentVolumeClaim:
+      claimName: sardeenz-app-data
+
+volumeMounts:
+  - name: huggingface-cache
+    mountPath: /opt/app-root/models
+  - name: local-models
+    mountPath: /mnt/models
+    readOnly: true
+  - name: app-data
+    mountPath: /opt/app-root/src
+```
+
+**ConfigMap:** Set `LOCAL_MODELS_PATH: "/mnt/models"`.
+
+### Storage Class
+
+To use a specific storage class for any PVC:
 
 ```yaml
 spec:
@@ -289,20 +456,73 @@ spec:
 
 ## Security
 
-### OAuth/OIDC Authentication
+### Authentication Modes
 
-To enable authentication, configure the OAuth secret and set environment variables:
+Sardeenz supports three authentication modes for the admin dashboard, configured via `AUTH_MODE` in the ConfigMap.
 
-1. **Create OAuth application** in your identity provider (Keycloak, Auth0, etc.)
-2. **Set redirect URI** to `https://<route-host>/auth/callback`
-3. **Create secret** with credentials
-4. **Restart deployment** to pick up changes
+#### No Authentication (AUTH_MODE=none)
+
+Default mode. No authentication required for admin dashboard.
+
+- Suitable for development or trusted environments
+- Inference endpoints are always accessible
+- No secrets required (except optional `hf-token` for gated models)
+
+#### Simple Authentication (AUTH_MODE=simple)
+
+Username/password authentication for admin dashboard.
+
+**Required configuration:**
+1. Set `AUTH_MODE: "simple"` in ConfigMap
+2. Set `ADMIN_USERNAME` in ConfigMap (default: `admin`)
+3. Create secret with `admin-password` and `jwt-secret`
+
+```bash
+oc create secret generic sardeenz-secrets \
+  --from-literal=jwt-secret=$(openssl rand -base64 32) \
+  --from-literal=admin-password=YOUR_SECURE_PASSWORD \
+  -n sardeenz
+```
+
+#### OAuth 2.0 Authentication (AUTH_MODE=oauth)
+
+Full OAuth 2.0 integration with OpenShift or external providers.
+
+**Required configuration:**
+1. Set `AUTH_MODE: "oauth"` in ConfigMap
+2. Set `API_BASE_URL` in ConfigMap to your route URL
+3. Create OAuth application in your identity provider
+4. Set redirect URI to `https://<route-host>/api/auth/callback`
+5. Create secret with OAuth credentials
+
+```bash
+oc create secret generic sardeenz-secrets \
+  --from-literal=client-id=$OAUTH_CLIENT_ID \
+  --from-literal=client-secret=$OAUTH_CLIENT_SECRET \
+  --from-literal=issuer-url=$OAUTH_ISSUER_URL \
+  --from-literal=jwt-secret=$(openssl rand -base64 32) \
+  --from-literal=k8s-api-url=https://api.cluster.example.com:6443 \
+  -n sardeenz
+```
 
 **The application supports:**
 - OAuth 2.0 Authorization Code flow
-- OIDC discovery
+- Manual OAuth configuration (for OpenShift OAuth and other non-OIDC providers)
 - JWT token validation
 - Role-based access control (admin, admin-readonly)
+
+### Inference API Key (Optional)
+
+Separate from admin authentication. Protects `/v1/*` and `/api/direct/*` endpoints.
+
+- Set `inference-api-key` in the secret
+- Clients use `Authorization: Bearer <key>` header (OpenAI API compatible)
+- Works with any auth mode (none, simple, oauth)
+
+```bash
+# Add to your secret creation command:
+--from-literal=inference-api-key=YOUR_API_KEY
+```
 
 ### RBAC Roles
 
@@ -404,7 +624,7 @@ oc logs deployment/sardeenz | grep -i error
 
 **Common causes:**
 - Insufficient GPU memory → Unload other models or use smaller models
-- Model not cached → First load takes longer, check PVC storage
+- Model not cached → First download takes longer; ensure HuggingFace cache PVC is configured if downloading models
 - KVCached not enabled → Verify `ENABLE_KVCACHED=true` in ConfigMap
 
 ### Performance Issues
@@ -428,7 +648,7 @@ oc adm top pod -l app=sardeenz
 ```bash
 # Update image tag in deployment
 oc set image deployment/sardeenz \
-  vllm-stacker=quay.io/your-org/sardeenz:v1.1.0
+  sardeenz=quay.io/your-org/sardeenz:v1.1.0
 
 # Watch rollout
 oc rollout status deployment/sardeenz
@@ -448,27 +668,27 @@ The deployment uses `Recreate` strategy (not `RollingUpdate`) because:
 ### Delete All Resources
 
 ```bash
-oc delete -k k8s/
+oc delete -k deployment/
 # or
-kubectl delete -k k8s/
+kubectl delete -k deployment/
 ```
 
 ### Delete Namespace
 
 ```bash
-oc delete project vllm-stacker
+oc delete project sardeenz
 # or
-kubectl delete namespace vllm-stacker
+kubectl delete namespace sardeenz
 ```
 
-**Note:** This deletes the PVC and model cache. Back up models first if needed.
+**Note:** This deletes all PVCs including model cache (if configured). Back up data first if needed.
 
 ## Multi-Environment Setup
 
 Use Kustomize overlays for dev/staging/prod:
 
 ```
-k8s/
+deployment/
 ├── base/
 │   ├── deployment.yaml
 │   ├── service.yaml
@@ -486,7 +706,7 @@ k8s/
 **Deploy to production:**
 
 ```bash
-oc apply -k k8s/overlays/prod/
+oc apply -k deployment/overlays/prod/
 ```
 
 ## Additional Resources

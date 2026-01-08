@@ -47,6 +47,7 @@ export default async function eventsRoutes(fastify: FastifyInstance) {
           ),
         }),
       },
+      onRequest: fastify.requireRole('admin-readonly'),
     },
     async (request: FastifyRequest<{
       Params: { instance_id: string }

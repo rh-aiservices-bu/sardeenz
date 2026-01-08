@@ -29,6 +29,28 @@ await fastify.register(import('@fastify/cors'), {
   credentials: true,
 })
 
+// Register security headers (Helmet)
+await fastify.register(import('@fastify/helmet'), {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // React dev tools may need these
+      styleSrc: ["'self'", "'unsafe-inline'"], // PatternFly uses inline styles
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for some PatternFly assets
+})
+
+// Register rate limiting (global registration, applied per-route)
+await fastify.register(import('@fastify/rate-limit'), {
+  global: false, // Don't apply globally, configure per-route
+})
+
 // Register custom request logging plugin
 await fastify.register(import('./plugins/request-logging.js'))
 
@@ -38,7 +60,8 @@ await fastify.register(import('@fastify/swagger'), {
     openapi: '3.1.0',
     info: {
       title: 'Sardeenz API',
-      description: 'Multi-model management platform for vLLM with dynamic loading and unified proxy',
+      description:
+        'Multi-model management platform for vLLM with dynamic loading and unified proxy',
       version: '0.1.0',
     },
     servers: [
@@ -47,7 +70,19 @@ await fastify.register(import('@fastify/swagger'), {
         description: 'API Server',
       },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'JWT authentication token',
+        },
+      },
+    },
+    security: config.authMode !== 'none' ? [{ bearerAuth: [] }] : [],
     tags: [
+      { name: 'auth', description: 'Authentication endpoints' },
       { name: 'models', description: 'Model lifecycle management endpoints' },
       { name: 'events', description: 'Real-time event streaming (SSE) endpoints' },
       { name: 'memory', description: 'GPU memory management and profiling endpoints' },
@@ -74,10 +109,44 @@ await fastify.register(import('@fastify/swagger-ui'), {
 // Register metrics plugin
 await fastify.register(import('./plugins/metrics.js'))
 
-// Register auth plugin (if OIDC is configured)
-if (config.oidcIssuerUrl) {
-  await fastify.register(import('./plugins/auth.js'))
-}
+// Register auth plugin (always - handles all auth modes)
+await fastify.register(import('./plugins/auth.js'))
+
+// Register inference auth plugin (handles separate API key auth for inference endpoints)
+await fastify.register(import('./plugins/inference-auth.js'))
+
+// Add global authentication hook for admin routes
+// Note: Inference routes (/v1/*, /api/direct/*, etc.) are excluded and use separate API key auth
+fastify.addHook('onRequest', async (request, reply) => {
+  // Skip if auth mode is 'none'
+  if (config.authMode === 'none') {
+    return
+  }
+
+  // Skip public routes
+  if (fastify.isPublicRoute(request.url)) {
+    return
+  }
+
+  // Skip inference routes - they use separate API key auth (handled by inference-auth plugin)
+  if (fastify.isInferenceRoute(request.url)) {
+    return
+  }
+
+  // Skip authentication for authorization error redirects
+  // This allows authenticated-but-unauthorized users to see the AccessDenied page
+  if (request.url.includes('auth_error=')) {
+    return
+  }
+
+  // Skip static files in production (non-API routes)
+  if (config.nodeEnv === 'production' && !request.url.startsWith('/api/')) {
+    return
+  }
+
+  // Authenticate admin routes with JWT
+  await fastify.authenticate(request, reply)
+})
 
 // Register global error handler (must be before routes)
 await fastify.register(import('./plugins/error-handler.js'))
@@ -91,6 +160,7 @@ await fastify.register(import('@fastify/multipart'), {
 })
 
 // Register routes
+await fastify.register(import('./routes/auth.js'))
 await fastify.register(import('./routes/health.js'))
 await fastify.register(import('./routes/models.js'))
 await fastify.register(import('./routes/events.js'))
@@ -128,8 +198,31 @@ if (config.nodeEnv === 'production') {
     return reply.code(404).send({ error: 'Not Found' })
   })
 } else {
-  // Development: show API info at root
-  fastify.get('/', async () => {
+  // Development: show API info at root, redirect auth errors to frontend
+  fastify.get('/', async (request, reply) => {
+    // Handle authorization error redirects - redirect to frontend
+    const url = new URL(request.url, `http://${request.headers.host}`)
+    if (url.searchParams.has('auth_error')) {
+      const authError = url.searchParams.get('auth_error')
+      const frontendHost = new URL(config.frontendUrl).host
+      const currentHost = request.headers.host
+
+      // Only redirect if frontend is on a different host/port (prevent infinite loop)
+      if (frontendHost !== currentHost) {
+        return reply.redirect(
+          `${config.frontendUrl}/?auth_error=${encodeURIComponent(authError || '')}`
+        )
+      }
+
+      // If same host, return a user-friendly error (shouldn't happen with proper config)
+      return {
+        error: 'Access Denied',
+        message: decodeURIComponent(authError || 'You are not a member of any authorized groups'),
+        resolution:
+          'Please contact your administrator to be added to sardeenz-admins or sardeenz-admins-readonly groups',
+      }
+    }
+
     return {
       name: 'Sardeenz',
       version: '0.1.0',
@@ -162,9 +255,7 @@ async function start() {
       port: config.port,
       host: config.host,
     })
-    logger.info(
-      `Server listening on http://${config.host}:${config.port}`
-    )
+    logger.info(`Server listening on http://${config.host}:${config.port}`)
     logger.info(`Documentation available at http://${config.host}:${config.port}/docs`)
 
     // FR-027: Perform startup orphan detection
