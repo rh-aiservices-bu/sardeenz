@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import brandImg from '../../../../assets/sardeenz.svg';
 import {
   LoginPage,
   LoginForm,
@@ -64,8 +65,8 @@ export const Login: React.FC = () => {
     return (
       <LoginPage
         loginTitle="Log in to Sardeenz"
-        loginSubtitle="Multi-model management platform"
-        textContent="Use your organization's single sign-on to access the platform."
+        loginSubtitle="Sardeenz is a proof-of-concept application that allows you to load more than one model on a given GPU. It allows you to add more and more models onto a GPU, until it is fully utilized."
+        brandImgSrc={brandImg}
         socialMediaLoginContent={
           <div className="pf-v6-u-mt-md">
             <button
@@ -76,16 +77,6 @@ export const Login: React.FC = () => {
               Log in with SSO
             </button>
           </div>
-        }
-        footerListItems={
-          <>
-            <ListItem>
-              <a href="#">Terms of Use</a>
-            </ListItem>
-            <ListItem>
-              <a href="#">Help</a>
-            </ListItem>
-          </>
         }
         footerListVariants={ListVariant.inline}
       >
@@ -103,6 +94,7 @@ export const Login: React.FC = () => {
     <LoginPage
       loginTitle="Log in to Sardeenz"
       loginSubtitle="Multi-model management platform"
+      brandImgSrc={brandImg}
       footerListItems={
         <>
           <ListItem>

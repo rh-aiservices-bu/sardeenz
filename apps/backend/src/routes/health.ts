@@ -1,5 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
+import { readFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
+
+// Read version from root package.json at startup
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../../../../package.json'), 'utf-8'))
+const appVersion: string = packageJson.version
 
 export default async function healthRoutes(fastify: FastifyInstance) {
   fastify.get(
@@ -24,7 +32,7 @@ export default async function healthRoutes(fastify: FastifyInstance) {
         status: 'healthy' as const,
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        version: '0.1.0',
+        version: appVersion,
       }
     }
   )

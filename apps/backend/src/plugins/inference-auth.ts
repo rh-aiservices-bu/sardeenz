@@ -1,6 +1,21 @@
 import fp from 'fastify-plugin'
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import { timingSafeEqual } from 'crypto'
 import { config } from '../config.js'
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ */
+function secureCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  if (bufA.length !== bufB.length) {
+    // Lengths differ - still do a comparison to avoid leaking length info via timing
+    timingSafeEqual(bufA, bufA)
+    return false
+  }
+  return timingSafeEqual(bufA, bufB)
+}
 
 // Route prefixes that are considered inference endpoints
 // These are excluded from admin JWT auth and use optional API key auth instead
@@ -69,8 +84,8 @@ async function inferenceAuthPlugin(fastify: FastifyInstance) {
 
       const token = parts[1]
 
-      // Validate token against configured API key
-      if (token !== config.inferenceApiKey) {
+      // Validate token against configured API key using timing-safe comparison
+      if (!secureCompare(token, config.inferenceApiKey)) {
         reply.code(401).send({
           error: {
             message: 'Invalid API key',
