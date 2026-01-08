@@ -21,7 +21,7 @@ Pre-built container images are available at `quay.io/rh-aiservices-bu/sardeenz`.
 **Run locally with Docker:**
 
 ```bash
-docker run --gpus all -p 3000:3000 quay.io/rh-aiservices-bu/sardeenz:latest
+podman run --gpus all -p 3000:3000 quay.io/rh-aiservices-bu/sardeenz:latest
 ```
 
 **Deploy on OpenShift/Kubernetes:** See [deployment/](./deployment/) for manifests and configuration.
