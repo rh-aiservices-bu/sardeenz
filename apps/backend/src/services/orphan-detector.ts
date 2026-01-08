@@ -39,9 +39,12 @@ export class OrphanDetector {
     // Get all vLLM processes on the system
     const systemProcesses = await this.findVllmProcesses()
 
-    // Get PIDs tracked by the model store
+    // Get PIDs tracked by the model store (both processId and engineCorePid)
     const trackedInstances = modelStore.getAll()
-    const trackedPids = new Set(trackedInstances.map((i) => i.processId))
+    const trackedPids = new Set([
+      ...trackedInstances.map((i) => i.processId),
+      ...trackedInstances.filter((i) => i.engineCorePid).map((i) => i.engineCorePid!),
+    ])
 
     // Find orphans (running but not tracked)
     const orphans = systemProcesses.filter((proc) => !trackedPids.has(proc.pid))
@@ -80,9 +83,9 @@ export class OrphanDetector {
       }
     }
 
-    // Verify it's not tracked (safety check)
+    // Verify it's not tracked (safety check - includes both processId and engineCorePid)
     const trackedInstances = modelStore.getAll()
-    const isTracked = trackedInstances.some((i) => i.processId === pid)
+    const isTracked = trackedInstances.some((i) => i.processId === pid || i.engineCorePid === pid)
 
     if (isTracked) {
       return {

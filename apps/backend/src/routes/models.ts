@@ -13,7 +13,7 @@ import {
   type ModelInstanceDTO,
   type LoadModelRequestType,
 } from '@sardeenz/types'
-import { ModelManager } from '../services/model-manager.js'
+import { getModelManager } from '../services/model-manager.js'
 import { modelStore } from '../stores/model-store.js'
 import { operationStore } from '../stores/operation-store.js'
 import { NotFoundError, AppError } from '../utils/errors.js'
@@ -22,7 +22,7 @@ import type { ModelInstance, ControllerOperation } from '@sardeenz/types'
 import { OperationStatus, OperationType } from '@sardeenz/types'
 
 export default async function modelsRoutes(fastify: FastifyInstance) {
-  const modelManager = new ModelManager(fastify.log)
+  const modelManager = getModelManager(fastify.log)
 
   // Helper to convert ModelInstance to DTO
   function toDTO(instance: ModelInstance): ModelInstanceDTO {
