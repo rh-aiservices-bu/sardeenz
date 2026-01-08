@@ -1,7 +1,22 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Type, type Static } from '@sinclair/typebox'
-import { randomBytes } from 'crypto'
+import { randomBytes, timingSafeEqual } from 'crypto'
 import { config } from '../config.js'
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ */
+function secureCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  if (bufA.length !== bufB.length) {
+    // Lengths differ - still do a comparison to avoid leaking length info via timing
+    // Compare against self to maintain constant time
+    timingSafeEqual(bufA, bufA)
+    return false
+  }
+  return timingSafeEqual(bufA, bufB)
+}
 import type {
   AuthInfoResponse,
   LoginResponse,
@@ -198,6 +213,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
           200: LoginResponseSchema,
           401: ErrorResponseSchema,
           400: ErrorResponseSchema,
+          429: ErrorResponseSchema,
+        },
+      },
+      // Rate limit: 5 attempts per minute per IP to prevent brute force
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
         },
       },
     },
@@ -218,8 +241,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
       const { username, password } = request.body
 
-      // Validate credentials against environment variables
-      if (username !== config.adminUsername || password !== config.adminPassword) {
+      // Validate credentials using timing-safe comparison to prevent timing attacks
+      const usernameValid = secureCompare(username, config.adminUsername)
+      const passwordValid = secureCompare(password, config.adminPassword)
+      if (!usernameValid || !passwordValid) {
         reply.code(401).send({
           error: {
             message: 'Invalid username or password',

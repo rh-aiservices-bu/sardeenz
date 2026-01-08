@@ -15,6 +15,7 @@ interface ConnectionContextType {
   status: ConnectionStatus
   isConnected: boolean
   retryConnection: () => void
+  version: string | null
 }
 
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined)
@@ -33,6 +34,7 @@ interface ConnectionProviderProps {
 
 export const ConnectionProvider = ({ children }: ConnectionProviderProps) => {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
+  const [version, setVersion] = useState<string | null>(null)
 
   const checkConnection = useCallback(async (): Promise<boolean> => {
     const startTime = Date.now()
@@ -40,7 +42,8 @@ export const ConnectionProvider = ({ children }: ConnectionProviderProps) => {
 
     while (Date.now() - startTime < MAX_WAIT_TIME_MS) {
       try {
-        await apiClient.healthCheck()
+        const result = await apiClient.healthCheck()
+        setVersion(result.version)
         return true
       } catch {
         // Calculate delay with exponential backoff
@@ -78,6 +81,7 @@ export const ConnectionProvider = ({ children }: ConnectionProviderProps) => {
     status,
     isConnected: status === 'connected',
     retryConnection,
+    version,
   }
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>

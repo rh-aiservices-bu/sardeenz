@@ -160,7 +160,15 @@ function validateAuthConfig(): void {
     }
   }
 
+  // CRITICAL: Block startup with default JWT secret in production
   if (config.authMode !== 'none' && config.jwtSecret === 'change-me-in-production') {
+    if (config.nodeEnv === 'production') {
+      throw new Error(
+        'CRITICAL: JWT_SECRET must be set in production. ' +
+          'Using the default secret "change-me-in-production" is not allowed. ' +
+          'Generate a secure value with: openssl rand -hex 32'
+      )
+    }
     console.warn('WARNING: Using default JWT_SECRET. This is insecure for production environments.')
   }
 }

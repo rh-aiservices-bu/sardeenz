@@ -29,6 +29,28 @@ await fastify.register(import('@fastify/cors'), {
   credentials: true,
 })
 
+// Register security headers (Helmet)
+await fastify.register(import('@fastify/helmet'), {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // React dev tools may need these
+      styleSrc: ["'self'", "'unsafe-inline'"], // PatternFly uses inline styles
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for some PatternFly assets
+})
+
+// Register rate limiting (global registration, applied per-route)
+await fastify.register(import('@fastify/rate-limit'), {
+  global: false, // Don't apply globally, configure per-route
+})
+
 // Register custom request logging plugin
 await fastify.register(import('./plugins/request-logging.js'))
 

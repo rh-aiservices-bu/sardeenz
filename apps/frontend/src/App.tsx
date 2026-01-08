@@ -25,7 +25,6 @@ import {
   DropdownItem,
   DropdownList,
   MenuToggle,
-  Divider,
   Drawer,
   DrawerContent,
   DrawerContentBody,
@@ -37,6 +36,9 @@ import {
   EmptyStateActions,
   Spinner,
   Content,
+  FlexItem,
+  Flex,
+  ContentVariants,
 } from '@patternfly/react-core'
 import {
   BarsIcon,
@@ -46,6 +48,14 @@ import {
   UserIcon,
 } from '@patternfly/react-icons'
 import sardeenzLogo from '../../../assets/sardeenz.svg'
+import {
+  starLogo,
+  githubLogo,
+  forkLogo,
+  starLogoWhite,
+  forkLogoWhite,
+  githubLogoWhite,
+} from './assets'
 import { routes } from './routes'
 import { useNotifications } from './contexts/NotificationContext'
 import { useConnection } from './contexts/ConnectionContext'
@@ -55,11 +65,14 @@ import { AlertToastGroup } from './components/AlertToastGroup'
 import Login from './pages/Login'
 import OAuthCallback from './pages/OAuthCallback'
 import AccessDenied from './pages/AccessDenied'
+import axios from 'axios'
 
 function App() {
   const location = useLocation()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [repoStars, setRepoStars] = useState<number | null>(null)
+  const [repoForks, setRepoForks] = useState<number | null>(null)
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false)
   const [isDarkTheme, setIsDarkTheme] = useState(() => {
     const stored = localStorage.getItem('theme')
@@ -68,7 +81,7 @@ function App() {
   })
 
   const { toastNotifications, removeToastNotification, unreadCount } = useNotifications()
-  const { status, retryConnection } = useConnection()
+  const { status, retryConnection, version } = useConnection()
   const {
     user,
     authMode,
@@ -77,6 +90,19 @@ function App() {
     isLoading: authLoading,
     isAccessDenied,
   } = useAuth()
+
+  // Fetch GitHub stars and forks
+  useEffect(() => {
+    axios
+      .get('https://api.github.com/repos/rh-aiservices-bu/sardeenz')
+      .then((response) => {
+        setRepoStars(response.data.stargazers_count)
+        setRepoForks(response.data.forks_count)
+      })
+      .catch((error) => {
+        console.error('Failed to fetch GitHub stars:', error)
+      })
+  }, [])
 
   // Apply theme to document
   useEffect(() => {
@@ -155,10 +181,6 @@ function App() {
               )}
             >
               <DropdownList>
-                <DropdownItem key="profile" isDisabled>
-                  Profile
-                </DropdownItem>
-                <Divider component="li" />
                 <DropdownItem
                   key="logout"
                   isDisabled={authMode === 'none'}
@@ -201,7 +223,10 @@ function App() {
 
   const sidebar = (
     <PageSidebar isSidebarOpen={isSidebarOpen}>
-      <PageSidebarBody>
+      <PageSidebarBody
+        isFilled
+        style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      >
         <Nav>
           <NavList>
             {routes.map((route) => (
@@ -215,6 +240,85 @@ function App() {
             ))}
           </NavList>
         </Nav>
+        <aside
+          role="complementary"
+          style={{ marginTop: 'auto', padding: '1rem', textAlign: 'center' }}
+        >
+          <Content component={ContentVariants.small}>
+            {'App by '}
+            <a href="http://red.ht/cai-team" target="_blank" rel="noreferrer">
+              red.ht/cai team
+            </a><br />
+            {version && <FlexItem style={{ marginTop: '0.5rem' }}>Version {version}</FlexItem>}
+            <Flex direction={{ default: 'column' }} style={{ width: '100%', alignItems: 'center' }}>
+              <FlexItem style={{ marginBottom: '0rem' }}>
+                <Flex direction={{ default: 'row' }} alignItems={{ default: 'alignItemsCenter' }}>
+                  <FlexItem>
+                    <Content
+                      component={ContentVariants.a}
+                      href="https://github.com/rh-aiservices-bu/sardeenz"
+                      target="_blank"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginTop: '0.5rem',
+                        fontSize: 'var(--pf-t--global--font--size--xs)',
+                      }}
+                    >
+                      <img
+                        src={isDarkTheme ? githubLogoWhite : githubLogo}
+                        alt={'GitHub logo'}
+                        style={{ height: '20px', marginRight: '0.5rem' }}
+                      />
+                      {'Source on GitHub'}
+                    </Content>
+                  </FlexItem>
+                </Flex>
+              </FlexItem>
+              <FlexItem>
+                <Flex direction={{ default: 'row' }}>
+                  <FlexItem style={{ alignmentBaseline: 'middle' }}>
+                    {repoStars !== null && (
+                      <>
+                        <img
+                          src={isDarkTheme ? starLogoWhite : starLogo}
+                          alt=""
+                          style={{
+                            height: '15px',
+                            marginRight: '0.5rem',
+                            verticalAlign: 'text-top',
+                          }}
+                          aria-hidden="true"
+                        />
+                        <span className="pf-v6-screen-reader">{'Stars'}</span>
+                      </>
+                    )}
+                    {repoStars !== null ? `${repoStars}` : ''}
+                  </FlexItem>
+                  <FlexItem>
+                    {repoForks !== null && (
+                      <>
+                        <img
+                          src={isDarkTheme ? forkLogoWhite : forkLogo}
+                          alt=""
+                          style={{
+                            height: '15px',
+                            marginRight: '0.5rem',
+                            verticalAlign: 'text-top',
+                          }}
+                          aria-hidden="true"
+                        />
+                        <span className="pf-v6-screen-reader">{'Forks'}</span>
+                      </>
+                    )}
+                    {repoForks !== null ? `${repoForks}` : ''}
+                  </FlexItem>
+                </Flex>
+              </FlexItem>
+            </Flex>
+          </Content>
+        </aside>
       </PageSidebarBody>
     </PageSidebar>
   )
