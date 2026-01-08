@@ -18,7 +18,8 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Resource                                                        | Description                                            |
 | --------------------------------------------------------------- | ------------------------------------------------------ |
-| [**Development Setup**](./dev-setup.md)                         | GPU development environment setup (vLLM, KVCached, uv) |
+| [**Development Guide**](./development/README.md)                | Getting started with local development                 |
+| [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, KVCached, uv)             |
 | [**PatternFly 6 Guide**](./development/pf6-guide/README.md)     | Complete UI development guide with PatternFly 6        |
 | [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend                |
 
@@ -34,17 +35,17 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 **New to Sardeenz?** Start here:
 
-1. **Understand the Project**
-   - Read the [project overview](../CLAUDE.md#project-overview) in CLAUDE.md
+1. **Quick Deploy**
+   - Pre-built images at `quay.io/rh-aiservices-bu/sardeenz`
+   - See [deployment.md](./deployment.md) for OpenShift/Kubernetes setup
+
+2. **Understand the Project**
+   - Read the [main README](../README.md) for overview
    - Review [architecture.md](./architecture.md) for system design
 
-2. **Set Up Development Environment**
-   - Follow [quick start](../CLAUDE.md#quick-start) in CLAUDE.md
-   - Review [common commands](../CLAUDE.md#common-commands)
-
-3. **Deploy to Production**
-   - Read [deployment.md](./deployment.md) for container and OpenShift setup
-   - Configure authentication and monitoring
+3. **Develop Locally**
+   - Follow the [Development Guide](./development/README.md)
+   - See [GPU Setup](./dev-setup.md) for vLLM/KVCached configuration
 
 4. **Use the APIs**
    - Explore [api-guide.md](./api-guide.md) for API examples
@@ -56,11 +57,11 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 **Building features and fixing bugs?**
 
+- [Development Guide](./development/README.md) - Local setup, commands, project structure
 - [Architecture Overview](./architecture.md) - Understand system components and data flow
 - [Backend Architecture](./architecture/backend-architecture.md) - Backend component details
 - [Frontend Architecture](./architecture/frontend-architecture.md) - Frontend component specs
 - [API Guide](./api-guide.md#code-examples) - Integration code examples
-- [CLAUDE.md](../CLAUDE.md#common-commands) - Development workflow commands
 - [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
 
 **Key Files:**
@@ -81,7 +82,8 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 **Key Resources:**
 
 - GPU-enabled OpenShift cluster setup
-- Model storage (PVC or S3)
+- App Data PVC (required for SQLite)
+- Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](../deployment/README.md#storage-configuration))
 - OAuth 2.0 integration (OpenShift OAuth)
 
 ### 📊 Data Scientists / ML Engineers
@@ -145,6 +147,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document                                                                   | Topics Covered                                                                |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [development/README.md](./development/README.md)                           | Local setup, prerequisites, project structure, development commands           |
 | [dev-setup.md](./dev-setup.md)                                             | GPU development environment, vLLM setup, KVCached configuration               |
 | [development/pf6-guide/](./development/pf6-guide/README.md)                | PatternFly 6 components, styling standards, testing patterns, troubleshooting |
 | [development/frontend-api-client.md](./development/frontend-api-client.md) | Axios setup, API client patterns, error handling                              |
@@ -276,7 +279,12 @@ No, vLLM requires GPU acceleration. CPU-only inference is not supported.
 <details>
 <summary><strong>Is persistent storage required?</strong></summary>
 
-For the PoC phase, no database is required (in-memory storage). Model files can be stored on PVC, NFS, or object storage (S3).
+Yes, an App Data PVC (1Gi) is required for the SQLite database that stores benchmarks and memory profiles. For models, you can either:
+- Use a Model Cache PVC for HuggingFace downloads (optional)
+- Mount pre-downloaded models via `LOCAL_MODELS_PATH` (optional)
+- Or use both sources simultaneously
+
+See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for details.
 
 </details>
 
