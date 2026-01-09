@@ -59,6 +59,16 @@ function hasArg(args: string[], argName: string): boolean {
   return args.some((arg) => arg.split('=')[0].toLowerCase() === lowerArgName)
 }
 
+/**
+ * Build IPC segment name for kvcached based on GPU(s)
+ * Single GPU: kvcached_vllm_GPU0
+ * Multi-GPU (tensor parallel): kvcached_vllm_GPU0_GPU1
+ */
+function buildIpcSegmentName(gpuIds: number[]): string {
+  const sortedIds = [...gpuIds].sort((a, b) => a - b)
+  return `kvcached_vllm_GPU${sortedIds.join('_GPU')}`
+}
+
 export class ModelManager extends EventEmitter {
   private logger: Logger
   // Keyed by instance ID (UUID) for multi-instance support
@@ -74,7 +84,7 @@ export class ModelManager extends EventEmitter {
   /**
    * Launch a new model instance
    * Supports multiple instances of the same model (FR-004)
-   * GPU memory is managed by KVCached
+   * GPU memory is managed by kvcached
    */
   async launchModel(options: LaunchModelOptions): Promise<ModelInstance> {
     const {
@@ -98,8 +108,8 @@ export class ModelManager extends EventEmitter {
       tensorParallelSize
     )
 
-    // Determine KVCached status
-    // KVCached supports tensor parallelism as of Q2 2025
+    // Determine kvcached status
+    // kvcached supports tensor parallelism as of Q2 2025
     const enableKvcached = config.enableKvcached
 
     this.logger.info(
@@ -134,11 +144,12 @@ export class ModelManager extends EventEmitter {
       gpuIds: targetGpuIds,
       tensorParallelSize,
       kvcachedEnabled: enableKvcached,
+      memoryBaselineByGpu: {}, // Will be populated when model becomes ready
     }
 
     try {
       // Spawn vLLM process
-      // Note: GPU memory is managed by KVCached, no --gpu-memory-utilization flag needed
+      // Note: GPU memory is managed by kvcached, no --gpu-memory-utilization flag needed
       // Get HF token from runtime settings (may be from env or set via API)
       const hfToken = runtimeSettings.getHfToken()
 
@@ -165,16 +176,24 @@ export class ModelManager extends EventEmitter {
         baseArgs.push(`--tensor-parallel-size=${tensorParallelSize}`)
       }
 
-      // Only add prefix caching flag if KVCached is enabled
+      // Only add prefix caching flag if kvcached is enabled
       if (enableKvcached) {
-        baseArgs.push('--no-enable-prefix-caching') // Required for KVCached
+        baseArgs.push('--no-enable-prefix-caching') // Required for kvcached
       }
 
       // Append sanitized user-provided extra arguments (may include overrides)
       const allArgs = [...baseArgs, ...sanitizedExtraArgs]
 
+      // Build IPC segment name for kvcached
+      // Single GPU: kvcached_vllm_GPU0, Multi-GPU: kvcached_vllm_GPU0_GPU1
+      const kvcachedIpcName = enableKvcached ? buildIpcSegmentName(targetGpuIds) : undefined
+
       // Build and store the full launch command for debugging/reproduction
-      instance.launchCommand = `CUDA_VISIBLE_DEVICES=${targetGpuIds.join(',')} vllm ${allArgs.join(' ')}`
+      const envVars = [`CUDA_VISIBLE_DEVICES=${targetGpuIds.join(',')}`]
+      if (kvcachedIpcName) {
+        envVars.push(`KVCACHED_IPC_NAME=${kvcachedIpcName}`)
+      }
+      instance.launchCommand = `${envVars.join(' ')} vllm ${allArgs.join(' ')}`
 
       const proc = spawn('vllm', allArgs, {
         env: {
@@ -183,6 +202,7 @@ export class ModelManager extends EventEmitter {
           CUDA_VISIBLE_DEVICES: targetGpuIds.join(','), // GPU restriction
           ENABLE_KVCACHED: enableKvcached ? 'true' : 'false',
           KVCACHED_AUTOPATCH: config.kvcachedAutopatch && enableKvcached ? '1' : '0',
+          ...(kvcachedIpcName ? { KVCACHED_IPC_NAME: kvcachedIpcName } : {}), // Per-GPU IPC segment
           ...(hfToken ? { HF_TOKEN: hfToken } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -394,6 +414,19 @@ export class ModelManager extends EventEmitter {
             'No matching processes found in nvidia-smi output'
           )
         }
+        // Capture memory baseline per GPU for KVCache calculation
+        // This baseline represents the idle memory footprint before any inference requests
+        const memoryByGpu: Record<number, number> = {}
+        for (const proc of gpuInfo.processes) {
+          if (allPids.has(proc.pid) && instance.gpuIds.includes(proc.gpu)) {
+            memoryByGpu[proc.gpu] = (memoryByGpu[proc.gpu] ?? 0) + proc.gpuMemoryMB / 1024
+          }
+        }
+        instance.memoryBaselineByGpu = memoryByGpu
+        this.logger.info(
+          { instanceId, modelPath, memoryBaselineByGpu: memoryByGpu },
+          'Captured memory baseline per GPU'
+        )
       } catch (err) {
         this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
       }
@@ -545,7 +578,7 @@ export class ModelManager extends EventEmitter {
 
     try {
       // Use SIGKILL to bypass Python signal handlers that would delete
-      // the shared KVCached IPC segment (kvcached_mem_info)
+      // the shared kvcached IPC segment (kvcached_mem_info)
       await killProcessImmediate(proc)
 
       // Explicitly kill EngineCore if tracked (may not be a descendant of the main process)
@@ -676,7 +709,7 @@ export class ModelManager extends EventEmitter {
   }
 
   /**
-   * Get IPC segment name for KVCached
+   * Get IPC segment name for kvcached
    * Include instance ID suffix for uniqueness when running multiple instances
    */
   private getIpcSegmentName(modelPath: string, instanceId: string): string {
@@ -692,21 +725,61 @@ export class ModelManager extends EventEmitter {
   }
 
   /**
-   * Delete the shared KVCached IPC segment
+   * Delete all GPU-specific kvcached IPC segments
    * Called only during server shutdown when all models are unloaded
    */
   private async deleteSharedIpcSegment(): Promise<void> {
-    const segmentName = 'kvcached_mem_info'
+    // Collect unique IPC segment names from currently loaded models
+    const segmentNames = new Set<string>()
+    for (const model of this.listModels()) {
+      const name = buildIpcSegmentName(model.gpuIds)
+      segmentNames.add(name)
+    }
+
+    // Also try common single-GPU segments (0-7) in case models were already unloaded
+    for (let i = 0; i < 8; i++) {
+      segmentNames.add(`kvcached_vllm_GPU${i}`)
+    }
+
+    // Try common multi-GPU combinations for tensor-parallel models
+    // Common 2-GPU pairs
+    for (let i = 0; i < 8; i += 2) {
+      segmentNames.add(`kvcached_vllm_GPU${i}_GPU${i + 1}`)
+    }
+    // Common 4-GPU groups
+    segmentNames.add('kvcached_vllm_GPU0_GPU1_GPU2_GPU3')
+    segmentNames.add('kvcached_vllm_GPU4_GPU5_GPU6_GPU7')
+    // 8-GPU group
+    segmentNames.add('kvcached_vllm_GPU0_GPU1_GPU2_GPU3_GPU4_GPU5_GPU6_GPU7')
+
+    // Delete each segment
+    for (const segmentName of segmentNames) {
+      try {
+        const proc = spawn('kvctl', ['delete', segmentName])
+        await new Promise<void>((resolve) => {
+          proc.on('exit', (code) => {
+            if (code === 0) {
+              this.logger.info({ segmentName }, 'Deleted kvcached IPC segment')
+            }
+            resolve()
+          })
+          proc.on('error', () => resolve())
+        })
+      } catch {
+        // Non-critical, segment may not exist
+        this.logger.debug({ segmentName }, 'Failed to delete IPC segment (non-critical)')
+      }
+    }
+
+    // Also try deleting the legacy global segment for backward compatibility
     try {
-      const proc = spawn('kvctl', ['delete', segmentName])
+      const proc = spawn('kvctl', ['delete', 'kvcached_mem_info'])
       await new Promise<void>((resolve) => {
         proc.on('exit', () => resolve())
-        proc.on('error', () => resolve()) // Ignore errors
+        proc.on('error', () => resolve())
       })
-      this.logger.info('Deleted shared KVCached IPC segment')
     } catch {
-      // Non-critical, segment may not exist
-      this.logger.debug({ segmentName }, 'Failed to delete shared IPC segment (non-critical)')
+      // Ignore - legacy segment may not exist
     }
   }
 
@@ -807,7 +880,7 @@ export class ModelManager extends EventEmitter {
     // Clean up log buffer
     processLogBuffer.cleanup()
 
-    // Delete the shared KVCached IPC segment now that all models are unloaded
+    // Delete the shared kvcached IPC segment now that all models are unloaded
     await this.deleteSharedIpcSegment()
   }
 

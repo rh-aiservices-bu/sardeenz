@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Per-GPU KVCache Metrics
+
+- **Per-GPU IPC segments**: Each GPU (or GPU-pair for tensor-parallel models) now gets its own IPC segment
+  - Single GPU: `kvcached_vllm_GPU0`, `kvcached_vllm_GPU1`, etc.
+  - Tensor-parallel: `kvcached_vllm_GPU0_GPU1` for models spanning multiple GPUs
+  - Replaces the old global `kvcached_mem_info` segment
+- **Memory baseline tracking**: Model memory footprint is now captured when loading completes (before any inference)
+  - New `memoryBaselineByGpu: Record<number, number>` field on ModelInstance
+  - Provides accurate idle memory measurement per GPU
+- **Accurate KVCache total calculation**: KVCache Total is now calculated dynamically
+  - Formula: `GPU Total - Model Baselines - Other Processes`
+  - Fixes stale total_size from IPC segment that was set at initialization and never updated
+- **Per-GPU KVCache metrics in API**: `/api/memory/usage/multi-gpu` now returns per-GPU `kvcache` metrics
+  - Each GPU shows its own `total_gb`, `used_gb`, `prealloc_gb`, `free_gb`
+  - Used/Prealloc values still read from IPC segments
+  - For tensor-parallel models, usage is split evenly across participating GPUs
+- **Automatic IPC naming**: `KVCACHED_IPC_NAME` environment variable is set automatically based on GPU assignment
+
 ## [0.2.1] - 2026-01-08
 
 ### Robust Model Unload
@@ -92,7 +112,7 @@ All notable changes to this project will be documented in this file.
 - GPU Selector service (`apps/backend/src/services/gpu-selector.ts`) auto-selects GPUs with most free memory
 - `GET /api/gpu/available` - Returns GPUs with availability info and recommendation
 - `GET /api/memory/usage/multi-gpu` - Per-GPU memory breakdown for multi-GPU systems
-- Models can span multiple GPUs via `tensor_parallel_size` parameter (KVCached disabled for tensor parallel)
+- Models can span multiple GPUs via `tensor_parallel_size` parameter (kvcached disabled for tensor parallel)
 - New fields in `LoadModelRequest`: `gpu_ids`, `tensor_parallel_size`
 - New fields in `ModelInstanceDTO`: `gpu_ids`, `tensor_parallel_size`, `kvcached_enabled`
 - Model Cards now display which GPU(s) each model is loaded on

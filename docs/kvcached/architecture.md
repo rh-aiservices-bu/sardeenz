@@ -1,6 +1,6 @@
-# KVCached Architecture
+# kvcached Architecture
 
-This document describes the architecture of KVCached and how it integrates with vLLM for the sardeenz project.
+This document describes the architecture of kvcached and how it integrates with vLLM for the sardeenz project.
 
 ## Table of Contents
 
@@ -12,7 +12,7 @@ This document describes the architecture of KVCached and how it integrates with 
 
 ## System Overview
 
-KVCached implements an OS-style virtual memory abstraction for managing KV (Key-Value) caches in LLM serving environments. The system enables multiple vLLM instances to share GPU resources efficiently through dynamic memory allocation and intelligent model lifecycle management.
+kvcached implements an OS-style virtual memory abstraction for managing KV (Key-Value) caches in LLM serving environments. The system enables multiple vLLM instances to share GPU resources efficiently through dynamic memory allocation and intelligent model lifecycle management.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -44,7 +44,7 @@ KVCached implements an OS-style virtual memory abstraction for managing KV (Key-
        └────────────────┼────────────────┘
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              KVCached Memory Management Layer                │
+│              kvcached Memory Management Layer                │
 │  ┌────────────────┐  ┌────────────────┐  ┌───────────────┐ │
 │  │ KV Cache       │  │ Page           │  │ Memory Info   │ │
 │  │ Manager        │  │ Allocator      │  │ Tracker       │ │
@@ -239,9 +239,9 @@ The **Memory Info Tracker** monitors GPU memory usage in real-time.
 
 ## vLLM Integration
 
-### How KVCached Integrates with vLLM
+### How kvcached Integrates with vLLM
 
-KVCached integrates with vLLM through **autopatching** - automatic modification of vLLM's memory management behavior at runtime.
+kvcached integrates with vLLM through **autopatching** - automatic modification of vLLM's memory management behavior at runtime.
 
 **Integration Method**:
 1. Set environment variables:
@@ -255,22 +255,22 @@ KVCached integrates with vLLM through **autopatching** - automatic modification 
    vllm serve meta-llama/Llama-3.2-1B --no-enable-prefix-caching
    ```
 
-3. KVCached automatically patches vLLM's KV cache allocation
+3. kvcached automatically patches vLLM's KV cache allocation
 
 **Autopatch Mechanism** (`kvcached/autopatch.py`):
 - Intercepts vLLM's memory allocation calls
-- Redirects to KVCached's virtual memory system
+- Redirects to kvcached's virtual memory system
 - Maintains compatibility with vLLM's API
 - Transparent to vLLM's internal logic
 
 **Key Integration Points**:
-- **Memory Allocation**: vLLM requests → KVCached Page Allocator
-- **KV Cache Storage**: vLLM cache → KVCached IPC segments
-- **Memory Release**: vLLM free → KVCached page deallocation
+- **Memory Allocation**: vLLM requests → kvcached Page Allocator
+- **KV Cache Storage**: vLLM cache → kvcached IPC segments
+- **Memory Release**: vLLM free → kvcached page deallocation
 
 ### vLLM-Specific Limitations
 
-- **No Prefix Caching**: KVCached does not support vLLM's prefix caching feature
+- **No Prefix Caching**: kvcached does not support vLLM's prefix caching feature
   - Must use `--no-enable-prefix-caching` flag
   - Incompatibility with `--enable-prefix-caching`
 
@@ -308,7 +308,7 @@ KVCached integrates with vLLM through **autopatching** - automatic modification 
    ```
 
 6. **vLLM** processes request:
-   - Allocates KV cache via KVCached
+   - Allocates KV cache via kvcached
    - Generates completion
    - Returns response
 
@@ -354,7 +354,7 @@ KVCached integrates with vLLM through **autopatching** - automatic modification 
 
 4. Model sleep operation:
    - Notifies vLLM to release KV cache
-   - KVCached reclaims GPU memory
+   - kvcached reclaims GPU memory
    - Model marked as sleeping
 
 ## Memory Management
@@ -369,13 +369,13 @@ KVCached integrates with vLLM through **autopatching** - automatic modification 
                   │
                   ▼
 ┌─────────────────────────────────────────────┐
-│      Virtual Memory Layer (KVCached)        │
+│      Virtual Memory Layer (kvcached)        │
 │  Logical KV cache addresses (per model)     │
 └─────────────────┬───────────────────────────┘
                   │
                   ▼
 ┌─────────────────────────────────────────────┐
-│         Page Allocator (KVCached)           │
+│         Page Allocator (kvcached)           │
 │    Physical page allocation & tracking      │
 └─────────────────┬───────────────────────────┘
                   │
@@ -555,7 +555,7 @@ After Model A Goes Idle (Auto-Sleep):
 
 ## Performance Considerations
 
-### Benefits of KVCached Architecture
+### Benefits of kvcached Architecture
 
 1. **Improved TTFT (Time To First Token)**:
    - 2-28x reduction in TTFT
@@ -593,7 +593,7 @@ After Model A Goes Idle (Auto-Sleep):
 
 ## Summary
 
-KVCached provides a sophisticated architecture for managing multiple vLLM instances on shared GPU resources. The key innovation is the **virtual memory abstraction** that decouples logical KV cache from physical GPU memory, combined with **intelligent lifecycle management** through the Sleep Manager.
+kvcached provides a sophisticated architecture for managing multiple vLLM instances on shared GPU resources. The key innovation is the **virtual memory abstraction** that decouples logical KV cache from physical GPU memory, combined with **intelligent lifecycle management** through the Sleep Manager.
 
 For sardeenz, the most important integration points are:
 - **Controller API** for model management

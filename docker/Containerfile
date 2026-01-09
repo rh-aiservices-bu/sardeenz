@@ -1,6 +1,6 @@
 # =============================================================================
 # Multi-stage Dockerfile for Sardeenz
-# Based on vLLM CUDA image (UBI/RHEL) with Node.js 22 and KVCached
+# Based on vLLM CUDA image (UBI/RHEL) with Node.js 22 and kvcached
 # =============================================================================
 
 # =============================================================================
@@ -15,11 +15,11 @@ RUN microdnf -y update \
     && rm -rf /var/cache/yum/*
 
 # =============================================================================
-# Stage 1: KVCached Builder (vllm-base + CUDA devel + dependencies)
+# Stage 1: kvcached Builder (vllm-base + CUDA devel + dependencies)
 # =============================================================================
 FROM vllm-base AS kvcached-builder
 
-ARG KVCACHED_VERSION=0.1.2
+ARG KVCACHED_VERSION=main
 
 ENV NV_CUDA_LIB_VERSION=12.8.1-1
 ENV NV_CUDA_CUDART_DEV_VERSION=12.8.90-1
@@ -31,6 +31,7 @@ ENV NV_CUDA_NSIGHT_COMPUTE_VERSION=12.8.1-1
 
 # Install CUDA build dependencies (minimal set for wheel compilation)
 RUN microdnf install -y \
+    git \
     cuda-command-line-tools-12-8-${NV_CUDA_LIB_VERSION} \
     cuda-libraries-devel-12-8-${NV_CUDA_LIB_VERSION} \
     cuda-minimal-build-12-8-${NV_CUDA_LIB_VERSION} \
@@ -43,11 +44,14 @@ RUN microdnf install -y \
     && microdnf clean all \
     && rm -rf /var/cache/yum/*
 
-# Build KVCached wheel with CUDA support
+# Clone and build kvcached from source (supports branch or tag)
 WORKDIR /build
-RUN pip3.12 wheel kvcached==${KVCACHED_VERSION} \
-    --no-build-isolation \
-    --wheel-dir /wheels
+RUN git clone --depth 1 --branch ${KVCACHED_VERSION} \
+        https://github.com/ovg-project/kvcached.git \
+    && cd kvcached \
+    && pip3.12 wheel . \
+        --no-build-isolation \
+        --wheel-dir /wheels
 
 # =============================================================================
 # Stage 2: Runtime Dependencies
@@ -124,6 +128,9 @@ COPY --from=builder /app/apps/backend/scripts ./apps/backend/scripts
 # Copy frontend (static files only)
 COPY --from=builder /app/apps/frontend/dist ./apps/frontend/dist
 
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -131,16 +138,15 @@ ENV HOST=0.0.0.0
 ENV LOG_LEVEL=info
 ENV ENABLE_KVCACHED=true
 ENV KVCACHED_AUTOPATCH=1
+ENV HF_HUB_OFFLINE=0
 
 # OpenShift arbitrary UID support - redirect cache to writable location
 # vLLM and FlashInfer need writable cache directories; /home/vllm is not writable
 ENV HOME=/opt/app-root/src
 ENV XDG_CACHE_HOME=/opt/app-root/src/.cache
+ENV HF_HOME=/opt/app-root/src/.cache/huggingface
 ENV FLASHINFER_WORKSPACE_DIR=/opt/app-root/src/.cache/flashinfer
 
 EXPOSE 3000
-
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -10,7 +10,7 @@ Sardeenz is a proof-of-concept application that allows you to load more than one
 
 ## What is Sardeenz?
 
-Sardeenz is a multi-model management application that enables dynamic loading and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of **[vLLM](https://github.com/vllm-project/vllm)** and **[KVCached](https://github.com/ovg-project/kvcached)**, it provides efficient multi-model hosting with intelligent GPU resource management.
+Sardeenz is a multi-model management application that enables dynamic loading and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of **[vLLM](https://github.com/vllm-project/vllm)** and **[kvcached](https://github.com/ovg-project/kvcached)**, it provides efficient multi-model hosting with intelligent GPU resource management.
 
 **Why "Sardeenz"?** We were looking for a way to cram more models onto a GPU. "[Packed like sardines](https://wordhistories.net/2024/06/22/packed-like-sardines/)" captures the idea perfectly. Pronounced like [sardines](https://www.youtube.com/watch?v=Rr1dwxmeIOU).
 
@@ -34,7 +34,7 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 - **Multi-GPU support** - Distribute models across GPUs with tensor parallelism
 - **OpenAI-compatible API** - Single endpoint drop-in replacement for all served models
 - **Web dashboard** - Manage models, monitor GPU memory, run benchmarks
-- **Memory sharing** - KVCached integration for efficient GPU utilization
+- **Memory sharing** - kvcached integration for efficient GPU utilization
 
 ## Screenshots
 

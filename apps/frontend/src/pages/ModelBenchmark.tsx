@@ -22,6 +22,7 @@ import {
 import type { BenchmarkFormConfig, InitialBenchmarkConfig } from '../components/benchmark'
 import { apiClient, extractErrorMessage } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useNotifications } from '../contexts/NotificationContext'
 
 /** Performance tab view state machine */
 type PerformanceView = 'list' | 'form' | 'running' | 'results'
@@ -32,6 +33,7 @@ type PerformanceView = 'list' | 'form' | 'running' | 'results'
  */
 function ModelBenchmark() {
   const { canWrite } = useAuth()
+  const { addNotification } = useNotifications()
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0)
 
   // Performance tab state
@@ -119,12 +121,15 @@ function ModelBenchmark() {
       setPerformanceView('running')
     } catch (err) {
       console.error('Failed to start benchmark:', err)
-      // Error is shown via alert in the form
-      throw new Error(extractErrorMessage(err))
+      addNotification({
+        title: 'Failed to start benchmark',
+        description: extractErrorMessage(err),
+        variant: 'danger',
+      })
     } finally {
       setIsSubmitting(false)
     }
-  }, [])
+  }, [addNotification])
 
   const handleBenchmarkComplete = () => {
     setPerformanceView('results')

@@ -109,7 +109,7 @@ This is a monorepo with npm workspaces:
 - [X] T042 [P] [US1] Create in-memory model instance store in apps/backend/src/stores/model-store.ts (Map<string, ModelInstance>)
 - [X] T043 [P] [US1] Create in-memory controller operation store in apps/backend/src/stores/operation-store.ts (circular buffer)
 - [X] T044 [US1] Implement ModelManager service in apps/backend/src/services/model-manager.ts with launchModel() method
-- [X] T045 [US1] Implement vLLM subprocess spawning with KVCached env vars in apps/backend/src/services/model-manager.ts
+- [X] T045 [US1] Implement vLLM subprocess spawning with kvcached env vars in apps/backend/src/services/model-manager.ts
 - [X] T046 [US1] Implement health check polling logic in apps/backend/src/services/model-manager.ts waitForReady() method
 - [X] T047 [US1] Implement unloadModel() with graceful shutdown (SIGTERM → SIGKILL) in apps/backend/src/services/model-manager.ts
 - [X] T048 [US1] Implement IPC segment cleanup via kvctl in apps/backend/src/services/model-manager.ts
@@ -262,7 +262,7 @@ This is a monorepo with npm workspaces:
 - [X] T136 [US4] Build frontend and serve via nginx in Dockerfile.unified
 - [X] T137 [US4] Configure container entrypoint to start backend server in Dockerfile.unified
 - [X] T138 [US4] Add health check for backend and frontend in Dockerfile.unified
-- [X] T139 [US4] Set environment variables for KVCached (ENABLE_KVCACHED, KVCACHED_AUTOPATCH) in Dockerfile.unified
+- [X] T139 [US4] Set environment variables for kvcached (ENABLE_KVCACHED, KVCACHED_AUTOPATCH) in Dockerfile.unified
 - [X] T140 [P] [US4] Create docker-compose.yml in docker/docker-compose.yml for local development
 - [X] T141 [US4] Configure service definitions for backend and frontend in docker-compose.yml
 - [X] T142 [US4] Add GPU device configuration in docker-compose.yml

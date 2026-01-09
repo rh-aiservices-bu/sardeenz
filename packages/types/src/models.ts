@@ -39,7 +39,7 @@ export interface ModelMemoryMetrics {
   cudaGraphMemoryGiB: number
   /** Overhead memory (total - weights - CUDA graphs) in GiB */
   overheadMemoryGiB: number
-  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
+  /** @deprecated KV cache available - meaningless with kvcached, kept for backwards compat */
   kvCacheAvailableGiB: number
   /** KV cache memory per max-size request in MiB */
   kvCachePerRequestMiB: number
@@ -85,8 +85,10 @@ export interface ModelInstance {
   gpuIds: number[]
   /** Tensor parallel size (1 = single GPU, >1 = spanning multiple GPUs) */
   tensorParallelSize: number
-  /** Whether KVCached is enabled for this instance (disabled for tensor parallel) */
+  /** Whether kvcached is enabled for this instance (disabled for tensor parallel) */
   kvcachedEnabled: boolean
+  /** Memory baseline per GPU in GB (captured when model becomes 'running', before any inference) */
+  memoryBaselineByGpu: Record<number, number>
 }
 
 export interface InferenceRequest {

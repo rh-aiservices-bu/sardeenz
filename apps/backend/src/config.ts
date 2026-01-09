@@ -34,7 +34,7 @@ export interface Config {
   vllmMaxInstances: number
   vllmStartupTimeout: number
 
-  // KVCached configuration
+  // kvcached configuration
   enableKvcached: boolean
   kvcachedAutopatch: boolean
 
@@ -125,7 +125,7 @@ export const config: Config = {
   vllmMaxInstances: getEnvInt('VLLM_MAX_INSTANCES', 10),
   vllmStartupTimeout: getEnvInt('VLLM_STARTUP_TIMEOUT', 1800000), // 30 minutes default
 
-  // KVCached configuration
+  // kvcached configuration
   enableKvcached: getEnvBool('ENABLE_KVCACHED', true),
   kvcachedAutopatch: getEnvBool('KVCACHED_AUTOPATCH', true),
 

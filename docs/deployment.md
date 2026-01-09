@@ -29,7 +29,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 
 | Software                     | Version | Purpose                  |
 | ---------------------------- | ------- | ------------------------ |
-| **Docker**                   | 24.x+   | Container runtime        |
+| **Podman**                   | 4.x+    | Container runtime        |
 | **NVIDIA Container Toolkit** | 1.14.x+ | GPU access in containers |
 | **CUDA**                     | 12.x    | GPU compute              |
 | **OpenShift** (optional)     | 4.12+   | Production orchestration |
@@ -51,15 +51,14 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 
-# Configure Docker to use NVIDIA runtime
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+# Configure Podman to use NVIDIA runtime (via CDI)
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 ```
 
 **Verify GPU Access:**
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ```
 
 ## Container Build
@@ -78,21 +77,21 @@ The unified container image includes:
 **From project root:**
 
 ```bash
-# Build the image
-docker build -t sardeenz:latest .
+# Build and tag using Makefile (recommended)
+make build VERSION=x.y.z
+make push VERSION=x.y.z
 
-# Tag for registry
-docker tag sardeenz:latest quay.io/your-org/sardeenz:latest
-
-# Push to registry
-docker push quay.io/your-org/sardeenz:latest
+# Or manually with podman:
+podman build -f docker/Containerfile -t quay.io/rh-aiservices-bu/sardeenz:x.y.z .
+podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
 ```
 
 **Build with custom vLLM version:**
 
 ```bash
-docker build \
+podman build \
   --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.12.0 \
+  -f docker/Containerfile \
   -t sardeenz:custom .
 ```
 
@@ -129,7 +128,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     npm install -g npm@latest
 
-# Install KVCached
+# Install kvcached
 RUN pip install kvcached
 
 # Copy built artifacts
@@ -156,9 +155,9 @@ CMD ["node", "backend/index.js"]
 
 ## Local Development
 
-### Run with Docker Compose
+### Run with Podman Compose
 
-**`docker-compose.yml`:**
+**`podman-compose.yml`:**
 
 ```yaml
 version: '3.8'
@@ -177,7 +176,7 @@ services:
       - AUTH_MODE=none # Disable auth for local dev
     volumes:
       - ./models:/opt/app-root/models # Mount local models directory for HF cache
-      - /tmp/kvcached:/tmp/kvcached # KVCached IPC directory
+      - /tmp/kvcached:/tmp/kvcached # kvcached IPC directory
     deploy:
       resources:
         reservations:
@@ -195,28 +194,28 @@ services:
 **Start the stack:**
 
 ```bash
-docker compose up -d
+podman-compose up -d
 
 # View logs
-docker compose logs -f
+podman-compose logs -f
 
 # Stop the stack
-docker compose down
+podman-compose down
 ```
 
 ### Run Standalone Container
 
 ```bash
-docker run -d \
+podman run -d \
   --name sardeenz \
-  --gpus all \
+  --device nvidia.com/gpu=all \
   -p 3000:3000 \
   -e ENABLE_KVCACHED=true \
   -e KVCACHED_AUTOPATCH=1 \
   -e HF_HOME=/opt/app-root/models \
   -v /path/to/models:/opt/app-root/models \
   -v /tmp/kvcached:/tmp/kvcached \
-  sardeenz:latest
+  quay.io/rh-aiservices-bu/sardeenz:latest
 ```
 
 ## OpenShift Deployment
@@ -616,8 +615,8 @@ For detailed permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rba
 | `HF_HOME`              | Yes                 | -                  | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`)                                                   |
 | `HF_TOKEN`             | No                  | -                  | HuggingFace token for accessing gated models (e.g., Llama, Mistral)                                                              |
 | `SARDEENZ_DB_PATH`     | No                  | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`)                                    |
-| `ENABLE_KVCACHED`      | Yes                 | `true`             | Enable KVCached memory sharing                                                                                                   |
-| `KVCACHED_AUTOPATCH`   | No                  | `1`                | Auto-patch vLLM for KVCached                                                                                                     |
+| `ENABLE_KVCACHED`      | Yes                 | `true`             | Enable kvcached memory sharing                                                                                                   |
+| `KVCACHED_AUTOPATCH`   | No                  | `1`                | Auto-patch vLLM for kvcached                                                                                                     |
 | `LOG_LEVEL`            | No                  | `info`             | Logging level (`debug`, `info`, `warn`, `error`)                                                                                 |
 | `AUTH_MODE`            | No                  | `none`             | Authentication mode: `none` (disabled), `simple` (username/password), `oauth` (OAuth 2.0)                                        |
 | `ADMIN_USERNAME`       | No                  | `admin`            | Username for simple auth mode                                                                                                    |
@@ -786,7 +785,7 @@ oc describe node <gpu-node-name> | grep nvidia.com/gpu
 # Check available GPU memory
 oc exec -it <pod-name> -- nvidia-smi
 
-# Check KVCached status
+# Check kvcached status
 oc exec -it <pod-name> -- kvctl status
 ```
 
@@ -868,4 +867,4 @@ oc logs -f deployment/sardeenz | jq .
 
 - [Architecture](./architecture.md) - System architecture and design
 - [API Guide](./api-guide.md) - API usage examples
-- [KVCached Documentation](./kvcached/) - GPU memory sharing setup
+- [kvcached Documentation](./kvcached/) - GPU memory sharing setup

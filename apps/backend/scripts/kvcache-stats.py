@@ -7,15 +7,24 @@ segments in /dev/shm, mimicking the behavior of kvtop from the kvcached project.
 Output format (JSON array):
 [
   {
-    "ipc_name": "kvcached_mem_info",
+    "ipc_name": "kvcached_vllm_GPU0",
+    "gpu_indices": [0],
     "total_size": 6580224000,
     "used_size": 123456789,
     "prealloc_size": 987654321
+  },
+  {
+    "ipc_name": "kvcached_vllm_GPU0_GPU1",
+    "gpu_indices": [0, 1],
+    "total_size": 3290112000,
+    "used_size": 0,
+    "prealloc_size": 0
   }
 ]
 """
 
 import fcntl
+import re
 import json
 import mmap
 import os
@@ -33,6 +42,32 @@ DTYPE = np.int64
 N_FIELDS = 3
 SHM_SIZE = np.dtype(DTYPE).itemsize * N_FIELDS  # 24 bytes (3 x int64)
 
+# Pattern for per-GPU IPC segment names: kvcached_vllm_GPU{id} or kvcached_vllm_GPU{id1}_GPU{id2}
+GPU_SEGMENT_PATTERN = re.compile(r"^kvcached_vllm_GPU(\d+(?:_GPU\d+)*)$")
+
+
+def parse_gpu_indices(ipc_name: str) -> list[int] | None:
+    """Extract GPU indices from IPC segment name.
+
+    Args:
+        ipc_name: Name of the shared memory segment
+
+    Returns:
+        List of GPU indices [0], [0, 1], etc. or None for legacy/unknown segments
+
+    Examples:
+        'kvcached_vllm_GPU0' -> [0]
+        'kvcached_vllm_GPU0_GPU1' -> [0, 1]
+        'kvcached_vllm_GPU1_GPU2_GPU3' -> [1, 2, 3]
+        'kvcached_mem_info' -> None (legacy global segment)
+    """
+    match = GPU_SEGMENT_PATTERN.match(ipc_name)
+    if match:
+        # Split "0_GPU1_GPU2" into ["0", "1", "2"]
+        parts = match.group(1).split("_GPU")
+        return [int(p) for p in parts]
+    return None
+
 
 def read_mem_info(ipc_name: str) -> dict | None:
     """Read memory info from a single shared memory segment.
@@ -41,7 +76,8 @@ def read_mem_info(ipc_name: str) -> dict | None:
         ipc_name: Name of the shared memory segment file in /dev/shm
 
     Returns:
-        Dict with ipc_name, total_size, used_size, prealloc_size or None on error
+        Dict with ipc_name, gpu_indices, total_size, used_size, prealloc_size
+        or None on error. gpu_indices is None for legacy segments.
     """
     path = os.path.join(SHM_DIR, ipc_name)
     try:
@@ -55,6 +91,7 @@ def read_mem_info(ipc_name: str) -> dict | None:
                     arr = np.ndarray((N_FIELDS,), dtype=DTYPE, buffer=mm)
                     return {
                         "ipc_name": ipc_name,
+                        "gpu_indices": parse_gpu_indices(ipc_name),
                         "total_size": int(arr[0]),
                         "used_size": int(arr[1]),
                         "prealloc_size": int(arr[2]),

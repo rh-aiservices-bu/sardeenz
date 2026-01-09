@@ -20,7 +20,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - **Frontend**: React + PatternFly 6 + TypeScript + Vite
 - **Monorepo**: npm workspaces (apps/backend, apps/frontend, packages/types)
 - **Container**: Based on `quay.io/vllm/vllm-cuda:0.11.2` with Node.js 22 added
-- **Process Management**: Direct subprocess spawning with KVCached memory sharing (NOT using KVCached Controller)
+- **Process Management**: Direct subprocess spawning with kvcached memory sharing (NOT using kvcached Controller)
 - **Auth**: OAuth 2.0 with RBAC (admin, admin-readonly roles)
 
 ## Technical Context
@@ -31,7 +31,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - **Backend**: Fastify 5.1+, @fastify/swagger (OpenAPI), @fastify/oauth2 (auth), @fastify/jwt, prom-client (metrics)
 - **Frontend**: React 18.3+, PatternFly 6.0+, Vite 6.0+, react-router-dom 6.28+
 - **Shared**: @sinclair/typebox (schema validation), tsx (TypeScript execution)
-- **Infrastructure**: vLLM (model serving), KVCached (GPU memory sharing), NVIDIA CUDA 12.x
+- **Infrastructure**: vLLM (model serving), kvcached (GPU memory sharing), NVIDIA CUDA 12.x
 
 **Storage**: In-memory storage for PoC phase (Map data structures for ModelInstance, ResourceMetrics, InferenceRequest logs, ControllerOperation audit trail). Future: Config file for ModelConfiguration catalog, optional database for persistence.
 
@@ -56,7 +56,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - Request throughput: Limited by vLLM instances, proxy adds <5% overhead
 
 **Constraints**:
-- GPU memory: Shared via KVCached, fair allocation required (prevent OOM)
+- GPU memory: Shared via kvcached, fair allocation required (prevent OOM)
 - No database dependency for PoC (in-memory storage acceptable)
 - OAuth 2.0 integration required from start (security by design)
 - OpenAI-compatible API format (enables drop-in replacement)
@@ -199,7 +199,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Pragmatic Choices**:
 - npm workspaces over pnpm/Turborepo (no additional tooling)
 - Fastify over NestJS (less abstraction, better performance)
-- Direct vLLM management over KVCached Controller (simpler, more flexible)
+- Direct vLLM management over kvcached Controller (simpler, more flexible)
 
 ---
 
@@ -260,7 +260,7 @@ specs/[###-feature]/
 │   │   │   │   └── proxy.ts       # Proxy API: /v1/completions, /v1/chat/completions
 │   │   │   ├── services/          # Business logic
 │   │   │   │   ├── model-manager.ts    # vLLM lifecycle (launch, unload, health)
-│   │   │   │   ├── memory-monitor.ts   # KVCached memory monitoring (kvctl integration)
+│   │   │   │   ├── memory-monitor.ts   # kvcached memory monitoring (kvctl integration)
 │   │   │   │   ├── metrics.ts          # Prometheus metrics collection
 │   │   │   │   └── proxy-router.ts     # Request routing to model instances
 │   │   │   └── plugins/           # Fastify plugins

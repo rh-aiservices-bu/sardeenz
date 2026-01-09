@@ -1,6 +1,6 @@
-# KVCached CLI Tools Reference
+# kvcached CLI Tools Reference
 
-This document provides a complete reference for KVCached's command-line tools for memory management and monitoring.
+This document provides a complete reference for kvcached's command-line tools for memory management and monitoring.
 
 ## Table of Contents
 
@@ -12,7 +12,7 @@ This document provides a complete reference for KVCached's command-line tools fo
 
 ## Overview
 
-KVCached provides two primary CLI tools for managing GPU memory:
+kvcached provides two primary CLI tools for managing GPU memory:
 
 1. **kvctl**: Interactive CLI for memory management and control
 2. **kvtop**: Real-time visual monitoring of memory usage (like `htop` for KV cache)
@@ -25,7 +25,7 @@ Both tools operate on **IPC (Inter-Process Communication) segments**, which are 
 
 ### Installation
 
-kvctl is included with the KVCached package:
+kvctl is included with the kvcached package:
 
 ```bash
 pip install kvcached --no-build-isolation
@@ -164,7 +164,7 @@ Memory limit for VLLM_MODEL_1 set to 30% (7.2 GB of 24 GB total)
 
 **Use Cases**:
 - Ensure fair sharing among models
-- Reserve GPU memory for non-KVCached workloads
+- Reserve GPU memory for non-kvcached workloads
 - Dynamic allocation based on available GPU memory
 
 #### watch
@@ -321,7 +321,7 @@ kvctl> exit
 
 ### Installation
 
-Included with KVCached:
+Included with kvcached:
 
 ```bash
 pip install kvcached --no-build-isolation
@@ -367,7 +367,7 @@ kvtop --refresh 0.5
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         KVCached Memory Monitor                  │
+│                         kvcached Memory Monitor                  │
 │                      Refresh: 1.0s | Press q to quit             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
@@ -535,7 +535,7 @@ kvtop
 
 ### Programmatic Access (Python)
 
-While kvctl and kvtop are CLI tools, you can programmatically interact with IPC segments through KVCached's Python API:
+While kvctl and kvtop are CLI tools, you can programmatically interact with IPC segments through kvcached's Python API:
 
 ```python
 from kvcached import MemoryManager
@@ -640,7 +640,7 @@ if __name__ == '__main__':
 Automate memory management in sardeenz backend:
 
 ```python
-class KVCachedMemoryManager:
+class kvcachedMemoryManager:
     """Manage KV cache memory for models."""
 
     def __init__(self, total_gpu_memory_gb=24):
@@ -678,7 +678,7 @@ class KVCachedMemoryManager:
         del self.models[model_name]
 
 # Usage
-manager = KVCachedMemoryManager(total_gpu_memory_gb=24)
+manager = kvcachedMemoryManager(total_gpu_memory_gb=24)
 
 # Register models
 manager.register_model("llama-3.2-1b", "VLLM_LLAMA", memory_percent=40)
@@ -711,7 +711,7 @@ manager.cleanup_model("llama-3.2-1b")
 **Solutions**:
 - Verify `ENABLE_KVCACHED=true` environment variable is set
 - Verify `KVCACHED_AUTOPATCH=1` is set
-- Check model logs for KVCached initialization errors
+- Check model logs for kvcached initialization errors
 - Ensure vLLM v0.11.0 is being used
 
 ### Memory Limit Not Enforced

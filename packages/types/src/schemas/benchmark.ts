@@ -22,10 +22,10 @@ export const RoutingModeSchema = Type.Union([Type.Literal('direct'), Type.Litera
 export const BenchmarkScenarioConfigSchema = Type.Object({
   instanceId: Type.String({ format: 'uuid' }),
   routingMode: Type.Optional(RoutingModeSchema),
-  inputTokens: Type.Integer({ minimum: 64, maximum: 4096, default: 512 }),
-  outputTokens: Type.Integer({ minimum: 16, maximum: 2048, default: 128 }),
-  concurrency: Type.Integer({ minimum: 1, maximum: 32, default: 1 }),
-  totalRequests: Type.Integer({ minimum: 10, maximum: 500, default: 50 }),
+  inputTokens: Type.Integer({ minimum: 64, maximum: 16384, default: 512 }),
+  outputTokens: Type.Integer({ minimum: 16, maximum: 32768, default: 128 }),
+  concurrency: Type.Integer({ minimum: 1, maximum: 100, default: 1 }),
+  totalRequests: Type.Integer({ minimum: 10, maximum: 5000, default: 50 }),
   warmupRequests: Type.Integer({ minimum: 0, maximum: 10, default: 3 }),
   slaThresholdMs: Type.Optional(Type.Number({ minimum: 100, maximum: 60000 })),
 })

@@ -1,6 +1,6 @@
-# KVCached API Reference
+# kvcached API Reference
 
-This document provides a complete reference for the KVCached Controller HTTP API endpoints.
+This document provides a complete reference for the kvcached Controller HTTP API endpoints.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ This document provides a complete reference for the KVCached Controller HTTP API
 
 ## Base URL
 
-By default, the KVCached Controller listens on:
+By default, the kvcached Controller listens on:
 
 ```
 http://localhost:8080
@@ -670,10 +670,10 @@ print(response.json())
 ```python
 from openai import OpenAI
 
-# Point OpenAI client to KVCached Controller
+# Point OpenAI client to kvcached Controller
 client = OpenAI(
     base_url="http://localhost:8080/v1",
-    api_key="not-needed"  # KVCached doesn't require auth by default
+    api_key="not-needed"  # kvcached doesn't require auth by default
 )
 
 # Use like normal OpenAI API
@@ -742,7 +742,7 @@ curl -X POST http://localhost:8080/action/wakeup/$MODEL -H "Content-Type: applic
 
 ## Rate Limiting and Quotas
 
-KVCached Controller does not implement rate limiting by default. For production use, consider:
+kvcached Controller does not implement rate limiting by default. For production use, consider:
 
 - Adding a reverse proxy (nginx, Caddy) with rate limiting
 - Implementing application-level quotas
@@ -750,7 +750,7 @@ KVCached Controller does not implement rate limiting by default. For production 
 
 ## Authentication and Security
 
-By default, KVCached Controller does not require authentication. For production deployments:
+By default, kvcached Controller does not require authentication. For production deployments:
 
 - **Recommended**: Deploy behind a reverse proxy with authentication
 - **Network Security**: Use firewall rules to restrict access

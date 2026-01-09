@@ -37,7 +37,7 @@ data:
   API_BASE_URL: ""
 
   # =============================================================================
-  # KVCached Configuration
+  # kvcached Configuration
   # =============================================================================
   ENABLE_KVCACHED: "true"
   KVCACHED_AUTOPATCH: "1"

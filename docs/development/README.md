@@ -22,7 +22,7 @@ npm run build -w packages/utils
 npm run dev
 ```
 
-On first run, the backend will automatically set up a Python virtual environment with vLLM and KVCached.
+On first run, the backend will automatically set up a Python virtual environment with vLLM and kvcached.
 
 **GPU Development:** See [GPU Setup Guide](../dev-setup.md) for detailed GPU configuration, model recommendations, and troubleshooting.
 
@@ -68,7 +68,7 @@ npm run dev -w apps/frontend
 |-----------|-------|-------------|
 | **Backend** | [apps/backend/CLAUDE.md](../../apps/backend/CLAUDE.md) | Backend architecture, API patterns, process management |
 | **Frontend** | [apps/frontend/CLAUDE.md](../../apps/frontend/CLAUDE.md) | React patterns, PatternFly 6 components, state management |
-| **GPU Setup** | [dev-setup.md](../dev-setup.md) | vLLM, KVCached, Python environment |
+| **GPU Setup** | [dev-setup.md](../dev-setup.md) | vLLM, kvcached, Python environment |
 | **PatternFly 6** | [pf6-guide/](./pf6-guide/README.md) | UI component guide and best practices |
 | **API Client** | [frontend-api-client.md](./frontend-api-client.md) | Frontend API integration |
 
