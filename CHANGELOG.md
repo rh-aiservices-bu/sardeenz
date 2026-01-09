@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-01-08
+
+### Robust Model Unload
+
+- **Environment variable process tracking**: Added `SARDEENZ_INSTANCE_ID` env marker to vLLM processes for reliable cleanup even when child processes re-parent to init
+- **Process discovery utilities**: New `findProcessesByEnvMarker()` finds processes by inherited environment variable via `/proc/<pid>/environ`
+- **Fallback port-based discovery**: `findVllmProcessesByPort()` as fallback for older instances without env markers
+- **Explicit EngineCore cleanup**: Kills EngineCore process and all marked descendants on unload, preventing orphaned tensor parallelism workers
+- **ModelManager singleton pattern**: Route handlers now share the same process tracking state
+
+### UI Enhancements
+
+- **Unload All button**: New "Unload All" button with confirmation modal in Model Management page for batch model cleanup
+- **Unload All SSE events**: Real-time progress events for bulk unload operations
+
+### Auth Improvements
+
+- **JWT query parameter fallback**: Auth plugin now accepts JWT token via query param for SSE clients that cannot set headers
+
 ## [0.2.0] - 2026-01-08
 
 ### ✨ Authentication System

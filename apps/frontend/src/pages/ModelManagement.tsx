@@ -16,8 +16,12 @@ import {
   FlexItem,
   ClipboardCopy,
   ClipboardCopyVariant,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
 } from '@patternfly/react-core'
-import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon } from '@patternfly/react-icons'
+import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon, TrashIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import type { ModelInstanceDTO, LoadModelRequest } from '@sardeenz/types'
 import {
@@ -36,6 +40,8 @@ function ModelManagement() {
   const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
   const [isSaveConfigOpen, setIsSaveConfigOpen] = useState(false)
   const [isLoadConfigOpen, setIsLoadConfigOpen] = useState(false)
+  const [isUnloadAllModalOpen, setIsUnloadAllModalOpen] = useState(false)
+  const [isUnloadingAll, setIsUnloadingAll] = useState(false)
 
   const { addNotification } = useNotifications()
 
@@ -128,6 +134,40 @@ function ModelManagement() {
     setTimeout(fetchModels, 2000)
   }
 
+  const handleUnloadAll = async () => {
+    setIsUnloadingAll(true)
+    try {
+      // Unload all models sequentially
+      for (const model of models) {
+        try {
+          await apiClient.unloadModelByInstanceId(model.id)
+        } catch (err) {
+          // Log but continue with other models
+          addNotification({
+            title: 'Failed to unload model',
+            description: `${model.model_path}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+            variant: 'warning',
+          })
+        }
+      }
+      addNotification({
+        title: 'All models unloaded',
+        description: 'Successfully unloaded all models',
+        variant: 'success',
+      })
+      await fetchModels()
+    } catch (err) {
+      addNotification({
+        title: 'Error unloading models',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      })
+    } finally {
+      setIsUnloadingAll(false)
+      setIsUnloadAllModalOpen(false)
+    }
+  }
+
   if (loading) {
     return (
       <PageSection>
@@ -180,6 +220,16 @@ function ModelManagement() {
                   onClick={() => setIsLoadConfigOpen(true)}
                 >
                   Load Config
+                </Button>
+              </FlexItem>
+              <FlexItem>
+                <Button
+                  variant="secondary"
+                  icon={<TrashIcon />}
+                  onClick={() => setIsUnloadAllModalOpen(true)}
+                  isDisabled={models.length === 0}
+                >
+                  Unload All
                 </Button>
               </FlexItem>
               <FlexItem>
@@ -254,6 +304,39 @@ function ModelManagement() {
         onLoadStarted={handleConfigLoadStarted}
         currentModelCount={runningModelCount}
       />
+
+      <Modal
+        variant="small"
+        isOpen={isUnloadAllModalOpen}
+        onClose={() => setIsUnloadAllModalOpen(false)}
+        aria-labelledby="unload-all-modal-title"
+        aria-describedby="unload-all-modal-body"
+      >
+        <ModalHeader title="Unload All Models" labelId="unload-all-modal-title" />
+        <ModalBody id="unload-all-modal-body">
+          Are you sure you want to unload all {models.length} model{models.length !== 1 ? 's' : ''}?
+          This will stop all inference services and free GPU memory.
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            key="confirm"
+            variant="danger"
+            onClick={handleUnloadAll}
+            isLoading={isUnloadingAll}
+            isDisabled={isUnloadingAll}
+          >
+            {isUnloadingAll ? 'Unloading...' : 'Unload All'}
+          </Button>
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => setIsUnloadAllModalOpen(false)}
+            isDisabled={isUnloadingAll}
+          >
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
     </>
   )
 }

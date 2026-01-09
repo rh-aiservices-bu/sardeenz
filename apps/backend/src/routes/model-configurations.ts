@@ -21,7 +21,7 @@ import {
 } from '@sardeenz/types'
 import { getModelConfigurationStore } from '../stores/model-configuration-store.js'
 import { modelStore } from '../stores/model-store.js'
-import { ModelManager } from '../services/model-manager.js'
+import { getModelManager } from '../services/model-manager.js'
 
 const ConfigIdParamsSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
@@ -53,7 +53,7 @@ function configToResponse(config: SavedModelConfiguration) {
 
 export default async function modelConfigurationRoutes(fastify: FastifyInstance) {
   const store = getModelConfigurationStore()
-  const modelManager = new ModelManager(fastify.log)
+  const modelManager = getModelManager(fastify.log)
 
   /**
    * GET /api/configurations - List all configurations
