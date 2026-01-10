@@ -1,6 +1,6 @@
 {
   "name": "sardeenz",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Multi-model vLLM management platform with dynamic loading and unified inference proxy",
   "private": true,
   "type": "module",

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.0] - 2026-01-10
 
 ### Per-GPU KVCache Metrics
 
@@ -21,6 +21,16 @@ All notable changes to this project will be documented in this file.
   - Used/Prealloc values still read from IPC segments
   - For tensor-parallel models, usage is split evenly across participating GPUs
 - **Automatic IPC naming**: `KVCACHED_IPC_NAME` environment variable is set automatically based on GPU assignment
+
+### Bug Fixes
+
+- **Benchmark SSE auth**: Fixed authentication for benchmark SSE events by passing token via query parameter
+
+### Build Infrastructure
+
+- **Makefile for container builds**: Added Makefile with `build` and `push` targets for podman/docker container operations
+- **Containerfile rename**: Renamed `docker/Dockerfile.unified` to `docker/Containerfile` following OCI conventions
+- **kvcached from source**: Container now builds kvcached from source for latest features
 
 ## [0.2.1] - 2026-01-08
 
