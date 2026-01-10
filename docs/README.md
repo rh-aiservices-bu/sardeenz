@@ -19,7 +19,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | Resource                                                        | Description                                            |
 | --------------------------------------------------------------- | ------------------------------------------------------ |
 | [**Development Guide**](./development/README.md)                | Getting started with local development                 |
-| [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, KVCached, uv)             |
+| [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, kvcached, uv)             |
 | [**PatternFly 6 Guide**](./development/pf6-guide/README.md)     | Complete UI development guide with PatternFly 6        |
 | [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend                |
 
@@ -27,7 +27,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Resource                                                 | Description                                                |
 | -------------------------------------------------------- | ---------------------------------------------------------- |
-| [**KVCached**](./kvcached/)                              | GPU memory sharing documentation and setup guides          |
+| [**kvcached**](./kvcached/)                              | GPU memory sharing documentation and setup guides          |
 | [**Specifications**](../specs/001-multi-model-platform/) | Design specifications, planning documents, and data models |
 | [**Changelog**](../CHANGELOG.md)                         | Project change history                                     |
 
@@ -45,7 +45,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 3. **Develop Locally**
    - Follow the [Development Guide](./development/README.md)
-   - See [GPU Setup](./dev-setup.md) for vLLM/KVCached configuration
+   - See [GPU Setup](./dev-setup.md) for vLLM/kvcached configuration
 
 4. **Use the APIs**
    - Explore [api-guide.md](./api-guide.md) for API examples
@@ -92,7 +92,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 - [API Guide: Controller API](./api-guide.md#controller-api) - Load/unload models
 - [API Guide: Proxy API](./api-guide.md#proxy-api) - Inference requests (OpenAI-compatible)
-- [KVCached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
+- [kvcached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
 - [Architecture: Memory Management](./architecture.md#memory-management) - GPU allocation strategy
 
 **Supported Models:**
@@ -141,14 +141,14 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | Document                         | Topics Covered                                                                                                   |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | [deployment.md](./deployment.md) | Container build, Docker Compose, OpenShift deployment, configuration, health checks, monitoring, troubleshooting |
-| [kvcached/](./kvcached/)         | KVCached installation, configuration, memory segment management                                                  |
+| [kvcached/](./kvcached/)         | kvcached installation, configuration, memory segment management                                                  |
 
 ### Development Guides
 
 | Document                                                                   | Topics Covered                                                                |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | [development/README.md](./development/README.md)                           | Local setup, prerequisites, project structure, development commands           |
-| [dev-setup.md](./dev-setup.md)                                             | GPU development environment, vLLM setup, KVCached configuration               |
+| [dev-setup.md](./dev-setup.md)                                             | GPU development environment, vLLM setup, kvcached configuration               |
 | [development/pf6-guide/](./development/pf6-guide/README.md)                | PatternFly 6 components, styling standards, testing patterns, troubleshooting |
 | [development/frontend-api-client.md](./development/frontend-api-client.md) | Axios setup, API client patterns, error handling                              |
 
@@ -188,9 +188,9 @@ The **Proxy API** provides a unified inference endpoint:
 
 **Compatible with:** OpenAI Python SDK, OpenAI JavaScript SDK, curl
 
-### KVCached
+### kvcached
 
-**KVCached** is a GPU memory sharing tool that enables multiple vLLM instances to coexist on a single GPU:
+**kvcached** is a GPU memory sharing tool that enables multiple vLLM instances to coexist on a single GPU:
 
 - **IPC segments** for shared KV cache
 - **Memory limits** enforced per model
@@ -240,7 +240,7 @@ See [kvcached/README.md](./kvcached/README.md) for detailed setup instructions.
 <details>
 <summary><strong>Can I use this with non-NVIDIA GPUs?</strong></summary>
 
-No, vLLM and KVCached require NVIDIA GPUs with CUDA support. AMD GPUs (ROCm) are not currently supported.
+No, vLLM and kvcached require NVIDIA GPUs with CUDA support. AMD GPUs (ROCm) are not currently supported.
 
 </details>
 
@@ -265,7 +265,7 @@ It depends on your GPU memory. Example on a 24GB GPU:
 - 2-3 medium models (7B params)
 - 1 large model (13B+ params) + 1-2 small models
 
-Use KVCached to optimize memory sharing.
+Use kvcached to optimize memory sharing.
 
 </details>
 

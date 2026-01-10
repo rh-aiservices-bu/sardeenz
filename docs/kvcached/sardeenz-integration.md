@@ -1,11 +1,11 @@
-# KVCached Integration Guide for sardeenz
+# kvcached Integration Guide for sardeenz
 
-This document describes how the sardeenz project will integrate with KVCached for dynamic multi-model management on shared GPUs.
+This document describes how the sardeenz project will integrate with kvcached for dynamic multi-model management on shared GPUs.
 
 ## Table of Contents
 
 - [Executive Summary](#executive-summary)
-- [Why Not Use the KVCached Controller](#why-not-use-the-kvcached-controller)
+- [Why Not Use the kvcached Controller](#why-not-use-the-kvcached-controller)
 - [Recommended Architecture](#recommended-architecture)
 - [Implementation Details](#implementation-details)
 - [Backend API Design](#backend-api-design)
@@ -16,7 +16,7 @@ This document describes how the sardeenz project will integrate with KVCached fo
 
 ## Executive Summary
 
-**Decision:** sardeenz will **NOT** use the KVCached Controller for model management. Instead, the backend will directly manage individual vLLM instances with KVCached enabled.
+**Decision:** sardeenz will **NOT** use the kvcached Controller for model management. Instead, the backend will directly manage individual vLLM instances with kvcached enabled.
 
 **Why:**
 - The Controller requires a full restart to add/remove models
@@ -25,22 +25,22 @@ This document describes how the sardeenz project will integrate with KVCached fo
 
 **How:**
 - Backend launches vLLM instances directly with `ENABLE_KVCACHED=true`
-- Each model runs independently but shares GPU memory via KVCached
+- Each model runs independently but shares GPU memory via kvcached
 - Backend implements its own routing, monitoring, and lifecycle management
-- Use KVCached CLI tools (`kvctl`, `kvtop`) for memory monitoring
+- Use kvcached CLI tools (`kvctl`, `kvtop`) for memory monitoring
 
 **Benefits:**
 - ✅ Add models without affecting running instances
 - ✅ Remove models individually with no downtime
 - ✅ Full control over model lifecycle
-- ✅ GPU memory sharing via KVCached still works automatically
+- ✅ GPU memory sharing via kvcached still works automatically
 - ✅ Simpler architecture (no Controller dependency)
 
-## Why Not Use the KVCached Controller
+## Why Not Use the kvcached Controller
 
 ### The Controller's Limitations
 
-The KVCached Controller is designed for **static, long-running deployments** where the model lineup is known in advance and rarely changes.
+The kvcached Controller is designed for **static, long-running deployments** where the model lineup is known in advance and rarely changes.
 
 #### Problem 1: No Dynamic Model Addition
 
@@ -171,7 +171,7 @@ For completeness, here's what the Controller provides that we're giving up:
 │         │                 │                 │           │
 │         └─────────────────┼─────────────────┘           │
 │                           ▼                             │
-│              KVCached Memory Sharing Layer              │
+│              kvcached Memory Sharing Layer              │
 │                  (Automatic, Transparent)               │
 └─────────────────────────────────────────────────────────┘
                            │
@@ -190,13 +190,13 @@ For completeness, here's what the Controller provides that we're giving up:
 - Health monitoring
 
 **Does NOT use:**
-- KVCached Controller
+- kvcached Controller
 - tmux sessions (Controller feature)
 - YAML configuration for model list
 
 **Uses:**
 - Direct subprocess management
-- KVCached environment variables
+- kvcached environment variables
 - Individual model processes
 
 #### 2. Request Router
@@ -221,22 +221,22 @@ For completeness, here's what the Controller provides that we're giving up:
 - `kvctl list --json` for programmatic access
 - `kvtop` for debugging/development
 
-### How KVCached Fits In
+### How kvcached Fits In
 
-**KVCached's role:**
+**kvcached's role:**
 - Enable GPU memory sharing between vLLM instances
 - Manage KV cache allocation dynamically
 - Allow multiple models to coexist on same GPU
 
 **What we use:**
-- ✅ KVCached's memory management layer (core feature)
-- ✅ KVCached CLI tools for monitoring
-- ✅ Environment variables for enabling KVCached
-- ❌ KVCached Controller (too inflexible)
+- ✅ kvcached's memory management layer (core feature)
+- ✅ kvcached CLI tools for monitoring
+- ✅ Environment variables for enabling kvcached
+- ❌ kvcached Controller (too inflexible)
 
 **How it works:**
 1. Backend sets `ENABLE_KVCACHED=true` for each vLLM launch
-2. Each vLLM instance automatically uses KVCached for memory
+2. Each vLLM instance automatically uses kvcached for memory
 3. GPU memory is shared transparently via IPC segments
 4. Backend uses `kvctl` to monitor and set limits
 
@@ -271,7 +271,7 @@ For completeness, here's what the Controller provides that we're giving up:
    process = subprocess.Popen([
        "vllm", "serve", "meta-llama/Llama-3.2-1B",
        "--disable-log-requests",
-       "--no-enable-prefix-caching",  # Required for KVCached
+       "--no-enable-prefix-caching",  # Required for kvcached
        "--port=12346",
        "--gpu-memory-utilization=0.9",
        "--max-model-len=4096"
@@ -341,10 +341,10 @@ For completeness, here's what the Controller provides that we're giving up:
    process.wait()
    ```
 
-   > **Important:** We use SIGKILL instead of SIGTERM because KVCached registers
-   > Python signal handlers that delete the shared IPC segment (`kvcached_mem_info`)
-   > on SIGTERM. Using SIGKILL bypasses these handlers, allowing other models to
-   > continue using the shared memory.
+   > **Important:** We use SIGKILL instead of SIGTERM because kvcached registers
+   > Python signal handlers that delete the IPC segment on SIGTERM. Using SIGKILL
+   > bypasses these handlers, allowing other models on the same GPU to continue
+   > using the shared memory.
    >
    > **Note:** SIGKILL doesn't propagate to child processes. vLLM spawns an EngineCore
    > process that allocates GPU VRAM, so we must explicitly kill all descendants
@@ -353,8 +353,8 @@ For completeness, here's what the Controller provides that we're giving up:
 3. **Do NOT delete IPC segment**
    ```python
    # DO NOT call kvctl delete here!
-   # All models share the same IPC segment (kvcached_mem_info)
-   # Deleting it would break other running models
+   # Models on the same GPU share the IPC segment (e.g., kvcached_vllm_GPU0)
+   # Deleting it would break other running models on that GPU
    ```
 
 4. **Backend removes from registry**
@@ -373,7 +373,20 @@ For completeness, here's what the Controller provides that we're giving up:
 
 **IPC Cleanup (Server Shutdown Only):**
 
-The shared IPC segment is only deleted when the server shuts down and all models are unloaded:
+The IPC segments are only deleted when the server shuts down and all models are unloaded.
+
+**IPC Segment Naming:**
+
+Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
+
+| GPU Configuration | IPC Segment Name |
+|-------------------|------------------|
+| Single GPU (GPU 0) | `kvcached_vllm_GPU0` |
+| Single GPU (GPU 1) | `kvcached_vllm_GPU1` |
+| Tensor-parallel (GPU 0+1) | `kvcached_vllm_GPU0_GPU1` |
+| Tensor-parallel (GPU 0-3) | `kvcached_vllm_GPU0_GPU1_GPU2_GPU3` |
+
+This is configured automatically via the `KVCACHED_IPC_NAME` environment variable set by the backend based on the model's GPU assignment.
 
 ```python
 def shutdown_all(self):
@@ -382,8 +395,12 @@ def shutdown_all(self):
     for model_path in list(self.running_models.keys()):
         self.unload_model(model_path)
 
-    # Now delete the shared IPC segment
-    subprocess.run(["kvctl", "delete", "kvcached_mem_info"])
+    # Delete all kvcached IPC segments (single-GPU and multi-GPU patterns)
+    for i in range(8):  # Try single-GPU segments
+        subprocess.run(["kvctl", "delete", f"kvcached_vllm_GPU{i}"])
+    # Try common multi-GPU patterns
+    subprocess.run(["kvctl", "delete", "kvcached_vllm_GPU0_GPU1"])
+    subprocess.run(["kvctl", "delete", "kvcached_vllm_GPU0_GPU1_GPU2_GPU3"])
 ```
 
 ### Request Routing
@@ -459,7 +476,7 @@ from datetime import datetime
 import requests
 
 class ModelManager:
-    """Manages vLLM model instances with KVCached."""
+    """Manages vLLM model instances with kvcached."""
 
     def __init__(self, base_port: int = 12346):
         self.running_models: Dict[str, dict] = {}
@@ -472,7 +489,7 @@ class ModelManager:
         max_tokens: int = 4096,
         gpu_memory_utilization: float = 0.9
     ) -> dict:
-        """Launch a vLLM model with KVCached enabled."""
+        """Launch a vLLM model with kvcached enabled."""
 
         # Check if already running
         if model_path in self.running_models:
@@ -662,15 +679,22 @@ class ModelManager:
         for model_path in models:
             self.unload_model(model_path)
 
-        # Delete the shared KVCached IPC segment now that all models are gone
-        try:
-            subprocess.run(
-                ["kvctl", "delete", "kvcached_mem_info"],
-                capture_output=True,
-                timeout=5
-            )
-        except:
-            pass  # Non-critical if segment doesn't exist
+        # Delete all kvcached IPC segments (per-GPU and multi-GPU patterns)
+        for i in range(8):  # Try single-GPU segments
+            try:
+                subprocess.run(
+                    ["kvctl", "delete", f"kvcached_vllm_GPU{i}"],
+                    capture_output=True,
+                    timeout=5
+                )
+            except:
+                pass  # Non-critical if segment doesn't exist
+        # Try common multi-GPU patterns for tensor-parallel models
+        for segment in ["kvcached_vllm_GPU0_GPU1", "kvcached_vllm_GPU0_GPU1_GPU2_GPU3"]:
+            try:
+                subprocess.run(["kvctl", "delete", segment], capture_output=True, timeout=5)
+            except:
+                pass
 
 # Usage
 manager = ModelManager()
@@ -785,6 +809,23 @@ Response:
 ```
 
 ## Memory Management
+
+### Memory Baseline Tracking
+
+When a model transitions to 'running' status, the backend captures its memory baseline:
+
+- **`memoryBaselineByGpu: Record<number, number>`** - Memory footprint per GPU in GB
+- This represents the idle memory consumption before any inference requests
+- Captured from nvidia-smi using the EngineCore PID
+- For tensor-parallel models, baselines are captured on each GPU
+
+**Purpose:** The memory baseline is used for accurate KVCache total calculation:
+
+```
+KVCache Total = GPU Total - Model Baselines - Other Processes
+```
+
+This provides accurate KVCache metrics per GPU, as opposed to reading a stale `total_size` from the IPC segment that was set at initialization and never updated as models were added/removed.
 
 ### Setting Memory Limits
 
@@ -1087,7 +1128,7 @@ async def completions(request: Request):
 - Fewer moving parts
 - Easier debugging
 
-✅ **Same KVCached benefits**
+✅ **Same kvcached benefits**
 - GPU memory sharing still works
 - Multiple models coexist
 - Memory management via kvctl
@@ -1163,7 +1204,7 @@ class TestModelManager(unittest.TestCase):
 
 ```python
 def test_kvcached_memory_sharing():
-    """Test that models share GPU memory via KVCached."""
+    """Test that models share GPU memory via kvcached."""
 
     manager = ModelManager()
 
@@ -1211,7 +1252,7 @@ def test_kvcached_memory_sharing():
 
 If you encounter issues during implementation:
 
-1. **Check KVCached documentation** in this repository:
+1. **Check kvcached documentation** in this repository:
    - `docs/kvcached/README.md` - Overview
    - `docs/kvcached/architecture.md` - How it works
    - `docs/kvcached/cli-tools.md` - Memory management
@@ -1222,7 +1263,7 @@ If you encounter issues during implementation:
    echo $KVCACHED_AUTOPATCH     # Should be "1"
    ```
 
-3. **Check vLLM is using KVCached:**
+3. **Check vLLM is using kvcached:**
    ```bash
    kvctl list  # Should show IPC segments
    ```
@@ -1233,14 +1274,14 @@ If you encounter issues during implementation:
 
 ## Summary
 
-**Integration approach:** Direct vLLM instance management with KVCached enabled
+**Integration approach:** Direct vLLM instance management with kvcached enabled
 
 **Key decisions:**
-- ❌ Don't use KVCached Controller (too inflexible)
+- ❌ Don't use kvcached Controller (too inflexible)
 - ✅ Launch vLLM instances directly
 - ✅ Backend implements routing and lifecycle management
 - ✅ Use kvctl/kvtop for memory monitoring
-- ✅ KVCached provides GPU memory sharing automatically
+- ✅ kvcached provides GPU memory sharing automatically
 
 **Implementation roadmap:**
 1. Basic model management

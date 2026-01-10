@@ -39,7 +39,7 @@ export interface MemoryProfile {
   cudaGraphsGib: number
   /** Overhead memory (total - weights - CUDA graphs) in GiB */
   overheadMemoryGib: number
-  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
+  /** @deprecated KV cache available - meaningless with kvcached, kept for backwards compat */
   kvCacheAvailableGib: number
   /** Estimated KV cache per request in MiB */
   kvCachePerRequestMib?: number

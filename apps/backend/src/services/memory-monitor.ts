@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename)
 /** KVCache segment info from Python script (reads /dev/shm like kvtop) */
 interface KvcacheSegment {
   ipc_name: string
+  gpu_indices: number[] | null // GPU indices parsed from segment name (null for legacy segments)
   total_size: number // bytes
   used_size: number // bytes
   prealloc_size: number // bytes
@@ -220,33 +221,81 @@ export class MemoryMonitor {
         }
       }
 
-      // Build per-GPU response
-      const gpus: PerGpuMetrics[] = nvidiaSmiInfo.gpus.map((gpu) => ({
-        gpu_index: gpu.index,
-        name: gpu.name,
-        total_gb: gpu.memoryTotalMB / 1024,
-        used_gb: gpu.memoryUsedMB / 1024,
-        free_gb: (gpu.memoryTotalMB - gpu.memoryUsedMB) / 1024,
-        utilization_percent: parseFloat(gpu.gpuUtilization.replace('%', '')) || 0,
-        models: modelsByGpu.get(gpu.index) ?? [],
-      }))
+      // Sum model baselines per GPU (from memoryBaselineByGpu captured at model load)
+      const baselinesByGpu = new Map<number, number>() // gpuId -> total baseline GB
+      for (const instance of runningInstances) {
+        for (const [gpuIdStr, baselineGb] of Object.entries(instance.memoryBaselineByGpu ?? {})) {
+          const gpuId = parseInt(gpuIdStr)
+          baselinesByGpu.set(gpuId, (baselinesByGpu.get(gpuId) ?? 0) + baselineGb)
+        }
+      }
 
-      // Aggregate KVCache metrics
-      const kvcacheTotalBytes = kvcacheSegments.reduce((sum, s) => sum + s.total_size, 0)
-      const kvcacheUsedBytes = kvcacheSegments.reduce((sum, s) => sum + s.used_size, 0)
-      const kvcachePreallocBytes = kvcacheSegments.reduce((sum, s) => sum + s.prealloc_size, 0)
-      const kvcacheFreeBytes = Math.max(0, kvcacheTotalBytes - kvcacheUsedBytes - kvcachePreallocBytes)
+      // Map IPC segment usage (used/prealloc) to GPUs
+      // For multi-GPU segments (e.g., kvcached_vllm_GPU0_GPU1), split evenly across GPUs
+      const ipcUsageByGpu = new Map<number, { used_gb: number; prealloc_gb: number }>()
+      for (const segment of kvcacheSegments) {
+        if (segment.gpu_indices && segment.gpu_indices.length > 0) {
+          const gpuCount = segment.gpu_indices.length
+          const usedPerGpu = (segment.used_size / 1024 ** 3) / gpuCount
+          const preallocPerGpu = (segment.prealloc_size / 1024 ** 3) / gpuCount
 
-      const kvcache: KVCacheMetrics = {
-        total_gb: kvcacheTotalBytes / 1024 ** 3,
-        prealloc_gb: kvcachePreallocBytes / 1024 ** 3,
-        used_gb: kvcacheUsedBytes / 1024 ** 3,
-        free_gb: kvcacheFreeBytes / 1024 ** 3,
+          for (const gpuId of segment.gpu_indices) {
+            const existing = ipcUsageByGpu.get(gpuId) ?? { used_gb: 0, prealloc_gb: 0 }
+            ipcUsageByGpu.set(gpuId, {
+              used_gb: existing.used_gb + usedPerGpu,
+              prealloc_gb: existing.prealloc_gb + preallocPerGpu,
+            })
+          }
+        }
+      }
+
+      // Build per-GPU response with correct KVCache total calculation
+      const gpus: PerGpuMetrics[] = nvidiaSmiInfo.gpus.map((gpu) => {
+        const models = modelsByGpu.get(gpu.index) ?? []
+        const totalBaseline = baselinesByGpu.get(gpu.index) ?? 0
+        const ipcUsage = ipcUsageByGpu.get(gpu.index)
+
+        // Calculate "Other" processes memory = GPU used - sardeenz model memory
+        const sardeenzMemoryGb = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
+        const otherProcessesGb = Math.max(0, gpu.memoryUsedMB / 1024 - sardeenzMemoryGb)
+
+        // KVCache Total = GPU Total - Model Baselines - Other Processes
+        // This is the correct calculation, NOT using the stale IPC segment total_size
+        const kvcacheTotalGb = Math.max(0,
+          gpu.memoryTotalMB / 1024 - totalBaseline - otherProcessesGb
+        )
+
+        // Build per-GPU KVCache metrics if there are any model baselines or IPC usage
+        const kvcache: KVCacheMetrics | undefined = (totalBaseline > 0 || ipcUsage) ? {
+          total_gb: kvcacheTotalGb,
+          prealloc_gb: ipcUsage?.prealloc_gb ?? 0,
+          used_gb: ipcUsage?.used_gb ?? 0,
+          free_gb: Math.max(0, kvcacheTotalGb - (ipcUsage?.used_gb ?? 0) - (ipcUsage?.prealloc_gb ?? 0)),
+        } : undefined
+
+        return {
+          gpu_index: gpu.index,
+          name: gpu.name,
+          total_gb: gpu.memoryTotalMB / 1024,
+          used_gb: gpu.memoryUsedMB / 1024,
+          free_gb: (gpu.memoryTotalMB - gpu.memoryUsedMB) / 1024,
+          utilization_percent: parseFloat(gpu.gpuUtilization.replace('%', '')) || 0,
+          models,
+          kvcache, // Per-GPU KVCache metrics with correct total calculation
+        }
+      })
+
+      // Global summary = sum of per-GPU metrics (for backward compatibility)
+      const globalKvcache: KVCacheMetrics = {
+        total_gb: gpus.reduce((sum, g) => sum + (g.kvcache?.total_gb ?? 0), 0),
+        prealloc_gb: gpus.reduce((sum, g) => sum + (g.kvcache?.prealloc_gb ?? 0), 0),
+        used_gb: gpus.reduce((sum, g) => sum + (g.kvcache?.used_gb ?? 0), 0),
+        free_gb: gpus.reduce((sum, g) => sum + (g.kvcache?.free_gb ?? 0), 0),
       }
 
       return {
         gpus,
-        kvcache,
+        kvcache: globalKvcache,
         total_system_free_gb: gpus.reduce((sum, g) => sum + g.free_gb, 0),
       }
     } catch (err) {

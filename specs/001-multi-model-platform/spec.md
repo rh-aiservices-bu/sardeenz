@@ -3,7 +3,7 @@
 **Feature Branch**: `001-multi-model-platform`
 **Created**: 2025-11-08
 **Status**: Draft
-**Input**: User description: "KVCached is a tool to help you launch and run multiple instances of vLLM to serve different Large Language Models. KVCached works from CLI commands, although it may also offer some API endpoints for control. The goal of our new application are multiple: 1) Provide a single endpoint to proxy requests to forward queries to the different vLLM endpoints listening on different ports. 2) Have a controller that you can query through an API to easily launch or stop models with KVCached. 3) Provide an admin UI to see which models are loaded, how much memory they consume, and call the controller API to load/unload models. 4) Package all of this in a single container image for easy deployment on OpenShift."
+**Input**: User description: "kvcached is a tool to help you launch and run multiple instances of vLLM to serve different Large Language Models. kvcached works from CLI commands, although it may also offer some API endpoints for control. The goal of our new application are multiple: 1) Provide a single endpoint to proxy requests to forward queries to the different vLLM endpoints listening on different ports. 2) Have a controller that you can query through an API to easily launch or stop models with kvcached. 3) Provide an admin UI to see which models are loaded, how much memory they consume, and call the controller API to load/unload models. 4) Package all of this in a single container image for easy deployment on OpenShift."
 
 ## Clarifications
 
@@ -19,7 +19,7 @@
 
 ### User Story 1 - Model Lifecycle Management via Controller API (Priority: P1)
 
-Platform operators need to dynamically launch and stop Large Language Model instances to manage resource usage and respond to changing workload demands. The controller API provides programmatic control over KVCached to start and stop model instances on demand.
+Platform operators need to dynamically launch and stop Large Language Model instances to manage resource usage and respond to changing workload demands. The controller API provides programmatic control over kvcached to start and stop model instances on demand.
 
 **Why this priority**: This is the foundation of the platform. Without the ability to manage model lifecycles, no other functionality can operate. This enables operators to respond to demand, manage costs, and optimize resource allocation.
 
@@ -27,7 +27,7 @@ Platform operators need to dynamically launch and stop Large Language Model inst
 
 **Acceptance Scenarios**:
 
-1. **Given** no models are currently running, **When** operator sends API request to launch a specific model (e.g., "llama-2-7b"), **Then** the system invokes KVCached to start the vLLM instance, returns success status, and the model becomes available on its designated port
+1. **Given** no models are currently running, **When** operator sends API request to launch a specific model (e.g., "llama-2-7b"), **Then** the system invokes kvcached to start the vLLM instance, returns success status, and the model becomes available on its designated port
 2. **Given** a model is currently running, **When** operator sends API request to stop that model, **Then** the system gracefully shuts down the vLLM instance, releases resources, and returns confirmation
 3. **Given** operator requests model status, **When** querying the controller API, **Then** system returns current state of all models (running, stopped, starting, stopping) with their port assignments
 4. **Given** operator attempts to launch a model that is already running, **When** the launch request is received, **Then** system returns an error indicating the model is already running without creating duplicate instances
@@ -93,7 +93,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 - **Out of memory during model launch**: System validates available memory before launching and rejects requests with clear error if insufficient resources (see FR-026)
 - **Model crash during request routing**: Proxy detects unresponsive instances and returns timely error response rather than hanging (see FR-012)
 - **All model instances stopped**: Proxy returns clear error message indicating no models available with suggestions to check available models (see User Story 2, scenario 2)
-- **KVCached CLI unavailable or errors**: Controller returns clear error messages when model operations fail (see FR-007)
+- **kvcached CLI unavailable or errors**: Controller returns clear error messages when model operations fail (see FR-007)
 - **Port conflicts during launch**: System tracks port assignments and handles conflicts during model startup (see FR-005)
 - **Admin UI loses connection to controller**: UI displays connection error and provides retry mechanism
 - **Graceful shutdown during active requests**: Platform handles shutdown with hybrid approach to manage running processes and ongoing requests
@@ -104,7 +104,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 
 #### Controller API Requirements
 
-- **FR-001**: System MUST provide API endpoint to launch a specified model using KVCached with model identifier
+- **FR-001**: System MUST provide API endpoint to launch a specified model using kvcached with model identifier
 - **FR-002**: System MUST provide API endpoint to stop a running model instance
 - **FR-003**: System MUST provide API endpoint to query status of all models (running, stopped, resource usage)
 - **FR-004**: System MUST support launching multiple instances of the same model, each with a unique instance identifier
@@ -137,7 +137,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 - **FR-022**: System MUST package proxy, controller, and admin UI in a single container image
 - **FR-023**: System MUST be deployable on OpenShift without requiring external dependencies outside the container
 - **FR-024**: System MUST expose appropriate ports/services for proxy endpoint, controller API, and admin UI
-- **FR-025**: System MUST include KVCached and its dependencies within the container
+- **FR-025**: System MUST include kvcached and its dependencies within the container
 
 #### Resource Management & Observability Requirements
 
@@ -149,7 +149,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 ### Key Entities
 
 - **Model Instance**: Represents a running or stopped Large Language Model with attributes including model identifier (e.g., "llama-2-7b"), unique instance identifier (to distinguish multiple instances of the same model), current status (running/stopped/starting/stopping), assigned port number, memory consumption, and start time
-- **Model Configuration**: Represents an available model that can be launched, including model identifier, resource requirements, and KVCached launch parameters
+- **Model Configuration**: Represents an available model that can be launched, including model identifier, resource requirements, and kvcached launch parameters
 - **Inference Request**: Represents a user request for model inference, including target model identifier, input prompt/data, and request metadata
 - **Resource Metrics**: Represents current resource usage for a model instance, including memory consumption, CPU usage (if available), request count, response times, and access to in-memory ring buffer of recent requests for debugging
 - **Controller Operation**: Represents an administrative action (launch, stop, status query) with operation type, target model, timestamp, and result status
@@ -174,8 +174,8 @@ Platform administrators need to deploy the entire multi-model management platfor
 
 ### Assumptions
 
-- KVCached is already installed and available within the container environment or can be packaged with the platform
-- vLLM is the inference engine used by KVCached; no other inference engines need support
+- kvcached is already installed and available within the container environment or can be packaged with the platform
+- vLLM is the inference engine used by kvcached; no other inference engines need support
 - OpenShift environment has sufficient resources (memory, CPU, GPU if needed) to run multiple model instances
 - Model files are either pre-downloaded within the container or accessible via network storage mounted to the container
 - Network latency between proxy and model instances is minimal (same host/container)
@@ -186,7 +186,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 
 ### Dependencies
 
-- KVCached tool must be functional and able to launch vLLM instances
+- kvcached tool must be functional and able to launch vLLM instances
 - vLLM instances must expose HTTP/network endpoints for inference requests
 - OpenShift cluster must support container deployment with network routing
 - Sufficient system resources (memory, CPU, GPU) must be available to run multiple model instances simultaneously
@@ -203,6 +203,6 @@ The following are explicitly not included in this feature specification:
 - Request queuing or load balancing across multiple instances of the same model
 - Billing or usage tracking per user or per model
 - Integration with external model registries or catalogs
-- GPU allocation and management (assumed handled by KVCached and underlying infrastructure)
+- GPU allocation and management (assumed handled by kvcached and underlying infrastructure)
 - Backup and disaster recovery of platform state
 - Performance optimization beyond basic routing functionality

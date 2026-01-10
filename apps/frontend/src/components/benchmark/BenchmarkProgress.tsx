@@ -99,7 +99,15 @@ export function BenchmarkProgress({ benchmarkId, onComplete, onCancel }: Benchma
 
   const connectToSSE = useCallback(() => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
-    const eventSource = new EventSource(`${baseUrl}/api/benchmarks/${benchmarkId}/events`)
+    // Add auth token for SSE (EventSource can't send Authorization header)
+    const token = apiClient.getAuthToken()
+    const params = new URLSearchParams()
+    if (token) {
+      params.set('token', token)
+    }
+    const queryString = params.toString()
+    const url = `${baseUrl}/api/benchmarks/${benchmarkId}/events${queryString ? `?${queryString}` : ''}`
+    const eventSource = new EventSource(url)
 
     eventSource.onopen = () => {
       setIsConnected(true)

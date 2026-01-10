@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**sardeenz** is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of vLLM (inference engine) and KVCached (GPU memory sharing), it allows efficient multi-model hosting on a single GPU.
+**sardeenz** is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of vLLM (inference engine) and kvcached (GPU memory sharing), it allows efficient multi-model hosting on a single GPU.
 
 **Core Components:**
 
@@ -40,7 +40,7 @@ npm run dev
 
 **Prerequisites:** Node.js 22.x, Python 3.12 + uv, NVIDIA GPU with CUDA 12.x, 8GB+ VRAM (16GB+ recommended)
 
-**GPU Setup:** On first run, the backend auto-creates a Python venv with vLLM/KVCached. See [`docs/dev-setup.md`](./docs/dev-setup.md) for details.
+**GPU Setup:** On first run, the backend auto-creates a Python venv with vLLM/kvcached. See [`docs/dev-setup.md`](./docs/dev-setup.md) for details.
 
 ## Architecture
 
@@ -77,8 +77,8 @@ npm run dev -w apps/backend          # Start backend only
 npm run dev -w apps/frontend         # Start frontend only
 
 # Container operations
-docker build -t sardeenz .
-docker run --gpus all -p 3000:3000 sardeenz
+make build VERSION=x.y.z           # Build image as quay.io/rh-aiservices-bu/sardeenz:x.y.z
+make push VERSION=x.y.z            # Push to registry
 ```
 
 ## Documentation
@@ -89,7 +89,7 @@ docker run --gpus all -p 3000:3000 sardeenz
 - [`docs/dev-setup.md`](./docs/dev-setup.md) - GPU development environment setup
 - [`docs/api-guide.md`](./docs/api-guide.md) - API usage examples
 - [`docs/deployment.md`](./docs/deployment.md) - Container and OpenShift deployment
-- [`docs/kvcached/`](./docs/kvcached/) - KVCached GPU memory sharing
+- [`docs/kvcached/`](./docs/kvcached/) - kvcached GPU memory sharing
 - [`CHANGELOG.md`](./CHANGELOG.md) - Project change history
 
 ## Active Technologies

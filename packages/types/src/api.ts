@@ -42,7 +42,7 @@ export interface ModelMemoryMetricsDTO {
   cuda_graph_memory_gib: number
   /** Overhead memory (total - weights - CUDA graphs) in GiB */
   overhead_memory_gib: number
-  /** @deprecated KV cache available - meaningless with KVCached, kept for backwards compat */
+  /** @deprecated KV cache available - meaningless with kvcached, kept for backwards compat */
   kv_cache_available_gib: number
   kv_cache_per_request_mib: number
   max_model_len: number
@@ -66,7 +66,8 @@ export interface ModelInstanceDTO {
   launch_command?: string // Full vLLM command for debugging/reproduction
   gpu_ids: number[] // GPU indices this model is running on
   tensor_parallel_size: number // 1 = single GPU, >1 = spanning multiple GPUs
-  kvcached_enabled: boolean // Whether KVCached is enabled (false for tensor parallel)
+  kvcached_enabled: boolean // Whether kvcached is enabled (false for tensor parallel)
+  memory_baseline_by_gpu?: Record<number, number> // Memory baseline per GPU in GB
 }
 
 export interface GetModelResponse {
@@ -122,6 +123,7 @@ export interface PerGpuMetrics {
   free_gb: number
   utilization_percent: number
   models: ModelGpuMemory[]
+  kvcache?: KVCacheMetrics // Per-GPU KVCache metrics (undefined if no KVCache segment exists)
 }
 
 /** Multi-GPU memory usage response */

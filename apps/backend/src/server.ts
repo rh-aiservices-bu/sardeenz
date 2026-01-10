@@ -37,7 +37,7 @@ await fastify.register(import('@fastify/helmet'), {
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // React dev tools may need these
       styleSrc: ["'self'", "'unsafe-inline'"], // PatternFly uses inline styles
       imgSrc: ["'self'", 'data:', 'blob:'],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", 'https://api.github.com'],
       fontSrc: ["'self'", 'data:'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],

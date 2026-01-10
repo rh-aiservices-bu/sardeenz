@@ -34,7 +34,7 @@ Core service managing vLLM subprocess lifecycle:
 - **Status transitions**: `starting` → `active` (success) or `failed` (error/timeout)
 - **Multi-instance support**: Multiple instances of same model via unique instance IDs
 - **Multi-GPU support**: GPU selection via `gpu_ids` and `tensor_parallel_size` parameters
-- **KVCached integration**: All single-GPU models share `kvcached_mem_info` IPC segment (disabled for tensor parallel)
+- **kvcached integration**: All single-GPU models share `kvcached_mem_info` IPC segment (disabled for tensor parallel)
 - **SIGKILL unload**: Uses SIGKILL (not SIGTERM) to bypass Python cleanup that would delete shared IPC
 - **EngineCore PID tracking**: Extracts GPU-using process PID from logs for accurate memory monitoring
 - **Conflict group detection**: Union-Find algorithm groups models sharing any GPU for sequential loading
@@ -117,7 +117,7 @@ Intelligent GPU selection for model loading:
 **Tensor Parallel Rules:**
 
 - `tensor_parallel_size > 1` requires that many contiguous GPUs
-- KVCached is automatically disabled for tensor parallel models
+- kvcached is automatically disabled for tensor parallel models
 - GPUs passed to vLLM via `CUDA_VISIBLE_DEVICES` environment variable
 
 ### BenchmarkRunner (`src/services/benchmark-runner.ts`)
@@ -218,7 +218,7 @@ DELETE /api/models/instances/:instance_id
 
 ### Why SIGKILL Instead of SIGTERM
 
-KVCached registers Python signal handlers in `MemInfoTracker` that delete the shared IPC segment (`kvcached_mem_info`) when receiving SIGTERM. Since all models share this single IPC segment, using SIGTERM to unload one model would break all other running models.
+kvcached registers Python signal handlers in `MemInfoTracker` that delete the shared IPC segment (`kvcached_mem_info`) when receiving SIGTERM. Since all models share this single IPC segment, using SIGTERM to unload one model would break all other running models.
 
 **Solution:** Use SIGKILL which bypasses signal handlers entirely. The shared IPC is only deleted during server shutdown when all models are gone.
 
@@ -233,10 +233,19 @@ SIGKILL doesn't propagate to children, so `killProcessImmediate()` uses `getDesc
 
 ### IPC Segment Lifecycle
 
-- **Created:** Automatically by first vLLM process with `ENABLE_KVCACHED=true`
-- **Shared:** All models use the same `kvcached_mem_info` segment
+Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
+
+**Naming Convention:**
+- Single GPU: `kvcached_vllm_GPU{id}` (e.g., `kvcached_vllm_GPU0`)
+- Tensor-parallel: `kvcached_vllm_GPU{id1}_GPU{id2}` (e.g., `kvcached_vllm_GPU0_GPU1`)
+
+The segment name is set via `KVCACHED_IPC_NAME` environment variable, configured automatically by the backend based on the model's GPU assignment.
+
+**Lifecycle:**
+- **Created:** Automatically by first vLLM process with `ENABLE_KVCACHED=true` on that GPU
 - **Preserved:** Not deleted when individual models unload (SIGKILL bypasses cleanup)
 - **Deleted:** Only on server shutdown via `cleanup()` → `deleteSharedIpcSegment()`
+- **Multi-GPU cleanup:** Both single-GPU and multi-GPU segment patterns are cleaned up
 
 ## GPU Memory Tracking
 
@@ -263,6 +272,22 @@ vLLM Process Architecture:
 2. Store in `ModelInstance.engineCorePid`
 3. Use `engineCorePid` (falling back to `processId`) for nvidia-smi lookups
 4. Per-model memory breakdown in dashboard uses this PID for accurate reporting
+
+### Memory Baseline Tracking
+
+When a model transitions to 'running' status, the backend captures its memory baseline:
+
+- **`memoryBaselineByGpu: Record<number, number>`** - Memory footprint per GPU in GB
+- This represents the idle memory consumption before any inference requests
+- Captured from nvidia-smi using the EngineCore PID
+- For tensor-parallel models, baselines are captured on each GPU
+
+**Purpose:** The memory baseline is used for accurate KVCache total calculation:
+```
+KVCache Total = GPU Total - Model Baselines - Other Processes
+```
+
+This replaces the old approach of reading `total_size` from the IPC segment, which was set at initialization and never updated as models were added/removed.
 
 ## Logging Architecture
 
@@ -299,4 +324,4 @@ interface FastifyContextConfig {
 - [Architecture Overview](../architecture.md) - High-level system architecture
 - [Frontend Architecture](./frontend-architecture.md) - Frontend component specs
 - [API Guide](../api-guide.md) - API usage examples
-- [KVCached Documentation](../kvcached/) - GPU memory sharing details
+- [kvcached Documentation](../kvcached/) - GPU memory sharing details

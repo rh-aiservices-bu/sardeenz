@@ -702,7 +702,7 @@ export function LoadModelDialog({
                               title="Tensor Parallelism"
                               style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
                             >
-                              Tensor parallelism with KVCached is a recent feature. Results may vary.
+                              Tensor parallelism with kvcached is a recent feature. Results may vary.
                             </Alert>
                           </div>
                         )}

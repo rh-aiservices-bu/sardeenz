@@ -4,7 +4,7 @@ services:
   sardeenz:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.unified
+      dockerfile: docker/Containerfile
     container_name: sardeenz
     ports:
       - "3000:3000"  # Backend API

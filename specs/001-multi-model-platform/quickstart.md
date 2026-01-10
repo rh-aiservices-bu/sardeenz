@@ -76,7 +76,7 @@ sardeenz/
 │   │   │   │   └── proxy.ts       # Proxy API routes
 │   │   │   ├── services/          # Business logic
 │   │   │   │   ├── model-manager.ts   # vLLM lifecycle management
-│   │   │   │   ├── memory-monitor.ts  # KVCached memory monitoring
+│   │   │   │   ├── memory-monitor.ts  # kvcached memory monitoring
 │   │   │   │   └── metrics.ts         # Prometheus metrics
 │   │   │   └── plugins/           # Fastify plugins
 │   │   │       ├── auth.ts        # OAuth 2.0 plugin
@@ -136,7 +136,7 @@ sardeenz/
 │   └── docker-compose.yml         # Development environment
 │
 ├── docs/                          # Documentation
-│   ├── kvcached/                  # KVCached integration docs
+│   ├── kvcached/                  # kvcached integration docs
 │   └── architecture.md            # System architecture (to be created)
 │
 ├── specs/                         # Feature specifications
@@ -167,7 +167,7 @@ sardeenz/
 - Handles Controller API (model lifecycle)
 - Handles Proxy API (inference routing)
 - Manages vLLM subprocesses
-- Integrates with KVCached for memory management
+- Integrates with kvcached for memory management
 
 **`apps/frontend/`**: React + PatternFly dashboard
 - Model management UI
@@ -230,7 +230,7 @@ API_BASE_URL=http://localhost:3000
 VLLM_BASE_PORT=12346
 VLLM_MAX_INSTANCES=10
 
-# KVCached Configuration
+# kvcached Configuration
 ENABLE_KVCACHED=true
 KVCACHED_AUTOPATCH=1
 
@@ -464,10 +464,10 @@ npm run start -w apps/backend
 npx serve apps/frontend/dist
 ```
 
-### Monitoring KVCached
+### Monitoring kvcached
 
 ```bash
-# List all KVCached IPC segments
+# List all kvcached IPC segments
 kvctl list
 
 # Monitor memory usage in real-time
@@ -502,7 +502,7 @@ tail -f apps/backend/logs/app.log
 **Possible Causes**:
 1. Insufficient GPU memory
 2. Model path incorrect or inaccessible
-3. KVCached not enabled
+3. kvcached not enabled
 4. vLLM binary not in PATH
 
 **Solutions**:
@@ -515,7 +515,7 @@ nvidia-smi
 which vllm
 vllm --version
 
-# Check KVCached environment variables
+# Check kvcached environment variables
 echo $ENABLE_KVCACHED  # Should be "true"
 echo $KVCACHED_AUTOPATCH  # Should be "1"
 
@@ -578,7 +578,7 @@ rm -rf apps/backend/.tsbuildinfo apps/frontend/.tsbuildinfo
 # Cmd/Ctrl + Shift + P → "TypeScript: Restart TS Server"
 ```
 
-### KVCached Segments Not Cleaned Up
+### kvcached Segments Not Cleaned Up
 
 **Symptom**: IPC segments remain after unloading models
 
@@ -611,5 +611,5 @@ kvctl list | grep VLLM | awk '{print $1}' | xargs -I {} kvctl delete {}
 
 - **Project Documentation**: `/docs` directory
 - **API Documentation**: http://localhost:3000/docs (when backend is running)
-- **KVCached Docs**: `/docs/kvcached` directory
+- **kvcached Docs**: `/docs/kvcached` directory
 - **Issue Tracker**: https://github.com/rh-aiservices-bu/sardeenz/issues

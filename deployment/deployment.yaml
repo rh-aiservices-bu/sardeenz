@@ -141,7 +141,7 @@ spec:
                   optional: true
 
             # =================================================================
-            # KVCached Configuration (from ConfigMap)
+            # kvcached Configuration (from ConfigMap)
             # =================================================================
             - name: ENABLE_KVCACHED
               valueFrom:

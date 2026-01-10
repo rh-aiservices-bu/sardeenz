@@ -18,10 +18,14 @@ This step is only required if you want to use your own image instead of the one 
 
 ```bash
 # Build the unified container image
-docker build -f docker/Dockerfile.unified -t quay.io/your-org/sardeenz:latest .
+make build VERSION=x.y.z
 
 # Push to your container registry
-docker push quay.io/your-org/sardeenz:latest
+make push VERSION=x.y.z
+
+# Or manually with podman:
+podman build -f docker/Containerfile -t quay.io/rh-aiservices-bu/sardeenz:x.y.z .
+podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
 ```
 
 ### 2. Create Namespace
@@ -158,8 +162,8 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 | `ADMIN_USERNAME` | `admin` | Username for simple auth mode |
 | `JWT_EXPIRATION_HOURS` | `8` | JWT token lifetime in hours |
 | `API_BASE_URL` | - | Base URL for OAuth callbacks (your route URL) |
-| `ENABLE_KVCACHED` | `true` | Enable KVCached GPU memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patch vLLM for KVCached |
+| `ENABLE_KVCACHED` | `true` | Enable kvcached GPU memory sharing |
+| `KVCACHED_AUTOPATCH` | `1` | Auto-patch vLLM for kvcached |
 | `VLLM_BASE_PORT` | `12346` | Starting port for vLLM instances |
 | `VLLM_MAX_INSTANCES` | `10` | Maximum concurrent model instances |
 | `VLLM_STARTUP_TIMEOUT` | `1800000` | Model startup timeout in ms (30 min default) |
@@ -625,7 +629,7 @@ oc logs deployment/sardeenz | grep -i error
 **Common causes:**
 - Insufficient GPU memory → Unload other models or use smaller models
 - Model not cached → First download takes longer; ensure HuggingFace cache PVC is configured if downloading models
-- KVCached not enabled → Verify `ENABLE_KVCACHED=true` in ConfigMap
+- kvcached not enabled → Verify `ENABLE_KVCACHED=true` in ConfigMap
 
 ### Performance Issues
 
@@ -637,7 +641,7 @@ oc adm top pod -l app=sardeenz
 
 **Optimize:**
 - Increase CPU/memory limits in `deployment.yaml`
-- Enable KVCached for better GPU memory sharing
+- Enable kvcached for better GPU memory sharing
 - Use faster storage class for PVC
 - Adjust `VLLM_MAX_INSTANCES` based on available GPU memory
 
@@ -712,7 +716,7 @@ oc apply -k deployment/overlays/prod/
 ## Additional Resources
 
 - [vLLM Documentation](https://docs.vllm.ai/)
-- [KVCached Guide](../docs/kvcached/README.md)
+- [kvcached Guide](../docs/kvcached/README.md)
 - [API Documentation](../docs/api-guide.md)
 - [Architecture Overview](../docs/architecture.md)
 - [OpenShift GPU Operator](https://docs.openshift.com/container-platform/latest/architecture/nvidia-gpu-architecture-overview.html)

@@ -92,7 +92,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // Detect if KVCached is enabled
+      // Detect if kvcached is enabled
       const kvcachedEnabled = config.enableKvcached ?? false
 
       // Create the benchmark run

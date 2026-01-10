@@ -13,7 +13,7 @@ A benchmarking feature for sardeenz with two complementary capabilities:
 1. **Performance Benchmarking**: Measures LLM inference speed (TTFT, TPS, latency) across loaded models
 2. **Memory Profiling**: Measures baseline VRAM consumption for capacity planning and pre-load warnings
 
-Together, these provide quantitative data to answer critical questions about model performance, GPU memory efficiency, and the real-world impact of KVCached memory sharing.
+Together, these provide quantitative data to answer critical questions about model performance, GPU memory efficiency, and the real-world impact of kvcached memory sharing.
 
 ### Why Does This Matter?
 
@@ -21,7 +21,7 @@ Multi-model LLM deployment is complex. Teams need answers to:
 
 **Performance Questions:**
 - **"How fast is this model?"** - Baseline latency and throughput metrics
-- **"Is KVCached actually helping?"** - A/B comparison with/without memory sharing
+- **"Is kvcached actually helping?"** - A/B comparison with/without memory sharing
 - **"Can we handle production load?"** - Contention testing with concurrent models
 - **"Which model should we deploy?"** - Data-driven model selection
 
@@ -39,7 +39,7 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 | **ML Engineers** | Quantify model performance before production | Know exact VRAM requirements |
 | **Platform Operators** | Capacity planning with concurrency data | Pre-load warnings prevent OOM failures |
 | **Decision Makers** | Data-driven model selection | Cost optimization via memory awareness |
-| **KVCached Users** | Measure performance impact | Understand memory overhead per model |
+| **kvcached Users** | Measure performance impact | Understand memory overhead per model |
 
 ---
 
@@ -61,7 +61,7 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 |--------|------------------|----------------|
 | **Weights Memory** | Model parameters loaded to GPU | Fixed cost - cannot be reduced |
 | **CUDA Graphs** | Pre-compiled inference kernels | Fixed cost after warmup |
-| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via KVCached) |
+| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via kvcached) |
 | **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency |
 | **Baseline Memory** | Weights + CUDA Graphs | Minimum VRAM to load model |
 
@@ -119,11 +119,11 @@ Default: 3 warmup requests before measurement begins.
 
 ### Scenario B: KVCache A/B Testing
 
-**Goal:** Quantify the performance impact of KVCached memory sharing.
+**Goal:** Quantify the performance impact of kvcached memory sharing.
 
 **Setup:**
-1. Run benchmark with KVCached **enabled**
-2. Run identical benchmark with KVCached **disabled**
+1. Run benchmark with kvcached **enabled**
+2. Run identical benchmark with kvcached **disabled**
 3. Compare metrics side-by-side
 
 **Key Questions Answered:**
@@ -131,7 +131,7 @@ Default: 3 warmup requests before measurement begins.
 - How much memory is saved?
 - Is the tradeoff worth it?
 
-**Output:** Comparative metrics showing KVCached impact on TTFT, TPS, and memory.
+**Output:** Comparative metrics showing kvcached impact on TTFT, TPS, and memory.
 
 ---
 

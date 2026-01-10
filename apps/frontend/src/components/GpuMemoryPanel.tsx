@@ -103,10 +103,12 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     return gpu || memoryData.gpus[0]
   }, [memoryData, activeGpuIndex])
 
-  // Build KVCache bar data
+  // Build KVCache bar data from per-GPU metrics
   const kvcacheData = useMemo(() => {
-    if (!memoryData) return []
-    const { kvcache } = memoryData
+    // Use per-GPU kvcache from selected GPU (if available)
+    const kvcache = selectedGpu?.kvcache
+    if (!kvcache || kvcache.total_gb === 0) return []
+
     return [
       {
         id: 'KVCache',
@@ -115,7 +117,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
         Free: Number(kvcache.free_gb.toFixed(2)),
       },
     ]
-  }, [memoryData])
+  }, [selectedGpu])
 
   // Build GPU bar data with per-model breakdown for selected GPU
   const gpuData = useMemo(() => {
@@ -297,46 +299,59 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
             </Flex>
           </FlexItem>
 
-          {/* KVCache Memory Bar - Column 2 */}
+          {/* KVCache Memory Bar - Column 2 (Per-GPU) */}
           <FlexItem flex={{ default: 'flex_1' }}>
             <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-              KVCache Memory (Shared Pool) —{' '}
-              {formatGb(memoryData?.kvcache.used_gb ?? 0)} / {formatGb(memoryData?.kvcache.total_gb ?? 0)}
+              {memoryData && memoryData.gpus.length > 1 && `GPU ${selectedGpu?.gpu_index} `}
+              KVCache Memory —{' '}
+              {selectedGpu?.kvcache && selectedGpu.kvcache.total_gb > 0
+                ? `${formatGb(selectedGpu.kvcache.used_gb)} / ${formatGb(selectedGpu.kvcache.total_gb)}`
+                : 'No KVCache active'}
             </Content>
-            <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
-              <ResponsiveBar
-                data={kvcacheData}
-                keys={['Prealloc', 'Used', 'Free']}
-                indexBy="id"
-                layout="horizontal"
-                margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
-                padding={0}
-                colors={(bar) => KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'}
-                borderRadius={4}
-                enableLabel={false}
-                enableGridY={false}
-                enableGridX={false}
-                axisTop={null}
-                axisRight={null}
-                axisBottom={null}
-                axisLeft={null}
-                theme={getTooltipTheme()}
-              />
-            </div>
-            <Flex gap={{ default: 'gapSm' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
-              <FlexItem>
-                <span style={{ color: KVCACHE_COLORS.Prealloc }}>●</span>{' '}
-                <Content component="small">Prealloc ({formatGb(memoryData?.kvcache.prealloc_gb ?? 0)})</Content>
-              </FlexItem>
-              <FlexItem>
-                <span style={{ color: KVCACHE_COLORS.Used }}>●</span>{' '}
-                <Content component="small">Used ({formatGb(memoryData?.kvcache.used_gb ?? 0)})</Content>
-              </FlexItem>
-              <FlexItem>
-                <span style={{ color: KVCACHE_COLORS.Free }}>●</span>{' '}
-                <Content component="small">Free ({formatGb(memoryData?.kvcache.free_gb ?? 0)})</Content>
-              </FlexItem>
-            </Flex>
+            {selectedGpu?.kvcache && selectedGpu.kvcache.total_gb > 0 ? (
+              <>
+                <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
+                  <ResponsiveBar
+                    data={kvcacheData}
+                    keys={['Prealloc', 'Used', 'Free']}
+                    indexBy="id"
+                    layout="horizontal"
+                    margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
+                    padding={0}
+                    colors={(bar) => KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'}
+                    borderRadius={4}
+                    enableLabel={false}
+                    enableGridY={false}
+                    enableGridX={false}
+                    axisTop={null}
+                    axisRight={null}
+                    axisBottom={null}
+                    axisLeft={null}
+                    theme={getTooltipTheme()}
+                  />
+                </div>
+                <Flex gap={{ default: 'gapSm' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
+                  <FlexItem>
+                    <span style={{ color: KVCACHE_COLORS.Prealloc }}>●</span>{' '}
+                    <Content component="small">Prealloc ({formatGb(selectedGpu.kvcache.prealloc_gb)})</Content>
+                  </FlexItem>
+                  <FlexItem>
+                    <span style={{ color: KVCACHE_COLORS.Used }}>●</span>{' '}
+                    <Content component="small">Used ({formatGb(selectedGpu.kvcache.used_gb)})</Content>
+                  </FlexItem>
+                  <FlexItem>
+                    <span style={{ color: KVCACHE_COLORS.Free }}>●</span>{' '}
+                    <Content component="small">Free ({formatGb(selectedGpu.kvcache.free_gb)})</Content>
+                  </FlexItem>
+                </Flex>
+              </>
+            ) : (
+              <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)', display: 'flex', alignItems: 'center' }}>
+                <Content component="small" style={{ fontStyle: 'italic', color: 'var(--pf-t--global--text--color--subtle)' }}>
+                  No models with kvcached enabled on this GPU
+                </Content>
+              </div>
+            )}
           </FlexItem>
         </Flex>
 

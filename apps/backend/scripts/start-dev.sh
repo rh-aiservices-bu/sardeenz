@@ -1,10 +1,10 @@
 #!/bin/bash
-# start-dev.sh - Development startup script with vLLM/KVCached environment setup
+# start-dev.sh - Development startup script with vLLM/kvcached environment setup
 #
 # This script:
-# 1. Creates a Python virtual environment with vLLM and KVCached (if not exists)
+# 1. Creates a Python virtual environment with vLLM and kvcached (if not exists)
 # 2. Validates the environment by testing Python imports
-# 3. Sets up environment variables for KVCached GPU memory sharing
+# 3. Sets up environment variables for kvcached GPU memory sharing
 # 4. Starts the backend development server
 #
 # Prerequisites:
@@ -136,7 +136,7 @@ prompt_user_action() {
             ;;
         3)
             echo "Skipping venv setup..."
-            echo "Warning: vLLM/KVCached features will not be available."
+            echo "Warning: vLLM/kvcached features will not be available."
             ;;
         4)
             echo "Exiting."
@@ -173,7 +173,7 @@ else
     echo "Python environment validated successfully."
 fi
 
-# Set KVCached environment variables
+# Set kvcached environment variables
 export ENABLE_KVCACHED=true
 export KVCACHED_AUTOPATCH=1
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
@@ -182,7 +182,7 @@ export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 export PATH="$VENV_DIR/bin:$PATH"
 
 echo ""
-echo "KVCached environment configured:"
+echo "kvcached environment configured:"
 echo "  ENABLE_KVCACHED=$ENABLE_KVCACHED"
 echo "  KVCACHED_AUTOPATCH=$KVCACHED_AUTOPATCH"
 echo "  CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"

@@ -52,7 +52,7 @@ Represents a running vLLM instance serving a specific model.
 | `loadedAt` | `Date` | ✅ | Timestamp when model started loading | ISO 8601 datetime |
 | `readyAt` | `Date` | ❌ | Timestamp when model became ready | ISO 8601 datetime, null if not ready |
 | `errorMessage` | `string` | ❌ | Error message if status is `failed` | Max 1000 characters |
-| `ipcSegmentName` | `string` | ✅ | KVCached IPC segment name | Computed from modelPath |
+| `ipcSegmentName` | `string` | ✅ | kvcached IPC segment name | Computed from modelPath |
 
 **Relationships:**
 - Many ModelInstances → One ModelConfiguration (N:1) - optional relationship

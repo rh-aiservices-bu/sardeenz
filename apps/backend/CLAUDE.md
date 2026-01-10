@@ -74,8 +74,8 @@ See `apps/backend/.env.example` for a complete reference.
 | `PORT`                 | 3000                      | Backend server port                                                                          |
 | `VLLM_BASE_PORT`       | 5001                      | Base port for vLLM instances                                                                 |
 | `VLLM_STARTUP_TIMEOUT` | 1800000                   | Model startup timeout in ms (30 min default)                                                 |
-| `ENABLE_KVCACHED`      | true                      | Enable KVCached GPU sharing                                                                  |
-| `KVCACHED_AUTOPATCH`   | 1                         | Auto-patch vLLM for KVCached                                                                 |
+| `ENABLE_KVCACHED`      | true                      | Enable kvcached GPU sharing                                                                  |
+| `KVCACHED_AUTOPATCH`   | 1                         | Auto-patch vLLM for kvcached                                                                 |
 | `LOG_LEVEL`            | info                      | Pino log level                                                                               |
 | `LOG_ALL_REQUESTS`     | false                     | Force all routes to log at info level (debugging)                                            |
 | `HF_TOKEN`             | (none)                    | HuggingFace token for gated models                                                           |

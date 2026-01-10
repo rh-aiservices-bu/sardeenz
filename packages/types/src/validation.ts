@@ -246,6 +246,13 @@ export const ModelGpuMemorySchema = Type.Object({
   color: Type.String(),
 })
 
+export const KVCacheMetricsSchema = Type.Object({
+  total_gb: Type.Number(),
+  prealloc_gb: Type.Number(),
+  used_gb: Type.Number(),
+  free_gb: Type.Number(),
+})
+
 export const PerGpuMetricsSchema = Type.Object({
   gpu_index: Type.Integer(),
   name: Type.String(),
@@ -254,13 +261,7 @@ export const PerGpuMetricsSchema = Type.Object({
   free_gb: Type.Number(),
   utilization_percent: Type.Number(),
   models: Type.Array(ModelGpuMemorySchema),
-})
-
-export const KVCacheMetricsSchema = Type.Object({
-  total_gb: Type.Number(),
-  prealloc_gb: Type.Number(),
-  used_gb: Type.Number(),
-  free_gb: Type.Number(),
+  kvcache: Type.Optional(KVCacheMetricsSchema),
 })
 
 export const MultiGpuMemoryUsageResponseSchema = Type.Object({
