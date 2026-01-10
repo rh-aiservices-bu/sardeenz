@@ -7,7 +7,7 @@
 ## Table of Contents
 
 1. [Fastify Best Practices for TypeScript](#1-fastify-best-practices-for-typescript)
-2. [KVCached Subprocess Management](#2-kvcached-subprocess-management)
+2. [kvcached Subprocess Management](#2-kvcached-subprocess-management)
 3. [OAuth 2.0 Integration](#3-oauth-20-integration)
 4. [Streaming Proxy Implementation](#4-streaming-proxy-implementation)
 5. [Prometheus Metrics in Fastify](#5-prometheus-metrics-in-fastify)
@@ -108,12 +108,12 @@ fastify.post('/api/models/load', {
 
 ---
 
-## 2. KVCached Subprocess Management
+## 2. kvcached Subprocess Management
 
 ### Decision: Direct subprocess spawning with Node.js child_process
 
 **Rationale:**
-- KVCached Controller requires restart for model changes (unacceptable downtime)
+- kvcached Controller requires restart for model changes (unacceptable downtime)
 - Direct vLLM subprocess management provides full lifecycle control
 - Node.js `child_process` is sufficient, no need for Python wrapper
 - Documented in `docs/kvcached/sardeenz-integration.md` (comprehensive guide available)
@@ -150,12 +150,12 @@ export class ModelManager extends EventEmitter {
 
     const port = this.nextPort++
 
-    // Launch vLLM with KVCached enabled
+    // Launch vLLM with kvcached enabled
     const process = spawn('vllm', [
       'serve',
       modelPath,
       '--disable-log-requests',
-      '--no-enable-prefix-caching',  // Required for KVCached
+      '--no-enable-prefix-caching',  // Required for kvcached
       `--port=${port}`,
       `--gpu-memory-utilization=${gpuMemoryUtilization}`,
       `--max-model-len=${maxTokens}`,
@@ -258,15 +258,15 @@ export class ModelManager extends EventEmitter {
 ```
 
 **Key Environment Variables:**
-- `ENABLE_KVCACHED=true`: Enable KVCached memory sharing
-- `KVCACHED_AUTOPATCH=1`: Auto-patch vLLM for KVCached compatibility
+- `ENABLE_KVCACHED=true`: Enable kvcached memory sharing
+- `KVCACHED_AUTOPATCH=1`: Auto-patch vLLM for kvcached compatibility
 
 **Critical vLLM Flags:**
-- `--no-enable-prefix-caching`: Required for KVCached (incompatible otherwise)
+- `--no-enable-prefix-caching`: Required for kvcached (incompatible otherwise)
 - `--disable-log-requests`: Reduce noise in logs
 
 **Alternatives Considered:**
-- KVCached Controller: Rejected due to restart requirement for model changes
+- kvcached Controller: Rejected due to restart requirement for model changes
 - Python wrapper scripts: Unnecessary complexity, Node.js subprocess management is sufficient
 - Docker containers per model: Requires Docker-in-Docker, adds latency and complexity
 
@@ -953,7 +953,7 @@ export const ModelDashboard: React.FC = () => {
 | Area | Decision | Key Library/Tool | Rationale |
 |------|----------|------------------|-----------|
 | **Backend Framework** | Fastify with TypeScript | `fastify@^5.1.0` | Performance (<50ms routing), TypeScript support, OpenAPI integration |
-| **Process Management** | Direct subprocess | Node.js `child_process` | Full control, no downtime on model changes, KVCached compatible |
+| **Process Management** | Direct subprocess | Node.js `child_process` | Full control, no downtime on model changes, kvcached compatible |
 | **Authentication** | OAuth 2.0 | Manual OAuth flow | Enterprise-grade auth, RBAC via JWT claims, OpenShift OAuth compatible |
 | **Streaming Proxy** | Fastify reply.hijack() | Built-in | Minimal latency, direct TCP passthrough |
 | **Metrics** | Prometheus | `fastify-metrics@^11.0.0` | Industry standard, custom metrics support |
@@ -971,7 +971,7 @@ export const ModelDashboard: React.FC = () => {
 ## References
 
 - Fastify docs: https://fastify.dev/
-- KVCached integration guide: `/docs/kvcached/sardeenz-integration.md`
+- kvcached integration guide: `/docs/kvcached/sardeenz-integration.md`
 - PatternFly 6 docs: https://www.patternfly.org/
 - npm workspaces: https://docs.npmjs.com/cli/using-npm/workspaces
 - Constitution: `/.specify/memory/constitution.md`

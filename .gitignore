@@ -3,7 +3,7 @@
 .specify/scripts
 .specify/templates
 
-# Python virtual environment (for vLLM/KVCached)
+# Python virtual environment (for vLLM/kvcached)
 .venv/
 .uv/
 __pycache__/

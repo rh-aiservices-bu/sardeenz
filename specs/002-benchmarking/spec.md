@@ -13,7 +13,7 @@ A benchmarking feature for sardeenz with two complementary capabilities:
 1. **Performance Benchmarking**: Measures LLM inference speed (TTFT, TPS, latency) across loaded models
 2. **Memory Profiling**: Measures baseline VRAM consumption for capacity planning and pre-load warnings
 
-Together, these provide quantitative data to answer critical questions about model performance, GPU memory efficiency, and the real-world impact of KVCached memory sharing.
+Together, these provide quantitative data to answer critical questions about model performance, GPU memory efficiency, and the real-world impact of kvcached memory sharing.
 
 ### Why Does This Matter?
 
@@ -22,7 +22,7 @@ Multi-model LLM deployment is complex. Teams need answers to:
 **Performance Questions:**
 
 - **"How fast is this model?"** - Baseline latency and throughput metrics
-- **"Is KVCached actually helping?"** - A/B comparison with/without memory sharing
+- **"Is kvcached actually helping?"** - A/B comparison with/without memory sharing
 - **"Can we handle production load?"** - Contention testing with concurrent models
 - **"Which model should we deploy?"** - Data-driven model selection
 
@@ -41,7 +41,7 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 | **ML Engineers** | Quantify model performance before production | Know exact VRAM requirements |
 | **Platform Operators** | Capacity planning with concurrency data | Pre-load warnings prevent OOM failures |
 | **Decision Makers** | Data-driven model selection | Cost optimization via memory awareness |
-| **KVCached Users** | Measure performance impact | Understand memory overhead per model |
+| **kvcached Users** | Measure performance impact | Understand memory overhead per model |
 
 ---
 
@@ -54,7 +54,7 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 | ML Engineer | As an ML Engineer, I want to measure baseline performance of a model so that I can establish a reference point before production | TTFT/TPS/E2E percentiles displayed for isolated single-model test |
 | ML Engineer | As an ML Engineer, I want to compare two models side-by-side so that I can choose the best one for my use case | Comparison view showing metrics for multiple models in same benchmark run |
 | Platform Operator | As a Platform Operator, I want to test performance under concurrent load so that I can validate capacity planning | Contention mode runs multiple models in parallel, reports per-model metrics |
-| Platform Operator | As a Platform Operator, I want to measure KVCached impact so that I can quantify the performance/memory tradeoff | Compare historical runs with/without KVCache using comparison view |
+| Platform Operator | As a Platform Operator, I want to measure kvcached impact so that I can quantify the performance/memory tradeoff | Compare historical runs with/without KVCache using comparison view |
 | Decision Maker | As a Decision Maker, I want to export benchmark results so that I can include them in reports | Export to CSV/JSON with all metrics and configuration |
 
 ### Memory Profiling
@@ -92,7 +92,7 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 |--------|------------------|----------------|
 | **Weights Memory** | Model parameters loaded to GPU | Fixed cost - cannot be reduced |
 | **CUDA Graphs** | Pre-compiled inference kernels | Fixed cost after warmup |
-| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via KVCached) |
+| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via kvcached) |
 | **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency |
 | **Baseline Memory** | Weights + CUDA Graphs | Minimum VRAM to load model |
 
@@ -154,12 +154,12 @@ Default: 3 warmup requests before measurement begins.
 
 ### Scenario B: KVCache Comparison (Historical)
 
-**Goal:** Compare performance with/without KVCached memory sharing.
+**Goal:** Compare performance with/without kvcached memory sharing.
 
 **Setup:**
 
-1. Run benchmark suite with KVCached **enabled** at system level
-2. Reconfigure system with KVCached **disabled**
+1. Run benchmark suite with kvcached **enabled** at system level
+2. Reconfigure system with kvcached **disabled**
 3. Run identical benchmark suite
 4. Use **Compare Runs** feature to overlay results
 
@@ -175,7 +175,7 @@ Default: 3 warmup requests before measurement begins.
 - How much memory is saved?
 - Is the tradeoff worth it?
 
-**Output:** Comparative metrics showing KVCached impact on TTFT, TPS, and memory.
+**Output:** Comparative metrics showing kvcached impact on TTFT, TPS, and memory.
 
 ---
 

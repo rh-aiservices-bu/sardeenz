@@ -1,7 +1,7 @@
 [project]
 name = "sardeenz-backend"
 version = "0.1.0"
-description = "Python dependencies for sardeenz backend (vLLM, KVCached)"
+description = "Python dependencies for sardeenz backend (vLLM, kvcached)"
 requires-python = ">=3.12"
 
 # Base dependencies - installed in ALL environments (dev + Docker)

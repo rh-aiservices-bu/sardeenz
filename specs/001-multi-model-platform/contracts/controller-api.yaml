@@ -38,7 +38,7 @@ paths:
       summary: Load a new model
       description: |
         Launch a new vLLM instance for the specified model. This operation:
-        1. Spawns a vLLM subprocess with KVCached enabled
+        1. Spawns a vLLM subprocess with kvcached enabled
         2. Waits for health endpoint to become available (timeout: 3 minutes)
         3. Returns instance details including port and status
 
@@ -176,7 +176,7 @@ paths:
         1. Sends SIGTERM to the vLLM process
         2. Waits up to 30 seconds for graceful shutdown
         3. Sends SIGKILL if process hasn't exited
-        4. Cleans up KVCached IPC segment via kvctl
+        4. Cleans up kvcached IPC segment via kvctl
 
         **Authorization**: Requires `admin` role.
 
@@ -457,7 +457,7 @@ components:
           description: Error message if status is failed
         ipc_segment_name:
           type: string
-          description: KVCached IPC segment name
+          description: kvcached IPC segment name
           example: VLLM_META_LLAMA_LLAMA_3_2_1B
 
     ResourceMetrics:

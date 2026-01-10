@@ -284,7 +284,7 @@ When authenticated with the `admin-readonly` role, the frontend displays visual 
 | `model_path`           | string   | Yes      | Model identifier (HuggingFace path or local path)                                |
 | `max_tokens`           | number   | No       | Maximum context length (default: model's max)                                    |
 | `gpu_ids`              | number[] | No       | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory        |
-| `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). KVCached is disabled when >1 |
+| `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). kvcached is disabled when >1 |
 | `extra_args`           | string[] | No       | Additional vLLM CLI arguments                                                    |
 
 **Response (202 Accepted):**
@@ -426,8 +426,25 @@ curl -H "Authorization: Bearer $TOKEN" \
       "kv_cache_per_request_mib": 156.23,
       "max_model_len": 4096
     },
+    "memory_baseline_by_gpu": {
+      "0": 1.22
+    },
     "launch_command": "python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3.2-1B --port 5001 ..."
   }
+}
+```
+
+**Memory Baseline Field:**
+
+| Field                    | Type                      | Description                                                        |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------ |
+| `memory_baseline_by_gpu` | `Record<number, number>`  | Memory footprint per GPU in GB, captured when model becomes ready. Used for KVCache total calculation. |
+
+For tensor-parallel models, baselines are captured on each GPU:
+```json
+"memory_baseline_by_gpu": {
+  "0": 8.5,
+  "1": 8.5
 }
 ```
 
@@ -712,7 +729,13 @@ Returns per-GPU memory breakdown for multi-GPU systems.
           "gpu_memory_gb": 1.22,
           "color": "#0066CC"
         }
-      ]
+      ],
+      "kvcache": {
+        "total_gb": 12.5,
+        "prealloc_gb": 2.0,
+        "used_gb": 3.5,
+        "free_gb": 7.0
+      }
     },
     {
       "gpu_index": 1,
@@ -733,6 +756,22 @@ Returns per-GPU memory breakdown for multi-GPU systems.
   "total_system_free_gb": 27.5
 }
 ```
+
+**Per-GPU KVCache Metrics:**
+
+Each GPU with loaded models includes a `kvcache` object with per-GPU KVCache metrics:
+
+| Field                    | Description                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `gpus[].kvcache`         | Per-GPU KVCache metrics (undefined if no models loaded on this GPU)                        |
+| `gpus[].kvcache.total_gb` | KVCache pool size = GPU Total - Model Baselines - Other Processes                         |
+| `gpus[].kvcache.used_gb` | Currently active KVCache memory (from IPC segment)                                         |
+| `gpus[].kvcache.prealloc_gb` | Pre-allocated but not active memory (from IPC segment)                                 |
+| `gpus[].kvcache.free_gb` | Available KVCache memory for new allocations                                               |
+
+The KVCache total is calculated dynamically as: `GPU Total - Model Baselines - Other Processes`. This replaces the old approach of reading a stale `total_size` from the IPC segment.
+
+**Note:** For tensor-parallel models spanning multiple GPUs, KVCache usage is split evenly across participating GPUs.
 
 ## GPU API
 
@@ -1492,7 +1531,9 @@ data: {"scenario_id":"uuid","metrics":{"ttft_avg":45.2,"tps_avg":156.8,...}}
 **Example (JavaScript):**
 
 ```javascript
-const eventSource = new EventSource('/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events')
+// Note: EventSource cannot send Authorization headers, so pass JWT as query parameter
+const token = getAuthToken() // Retrieve your JWT token
+const eventSource = new EventSource(`/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events?token=${token}`)
 
 eventSource.addEventListener('scenario:progress', (event) => {
   const data = JSON.parse(event.data)

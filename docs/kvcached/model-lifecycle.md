@@ -1,6 +1,6 @@
-# KVCached Model Lifecycle Management
+# kvcached Model Lifecycle Management
 
-This document describes how to manage the lifecycle of vLLM models using KVCached, including loading, unloading, sleeping, waking, and monitoring model usage.
+This document describes how to manage the lifecycle of vLLM models using kvcached, including loading, unloading, sleeping, waking, and monitoring model usage.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ This document describes how to manage the lifecycle of vLLM models using KVCache
 
 ## Model Lifecycle Overview
 
-KVCached models go through several states during their lifecycle:
+kvcached models go through several states during their lifecycle:
 
 ```
 ┌─────────────┐
@@ -50,7 +50,7 @@ KVCached models go through several states during their lifecycle:
 
 ## Loading Models
 
-There are three methods to load models with KVCached:
+There are three methods to load models with kvcached:
 
 1. **Controller Launch** (Recommended for multi-model setups)
 2. **Manual vLLM Launch** (For single models or custom setups)
@@ -58,7 +58,7 @@ There are three methods to load models with KVCached:
 
 ### Method 1: Controller Launch
 
-Use the KVCached Controller to launch and manage multiple models from a YAML configuration.
+Use the kvcached Controller to launch and manage multiple models from a YAML configuration.
 
 **Configuration File** (`config.yaml`):
 ```yaml
@@ -123,7 +123,7 @@ curl http://localhost:8080/health
 
 ### Method 2: Manual vLLM Launch
 
-Launch vLLM directly with KVCached enabled.
+Launch vLLM directly with kvcached enabled.
 
 **Command**:
 ```bash
@@ -145,7 +145,7 @@ vllm serve meta-llama/Llama-3.2-1B \
 # Check vLLM is responding
 curl http://localhost:12346/v1/models
 
-# Check KVCached IPC segment
+# Check kvcached IPC segment
 kvctl list
 ```
 
@@ -167,7 +167,7 @@ import time
 import requests
 
 def launch_vllm_model(model_path, port, max_tokens=4096):
-    """Launch a vLLM model with KVCached enabled."""
+    """Launch a vLLM model with kvcached enabled."""
 
     # Set environment
     env = os.environ.copy()
@@ -217,7 +217,7 @@ import yaml
 import subprocess
 
 def launch_with_controller(models):
-    """Launch multiple models using KVCached controller."""
+    """Launch multiple models using kvcached controller."""
 
     # Generate config
     config = {
@@ -280,11 +280,11 @@ process = launch_with_controller(models)
 
 ## Unloading Models
 
-Models can be unloaded by stopping their processes. **Important:** When using KVCached with shared memory, you must use SIGKILL (not SIGTERM) to avoid deleting the shared IPC segment.
+Models can be unloaded by stopping their processes. **Important:** When using kvcached with shared memory, you must use SIGKILL (not SIGTERM) to avoid deleting the shared IPC segment.
 
 ### Understanding IPC Lifecycle
 
-KVCached uses a shared IPC segment (`kvcached_mem_info`) for all models. When a vLLM process receives SIGTERM, Python's signal handlers run `MemInfoTracker.cleanup()` which deletes this shared segment, breaking all other running models.
+kvcached uses a shared IPC segment (`kvcached_mem_info`) for all models. When a vLLM process receives SIGTERM, Python's signal handlers run `MemInfoTracker.cleanup()` which deletes this shared segment, breaking all other running models.
 
 **Solution:** Use SIGKILL to bypass signal handlers. The shared IPC segment is only deleted on server shutdown when all models are gone.
 
@@ -439,7 +439,7 @@ def shutdown_all(self):
 
 ## Model Sleep and Wake
 
-KVCached's key feature is the ability to put models to sleep and wake them on demand.
+kvcached's key feature is the ability to put models to sleep and wake them on demand.
 
 ### Automatic Sleep
 
@@ -635,7 +635,7 @@ curl http://localhost:8080/sleep/candidates
 
 ## Usage Reporting and Monitoring
 
-KVCached provides comprehensive usage reporting through traffic monitoring and memory tracking.
+kvcached provides comprehensive usage reporting through traffic monitoring and memory tracking.
 
 ### Traffic Statistics
 
@@ -757,8 +757,8 @@ curl http://localhost:8080/health/$MODEL
 ```python
 import requests
 
-class KVCachedMonitor:
-    """Monitor KVCached models."""
+class kvcachedMonitor:
+    """Monitor kvcached models."""
 
     def __init__(self, base_url="http://localhost:8080"):
         self.base_url = base_url
@@ -800,7 +800,7 @@ class KVCachedMonitor:
         return response.json()
 
 # Usage
-monitor = KVCachedMonitor()
+monitor = kvcachedMonitor()
 
 # Get overall stats
 stats = monitor.get_traffic_stats()
@@ -1039,14 +1039,14 @@ The sardeenz backend manages the entire model lifecycle:
 
 ```python
 class ModelStackerBackend:
-    """Backend for sardeenz with KVCached integration."""
+    """Backend for sardeenz with kvcached integration."""
 
     def __init__(self):
         self.controller_process = None
         self.active_models = []
 
     def deploy_models(self, model_configs):
-        """Deploy multiple models using KVCached controller."""
+        """Deploy multiple models using kvcached controller."""
 
         # Generate YAML config
         config = self._generate_config(model_configs)
@@ -1068,7 +1068,7 @@ class ModelStackerBackend:
         self.active_models = [m["name"] for m in model_configs]
 
     def _generate_config(self, model_configs):
-        """Generate KVCached YAML config."""
+        """Generate kvcached YAML config."""
         return {
             "kvcached": {
                 "gpu_memory_utilization": 0.9,
@@ -1160,13 +1160,13 @@ KVCACHED_URL = "http://localhost:8080"
 
 @app.route("/v1/completions", methods=["POST"])
 def completions():
-    """Proxy completion requests to KVCached."""
+    """Proxy completion requests to kvcached."""
 
     # Log request for tracking
     data = request.json
     model_name = data.get("model")
 
-    # Forward to KVCached
+    # Forward to kvcached
     response = requests.post(
         f"{KVCACHED_URL}/v1/completions",
         json=data

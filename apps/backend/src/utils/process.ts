@@ -106,7 +106,7 @@ export async function killProcessGracefully(
 
 /**
  * Kill a process and all its descendants with SIGKILL (bypasses signal handlers)
- * Use this for vLLM/KVCached processes where Python signal handlers would
+ * Use this for vLLM/kvcached processes where Python signal handlers would
  * delete the shared IPC segment, breaking other running models.
  *
  * SIGKILL doesn't propagate to children, so we must explicitly kill all

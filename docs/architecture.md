@@ -18,7 +18,7 @@ This document provides a detailed overview of the Sardeenz architecture, design 
 Sardeenz is a multi-model management platform designed to:
 1. **Dynamically load/unload** multiple LLM instances without downtime
 2. **Route inference requests** to the appropriate model via a unified proxy
-3. **Share GPU memory** efficiently across multiple models using KVCached
+3. **Share GPU memory** efficiently across multiple models using kvcached
 4. **Monitor and manage** resources through a web-based dashboard
 
 ### High-Level Architecture
@@ -51,11 +51,11 @@ Sardeenz is a multi-model management platform designed to:
 │  │   GPU 0      │  │   GPU 0      │  │  GPU 0-1 TP  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └───────────┬─────────────────────────────────────────────────┘
-            │ KVCached IPC shared memory (single-GPU models)
+            │ kvcached IPC shared memory (single-GPU models)
             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   GPU Memory (CUDA)                         │
-│  • Shared KV cache segments (via KVCached)                  │
+│  • Shared KV cache segments (via kvcached)                  │
 │  • Model weights (per-GPU or tensor parallel)               │
 │  • Compute kernels                                          │
 └─────────────────────────────────────────────────────────────┘
@@ -95,7 +95,7 @@ Sardeenz is a multi-model management platform designed to:
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
 | **Inference Engine** | vLLM | 0.11.0 | OpenAI-compatible LLM serving |
-| **Memory Sharing** | KVCached | Latest | GPU memory IPC for multi-model |
+| **Memory Sharing** | kvcached | Latest | GPU memory IPC for multi-model |
 | **Container Base** | CUDA | 12.x | NVIDIA GPU support |
 | **Python Runtime** | Python | 3.12 | vLLM dependencies |
 | **Orchestration** | OpenShift/K8s | 4.x+ | Container deployment platform |
@@ -232,8 +232,8 @@ python -m vllm.entrypoints.openai.api_server \
 ```
 
 **Environment Variables:**
-- `ENABLE_KVCACHED=true` - Enable KVCached memory sharing
-- `KVCACHED_AUTOPATCH=1` - Auto-patch vLLM for KVCached
+- `ENABLE_KVCACHED=true` - Enable kvcached memory sharing
+- `KVCACHED_AUTOPATCH=1` - Auto-patch vLLM for kvcached
 - `CUDA_VISIBLE_DEVICES=0` - GPU device assignment
 
 **Lifecycle States:**
@@ -316,7 +316,7 @@ interface BenchmarkRun {
   name?: string;                   // Optional run name
   status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
   mode: 'isolated' | 'contention'; // Execution mode
-  kvcachedEnabled: boolean;        // System KVCached status
+  kvcachedEnabled: boolean;        // System kvcached status
   createdAt: string;               // ISO timestamp
   startedAt?: string;
   completedAt?: string;
@@ -378,7 +378,7 @@ interface MemoryProfile {
   weightsMemoryGib: number;        // Model weights
   cudaGraphsGib: number;           // CUDA graph capture
   overheadMemoryGib: number;       // Other overhead
-  kvCacheAvailableGib: number;     // Available KV cache (deprecated with KVCached)
+  kvCacheAvailableGib: number;     // Available KV cache (deprecated with kvcached)
   kvCachePerRequestMib?: number;   // Estimated per-request KV cache
 
   // GPU context
@@ -397,7 +397,7 @@ interface MemoryProfile {
 
 ### Why Direct Subprocess Management?
 
-**Problem:** KVCached Controller requires restart to change model configuration, causing unacceptable downtime.
+**Problem:** kvcached Controller requires restart to change model configuration, causing unacceptable downtime.
 
 **Solution:** Node.js backend manages individual vLLM processes directly.
 
@@ -446,28 +446,42 @@ If health check fails 3 consecutive times, mark instance as `failed`.
 
 ## Memory Management
 
-### KVCached Integration
+### kvcached Integration
 
-**KVCached** enables multiple vLLM instances to share GPU memory via IPC segments.
+**kvcached** enables multiple vLLM instances to share GPU memory via per-GPU IPC segments.
 
 **Memory Segment Naming:**
+
+Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
 ```
-VLLM_META_LLAMA_LLAMA_3_2_1B  # Derived from model path
+kvcached_vllm_GPU0           # Single GPU model on GPU 0
+kvcached_vllm_GPU1           # Single GPU model on GPU 1
+kvcached_vllm_GPU0_GPU1      # Tensor-parallel model on GPUs 0 and 1
 ```
 
-**Memory Limit Enforcement:**
-```bash
-kvctl limit VLLM_META_LLAMA_LLAMA_3_2_1B 8GB
-```
+The segment name is set automatically via the `KVCACHED_IPC_NAME` environment variable based on the model's GPU assignment.
 
-**Memory Cleanup on Unload:**
-```bash
-kvctl delete VLLM_META_LLAMA_LLAMA_3_2_1B
-```
+**Memory Baseline Tracking:**
 
-**Monitoring:**
+When a model transitions to 'running' status, the backend captures its memory baseline:
+- `memoryBaselineByGpu: Record<number, number>` - Memory footprint per GPU in GB
+- Represents idle memory consumption before any inference requests
+- Used for accurate KVCache total calculation:
+  ```
+  KVCache Total = GPU Total - Model Baselines - Other Processes
+  ```
+
+**Memory Monitoring:**
 ```bash
 kvctl status  # Shows all segments and usage
+```
+
+**Memory Cleanup (Server Shutdown Only):**
+
+IPC segments are only deleted when the server shuts down:
+```bash
+kvctl delete kvcached_vllm_GPU0
+kvctl delete kvcached_vllm_GPU0_GPU1  # For tensor-parallel segments
 ```
 
 ### GPU Memory Allocation Strategy
@@ -486,7 +500,7 @@ Example (24GB GPU):
 - Model C (1B params): 4GB
 - Buffer: 4GB
 
-For detailed KVCached documentation, see [`kvcached/README.md`](./kvcached/README.md).
+For detailed kvcached documentation, see [`kvcached/README.md`](./kvcached/README.md).
 
 ## Security Model
 
@@ -511,7 +525,7 @@ For detailed KVCached documentation, see [`kvcached/README.md`](./kvcached/READM
 
 - **No credentials in logs**: Sanitize all log output
 - **Process isolation**: Each vLLM instance runs in separate process
-- **Resource limits**: Prevent memory exhaustion via KVCached limits
+- **Resource limits**: Prevent memory exhaustion via kvcached limits
 - **API versioning**: URL-based versioning (`/api/v1/`) for backward compatibility
 
 ## Performance Considerations
@@ -535,7 +549,7 @@ For detailed KVCached documentation, see [`kvcached/README.md`](./kvcached/READM
 
 #### vLLM Performance
 
-- **Prefix Caching:** Disabled (incompatible with KVCached)
+- **Prefix Caching:** Disabled (incompatible with kvcached)
 - **GPU Utilization:** Tuned per-model based on expected load
 - **Batch Size:** Dynamic batching handled by vLLM
 - **Attention Backend:** FlashAttention 2.0 (automatic)
@@ -583,4 +597,4 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 - [Frontend Architecture](./architecture/frontend-architecture.md) - Detailed frontend component documentation
 - [API Guide](./api-guide.md) - API usage examples
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
-- [KVCached Documentation](./kvcached/) - GPU memory sharing details
+- [kvcached Documentation](./kvcached/) - GPU memory sharing details

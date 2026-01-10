@@ -1,6 +1,6 @@
-# KVCached Configuration Guide
+# kvcached Configuration Guide
 
-This document describes how to configure KVCached for managing multiple vLLM models.
+This document describes how to configure kvcached for managing multiple vLLM models.
 
 ## Table of Contents
 
@@ -10,15 +10,15 @@ This document describes how to configure KVCached for managing multiple vLLM mod
 - [Model Instance Configuration](#model-instance-configuration)
 - [Router Configuration](#router-configuration)
 - [Sleep Manager Configuration](#sleep-manager-configuration)
-- [KVCached Global Settings](#kvcached-global-settings)
+- [kvcached Global Settings](#kvcached-global-settings)
 - [Complete Configuration Examples](#complete-configuration-examples)
 - [Configuration for sardeenz](#configuration-for-sardeenz)
 
 ## Configuration Overview
 
-KVCached configuration consists of two parts:
+kvcached configuration consists of two parts:
 
-1. **Environment Variables**: Enable KVCached and set runtime options
+1. **Environment Variables**: Enable kvcached and set runtime options
 2. **YAML Configuration File**: Define models, router, and sleep management settings
 
 ### Configuration Hierarchy
@@ -37,10 +37,10 @@ YAML Configuration File
 
 ### Required Variables
 
-These variables must be set for KVCached to work with vLLM:
+These variables must be set for kvcached to work with vLLM:
 
 ```bash
-# Enable KVCached
+# Enable kvcached
 export ENABLE_KVCACHED=true
 
 # Enable automatic patching of vLLM
@@ -61,9 +61,29 @@ export KVCACHED_PREALLOCATE_PAGES=true
 # Log level (DEBUG, INFO, WARNING, ERROR)
 export KVCACHED_LOG_LEVEL=INFO
 
-# IPC segment name prefix
+# IPC segment name prefix (legacy)
 export KVCACHED_IPC_PREFIX="VLLM"
 ```
+
+### KVCACHED_IPC_NAME
+
+Per-GPU IPC segment name set automatically by sardeenz backend based on GPU assignment:
+
+```bash
+# Single GPU on GPU 0
+export KVCACHED_IPC_NAME="kvcached_vllm_GPU0"
+
+# Single GPU on GPU 1
+export KVCACHED_IPC_NAME="kvcached_vllm_GPU1"
+
+# Tensor-parallel on GPUs 0 and 1
+export KVCACHED_IPC_NAME="kvcached_vllm_GPU0_GPU1"
+
+# Tensor-parallel on GPUs 0-3
+export KVCACHED_IPC_NAME="kvcached_vllm_GPU0_GPU1_GPU2_GPU3"
+```
+
+This replaces the old global `kvcached_mem_info` segment with per-GPU segments for accurate multi-model memory tracking across GPUs. The sardeenz backend automatically sets this environment variable based on the model's `gpuIds` configuration.
 
 ### Setting Environment Variables
 
@@ -98,12 +118,12 @@ export $(cat .env | xargs)
 
 ## YAML Configuration File
 
-The YAML configuration file defines the entire KVCached Controller setup, including models, router, and sleep management.
+The YAML configuration file defines the entire kvcached Controller setup, including models, router, and sleep management.
 
 ### Basic Structure
 
 ```yaml
-# Global KVCached settings
+# Global kvcached settings
 kvcached:
   gpu_memory_utilization: 0.9
   preallocate_pages: true
@@ -132,7 +152,7 @@ instances:
 
 ### Configuration Sections
 
-1. **kvcached**: Global KVCached runtime settings
+1. **kvcached**: Global kvcached runtime settings
 2. **router**: HTTP API server configuration
 3. **sleep_manager**: Model lifecycle management
 4. **instances**: Individual model configurations (array)
@@ -213,7 +233,7 @@ instances:
     # vLLM engine arguments
     engine_args:
       disable_log_requests: true
-      enable_prefix_caching: false     # Must be false for KVCached
+      enable_prefix_caching: false     # Must be false for kvcached
       tensor_parallel_size: 1
       gpu_memory_utilization: 0.9
       max_model_len: 4096
@@ -224,8 +244,8 @@ instances:
 **Field**:
 - `engine_args` (object, optional): Arguments passed to `vllm serve`
 
-**Important vLLM Arguments for KVCached**:
-- `enable_prefix_caching`: **Must be `false`** (KVCached incompatible)
+**Important vLLM Arguments for kvcached**:
+- `enable_prefix_caching`: **Must be `false`** (kvcached incompatible)
 - `disable_log_requests`: Recommended for cleaner logs
 - `gpu_memory_utilization`: Memory fraction for model weights (0.0-1.0)
 - `tensor_parallel_size`: Number of GPUs for tensor parallelism
@@ -384,9 +404,9 @@ sleep_manager:
   enabled: false                     # No sleep management
 ```
 
-## KVCached Global Settings
+## kvcached Global Settings
 
-Global KVCached runtime settings:
+Global kvcached runtime settings:
 
 ```yaml
 kvcached:
@@ -408,7 +428,7 @@ kvcached:
 
 ### GPU Memory Utilization
 
-Controls how much GPU memory KVCached can use for KV cache:
+Controls how much GPU memory kvcached can use for KV cache:
 
 ```yaml
 kvcached:
@@ -451,7 +471,7 @@ kvcached:
 ```
 
 **Use Cases**:
-- `DEBUG`: Troubleshooting KVCached issues
+- `DEBUG`: Troubleshooting kvcached issues
 - `INFO`: Normal operation (default)
 - `WARNING`: Production with minimal logging
 - `ERROR`: Only critical issues
@@ -621,7 +641,7 @@ For sardeenz, the backend should dynamically generate YAML configurations based 
 ```python
 # Backend generates config based on user's model selections
 def generate_kvcached_config(models, gpu_memory_gb=24):
-    """Generate KVCached YAML config for requested models."""
+    """Generate kvcached YAML config for requested models."""
 
     # Calculate memory allocation per model
     num_models = len(models)

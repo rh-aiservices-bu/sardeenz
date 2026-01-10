@@ -1,6 +1,6 @@
 # GPU Development Setup
 
-This guide covers setting up a local development environment with NVIDIA GPU support for running vLLM and KVCached.
+This guide covers setting up a local development environment with NVIDIA GPU support for running vLLM and kvcached.
 
 ## Prerequisites
 
@@ -44,8 +44,8 @@ npm run dev
 
 On first run, the script will:
 1. Create a Python virtual environment at `apps/backend/.venv`
-2. Install dependencies from `apps/backend/pyproject.toml` (vLLM, KVCached)
-3. Set up KVCached environment variables
+2. Install dependencies from `apps/backend/pyproject.toml` (vLLM, kvcached)
+3. Set up kvcached environment variables
 4. Start the backend and frontend development servers
 
 ## How It Works
@@ -54,12 +54,12 @@ On first run, the script will:
 
 The backend uses environment variables for configuration. A reference file is available at `apps/backend/.env.example`.
 
-**KVCached variables** (configured by start-dev script):
+**kvcached variables** (configured by start-dev script):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_KVCACHED` | `true` | Enables KVCached memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for KVCached support |
+| `ENABLE_KVCACHED` | `true` | Enables kvcached memory sharing |
+| `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for kvcached support |
 | `CUDA_VISIBLE_DEVICES` | `0` | GPU device index |
 
 **HuggingFace authentication** (for gated models like Llama):
@@ -75,9 +75,9 @@ Get your token from [HuggingFace Settings](https://huggingface.co/settings/token
 Models are loaded dynamically via the API or Admin Dashboard - no models are pre-loaded at startup. When you load a model:
 
 1. Backend receives the load request
-2. vLLM process is spawned with KVCached environment
+2. vLLM process is spawned with kvcached environment
 3. Model is downloaded (if not cached) and loaded to GPU
-4. Multiple models can share GPU memory via KVCached
+4. Multiple models can share GPU memory via kvcached
 
 ## Recommended Models for 8GB VRAM
 
@@ -93,7 +93,7 @@ For development and testing on 8GB GPUs:
 ### Memory Tips
 
 - Use `--gpu-memory-utilization 0.3` for small models to leave room for others
-- With KVCached, you can load 2-3 small models on an 8GB GPU
+- With kvcached, you can load 2-3 small models on an 8GB GPU
 - Monitor VRAM with `nvidia-smi` or the Admin Dashboard
 
 ## Python Dependency Management
@@ -199,7 +199,7 @@ source .venv/bin/activate
 which vllm  # Should show path in .venv/bin/
 ```
 
-### KVCached IPC errors
+### kvcached IPC errors
 
 If you see IPC segment errors:
 ```bash
@@ -207,9 +207,9 @@ If you see IPC segment errors:
 ipcs -m | grep $(whoami) | awk '{print $2}' | xargs -I {} ipcrm -m {}
 ```
 
-## KVCached Tools
+## kvcached Tools
 
-KVCached provides CLI tools for monitoring:
+kvcached provides CLI tools for monitoring:
 
 ```bash
 # Activate the venv first
@@ -229,4 +229,4 @@ kvctl limit <segment-name> 4G
 
 - [Architecture Documentation](./architecture.md) - System design and vLLM integration
 - [API Guide](./api-guide.md) - Model loading API endpoints
-- [KVCached Documentation](./kvcached/) - Detailed KVCached configuration
+- [kvcached Documentation](./kvcached/) - Detailed kvcached configuration

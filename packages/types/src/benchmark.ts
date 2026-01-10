@@ -62,7 +62,7 @@ export interface BenchmarkConfig {
   name?: string
   /** Execution mode: isolated or contention */
   mode: BenchmarkMode
-  /** Whether KVCached is enabled at system level */
+  /** Whether kvcached is enabled at system level */
   kvcachedEnabled: boolean
   /** Scenarios to run */
   scenarios: BenchmarkScenarioConfig[]
