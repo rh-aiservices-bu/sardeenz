@@ -1,18 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Card,
-  CardTitle,
   CardBody,
   Flex,
   FlexItem,
   Checkbox,
   Alert,
   Button,
+  Bullseye,
 } from '@patternfly/react-core'
+import type { SessionStatus } from './workspace-types'
 import Chatbot, { ChatbotDisplayMode } from '@patternfly/chatbot/dist/dynamic/Chatbot'
 import ChatbotContent from '@patternfly/chatbot/dist/dynamic/ChatbotContent'
 import MessageBox from '@patternfly/chatbot/dist/dynamic/MessageBox'
 import Message from '@patternfly/chatbot/dist/dynamic/Message'
+import ChatbotHeader, {
+  ChatbotHeaderActions,
+  ChatbotHeaderMain,
+  ChatbotHeaderTitle,
+} from '@patternfly/chatbot/dist/dynamic/ChatbotHeader';
 import ChatbotFooter from '@patternfly/chatbot/dist/dynamic/ChatbotFooter'
 import MessageBar from '@patternfly/chatbot/dist/dynamic/MessageBar'
 import ChatbotWelcomePrompt from '@patternfly/chatbot/dist/dynamic/ChatbotWelcomePrompt'
@@ -24,6 +30,8 @@ import botAvatar from '../../../../../assets/avatars/bot-avatar.svg'
 
 interface ModelChatCardProps {
   model: ModelInstanceDTO
+  /** Callback when generation status changes */
+  onStatusChange?: (status: SessionStatus) => void
 }
 
 /**
@@ -50,7 +58,7 @@ function buildTimestamp(message: ChatMessage): string {
 /**
  * Renders a chat card for a specific model with PatternFly Chatbot components.
  */
-export function ModelChatCard({ model }: ModelChatCardProps) {
+export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
   const {
     messages,
     isGenerating,
@@ -65,6 +73,16 @@ export function ModelChatCard({ model }: ModelChatCardProps) {
   // Controlled input with default prompt
   const [inputValue, setInputValue] = useState('Why is the sky blue?')
 
+  // Use ref to stabilize onStatusChange callback
+  // This prevents infinite re-renders when parent passes inline arrow functions
+  const onStatusChangeRef = useRef(onStatusChange)
+  onStatusChangeRef.current = onStatusChange
+
+  // Notify parent of status changes - only depend on isGenerating
+  useEffect(() => {
+    onStatusChangeRef.current?.(isGenerating ? 'generating' : 'idle')
+  }, [isGenerating])
+
   const modelName = model.model_path.split('/').pop() || model.model_path
 
   const handleSendMessage = (message: string | number) => {
@@ -77,80 +95,101 @@ export function ModelChatCard({ model }: ModelChatCardProps) {
   }
 
   return (
-    <Card isFullHeight>
-      <CardTitle>
-        <Flex
-          justifyContent={{ default: 'justifyContentSpaceBetween' }}
-          alignItems={{ default: 'alignItemsCenter' }}
-        >
-          <FlexItem>
-            <strong>{modelName}</strong>
-            {model.has_chat_template === false && (
-              <span
-                style={{
-                  marginLeft: 'var(--pf-t--global--spacer--sm)',
-                  fontSize: 'var(--pf-t--global--font--size--body--sm)',
-                  color: 'var(--pf-t--global--color--status--warning--default)',
-                }}
-              >
-                (no chat template)
-              </span>
-            )}
-          </FlexItem>
-          <FlexItem>
-            <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm)' }}>
-              Port: {model.port}
-            </span>
-          </FlexItem>
-        </Flex>
-      </CardTitle>
-
-      <CardBody style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
-        {/* Control checkboxes - reduced spacing */}
-        <Flex
-          gap={{ default: 'gapSm' }}
-          style={{
-            padding: 'var(--pf-t--global--spacer--sm) var(--pf-t--global--spacer--md)',
-          }}
-        >
-          <FlexItem>
-            <Checkbox
-              id={`streaming-${model.id}`}
-              label="Enable streaming"
-              isChecked={useStreaming}
-              isDisabled={isGenerating}
-              onChange={(_, checked) => updateSettings({ useStreaming: checked })}
-            />
-          </FlexItem>
-          <FlexItem>
-            <Checkbox
-              id={`direct-${model.id}`}
-              label="Direct routing"
-              isChecked={useDirectCall}
-              isDisabled={isGenerating}
-              onChange={(_, checked) => updateSettings({ useDirectCall: checked })}
-            />
-          </FlexItem>
-          <FlexItem align={{ default: 'alignRight' }}>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={clearHistory}
-              isDisabled={messages.length === 0 || isGenerating}
-            >
-              Clear
-            </Button>
-          </FlexItem>
-        </Flex>
-
+    <Card style={{ height: '100%' }}>
+      <CardBody
+        style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column' }}
+      >
         {/* Chatbot container */}
-        <div style={{ height: '400px', flex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Chatbot displayMode={ChatbotDisplayMode.embedded}>
+            <ChatbotHeader className="chat-header">
+              <ChatbotHeaderMain>
+                <ChatbotHeaderTitle className="chat-header-title">
+                  <Bullseye>
+                    <Flex
+                      justifyContent={{ default: 'justifyContentSpaceBetween' }}
+                      alignItems={{ default: 'alignItemsCenter' }}
+                    >
+                      <FlexItem>
+                        <strong>{modelName}</strong>
+                        {model.has_chat_template === false && (
+                          <span
+                            style={{
+                              marginLeft: 'var(--pf-t--global--spacer--sm)',
+                              fontSize: 'var(--pf-t--global--font--size--body--sm)',
+                              color: 'var(--pf-t--global--color--status--warning--default)',
+                            }}
+                          >
+                            (no chat template)
+                          </span>
+
+                        )}
+                      </FlexItem>
+                      <FlexItem>
+                        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm)' }}>
+                          &nbsp;(p: {model.port})
+                        </span>
+                      </FlexItem>
+                    </Flex>
+                  </Bullseye>
+                </ChatbotHeaderTitle>
+              </ChatbotHeaderMain>
+              <ChatbotHeaderActions>
+                <Flex
+                  gap={{ default: 'gapSm' }}
+                  style={{
+                    padding: '0',
+                  }}
+                  alignItems={{ default: 'alignItemsFlexStart'}}
+                >
+                  <FlexItem>
+                    <Flex direction={{ default: 'column' }}
+                    spaceItems={{ default: 'spaceItemsNone' }}
+                    alignItems={{ default: 'alignItemsStretch'}}
+                    style={{
+                    padding: '0',
+                  }}>
+                      <FlexItem>
+                        <Checkbox
+                          id={`streaming-${model.id}`}
+                          label="Streaming"
+                          isChecked={useStreaming}
+                          isDisabled={isGenerating}
+                          onChange={(_, checked) => updateSettings({ useStreaming: checked })}
+                          className='chat-header-actions-text'
+                        />
+                      </FlexItem>
+                      <FlexItem>
+                        <Checkbox
+                          id={`direct-${model.id}`}
+                          label="Proxy"
+                          isChecked={!useDirectCall}
+                          isDisabled={isGenerating}
+                          onChange={(_, checked) => updateSettings({ useDirectCall: checked })}
+                          className='chat-header-actions-text'
+                        />
+                      </FlexItem>
+                    </Flex>
+                  </FlexItem>
+                  <FlexItem align={{ default: 'alignRight' }}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={clearHistory}
+                      isDisabled={messages.length === 0 || isGenerating}
+                    >
+                      Clear
+                    </Button>
+                  </FlexItem>
+                </Flex>
+              </ChatbotHeaderActions>
+            </ChatbotHeader>
             <ChatbotContent>
               {messages.length === 0 ? (
                 <ChatbotWelcomePrompt
                   title={`Chat with ${modelName}`}
-                  description="Press Enter or click Send to test inference."
+                  description="Click Send to test inference."
+                  style={{ paddingLeft: '10px', paddingRight: '10px' }}
                 />
               ) : (
                 <MessageBox>
@@ -169,6 +208,7 @@ export function ModelChatCard({ model }: ModelChatCardProps) {
                 isSendButtonDisabled={isGenerating}
                 hasStopButton={isGenerating}
                 handleStopButton={stopGeneration}
+                hasAttachButton={false}
                 isCompact
               />
             </ChatbotFooter>

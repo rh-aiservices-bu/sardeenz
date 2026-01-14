@@ -56,6 +56,7 @@ const getTooltipTheme = () => {
 
 interface GpuMemoryPanelProps {
   defaultRefreshInterval?: number | null
+  onModelClick?: (instanceId: string) => void
 }
 
 /**
@@ -65,7 +66,7 @@ interface GpuMemoryPanelProps {
  * - KVCache: shared pool (Prealloc / Used / Free)
  * - GPU: per-model breakdown with colors
  */
-export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanelProps) {
+export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: GpuMemoryPanelProps) {
   const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -251,7 +252,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
 
         <Flex direction={{ default: 'row' }} gap={{ default: 'gapLg' }}>
           {/* GPU Memory Bar - Column 1 */}
-          <FlexItem flex={{ default: 'flex_1' }}>
+          <FlexItem flex={{ default: 'flex_2' }}>
             <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
               {memoryData && memoryData.gpus.length === 1 && selectedGpu && (
                 <>{selectedGpu.name} — </>
@@ -277,24 +278,67 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
                 axisBottom={null}
                 axisLeft={null}
                 theme={getTooltipTheme()}
+                onClick={(bar) => {
+                  // Find the model by display_name and call onModelClick
+                  const model = selectedGpu?.models.find((m) => m.display_name === bar.id)
+                  if (model && onModelClick) {
+                    onModelClick(model.instance_id)
+                  }
+                }}
+                onMouseEnter={(_bar, event) => {
+                  // Check if this is a clickable model bar (not Other or Free)
+                  const isClickable = selectedGpu?.models.some(
+                    (m) => m.display_name === (_bar as { id: string }).id
+                  )
+                  if (isClickable && onModelClick) {
+                    (event.target as HTMLElement).style.cursor = 'pointer'
+                  }
+                }}
+                onMouseLeave={(_bar, event) => {
+                  (event.target as HTMLElement).style.cursor = 'default'
+                }}
               />
             </div>
-            <Flex gap={{ default: 'gapSm' }} flexWrap={{ default: 'wrap' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
+            <Flex
+              flexWrap={{ default: 'wrap' }}
+              style={{
+                marginTop: 'var(--pf-t--global--spacer--xs)',
+                columnGap: 'var(--pf-t--global--spacer--md)',
+                rowGap: 'var(--pf-t--global--spacer--xs)',
+              }}
+            >
               {selectedGpu?.models.map((model) => (
                 <FlexItem key={`${model.instance_id}-${model.model_path}`}>
-                  <span style={{ color: model.color }}>●</span>{' '}
-                  <Content component="small">{model.display_name} ({formatGb(model.gpu_memory_gb)})</Content>
+                  <span
+                    onClick={() => onModelClick?.(model.instance_id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onModelClick?.(model.instance_id)
+                      }
+                    }}
+                    role={onModelClick ? 'button' : undefined}
+                    tabIndex={onModelClick ? 0 : undefined}
+                    aria-label={onModelClick ? `Go to ${model.display_name}` : undefined}
+                    style={{
+                      cursor: onModelClick ? 'pointer' : 'default',
+                      fontSize: 'var(--pf-t--global--font--size--sm)',
+                    }}
+                  >
+                    <span style={{ color: model.color }}>●</span> {model.display_name} ({formatGb(model.gpu_memory_gb)})
+                  </span>
                 </FlexItem>
               ))}
               {gpuData.keys.includes('Other') && (
                 <FlexItem>
-                  <span style={{ color: '#8B8D8F' }}>●</span>{' '}
-                  <Content component="small">Other</Content>
+                  <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
+                    <span style={{ color: '#8B8D8F' }}>●</span> Other
+                  </span>
                 </FlexItem>
               )}
               <FlexItem>
-                <span style={{ color: FREE_COLOR }}>●</span>{' '}
-                <Content component="small">Free ({formatGb(selectedGpu?.free_gb ?? 0)})</Content>
+                <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
+                  <span style={{ color: FREE_COLOR }}>●</span> Free ({formatGb(selectedGpu?.free_gb ?? 0)})
+                </span>
               </FlexItem>
             </Flex>
           </FlexItem>

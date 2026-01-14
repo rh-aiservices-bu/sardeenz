@@ -124,7 +124,6 @@ export function ViewLogsDialog({
                     <CodeBlockAction>
                       <ClipboardCopyButton
                         id="copy-logs-button"
-                        textId="logs-code"
                         aria-label="Copy logs to clipboard"
                         onClick={handleCopy}
                         variant="plain"

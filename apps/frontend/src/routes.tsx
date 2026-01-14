@@ -2,7 +2,7 @@ import ModelManagement from './pages/ModelManagement'
 import GpuInfo from './pages/GpuInfo'
 import ModelBenchmark from './pages/ModelBenchmark'
 import Settings from './pages/Settings'
-import InferenceTests from './pages/InferenceTests'
+import ChatbotPlayground from './pages/ChatbotPlayground'
 
 export interface RouteConfig {
   path: string
@@ -19,10 +19,10 @@ export const routes: RouteConfig[] = [
     itemId: 'model-management',
   },
   {
-    path: '/inference-tests',
-    element: <InferenceTests />,
-    label: 'Inference Tests',
-    itemId: 'inference-tests',
+    path: '/chatbot-playground',
+    element: <ChatbotPlayground />,
+    label: 'Chatbot Playground',
+    itemId: 'chatbot-playground',
   },
   {
     path: '/benchmark',

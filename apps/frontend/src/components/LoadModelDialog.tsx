@@ -397,7 +397,7 @@ export function LoadModelDialog({
                     id="model-path"
                     value={modelPath}
                     onChange={handleModelPathChange}
-                    placeholder="e.g., meta-llama/Llama-3.2-1B"
+                    placeholder="e.g., HuggingFaceTB/SmolLM2-135M-Instruct"
                     validated={validated}
                     aria-describedby="model-path-helper"
                   />

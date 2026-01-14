@@ -287,5 +287,4 @@ spec:
 
       # Security context - OpenShift runs as non-root with random UID
       securityContext:
-        fsGroup: 0
         runAsNonRoot: true
