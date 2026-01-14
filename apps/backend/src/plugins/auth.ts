@@ -122,7 +122,7 @@ async function authPlugin(fastify: FastifyInstance) {
         reply.code(403).send({
           error: {
             message:
-              'Access denied: You are not a member of any authorized groups. Please contact your administrator to be added to sardeenz-admins or sardeenz-admins-readonly.',
+              'Access denied: You are not bound to any sardeenz roles. Contact your administrator to create a RoleBinding.',
             type: 'authorization_error',
             code: 'no_roles',
           },

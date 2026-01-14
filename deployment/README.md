@@ -95,16 +95,35 @@ kubectl apply -k deployment/
 
 ```bash
 # Apply in this order
-oc apply -f deployment/pvc.yaml            # Optional: Only if downloading models from HuggingFace
-oc apply -f deployment/pvc-app-data.yaml   # Required: Application data (SQLite, cache)
+oc apply -f deployment/serviceaccount.yaml  # Required: ServiceAccount for RBAC
+oc apply -f deployment/rbac.yaml            # Required: RBAC roles and permissions
+oc apply -f deployment/pvc.yaml             # Optional: Only if downloading models from HuggingFace
+oc apply -f deployment/pvc-app-data.yaml    # Required: Application data (SQLite, cache)
 oc apply -f deployment/configmap.yaml
-oc apply -f deployment/secret.yaml         # Skip if using `oc create secret`
-oc apply -f deployment/deployment.yaml     # Must be adapted based on storage choices (see Storage section)
+oc apply -f deployment/secret.yaml          # Skip if using `oc create secret`
+oc apply -f deployment/deployment.yaml      # Must be adapted based on storage choices (see Storage section)
 oc apply -f deployment/service.yaml
 oc apply -f deployment/route.yaml
 ```
 
-### 6. Verify Deployment
+### 6. Configure RBAC (OAuth Mode Only)
+
+If using OAuth authentication (`AUTH_MODE=oauth`), you need to create RoleBindings to grant users access to sardeenz. The deployment manifests create the necessary Roles but not the user/group bindings.
+
+```bash
+# Give admin access to specific users
+oc adm policy add-role-to-user sardeenz-admin alice@company.com -n sardeenz
+
+# Give read-only access to all authenticated users
+oc adm policy add-role-to-group sardeenz-admin-readonly system:authenticated -n sardeenz
+
+# Give admin access to a group
+oc adm policy add-role-to-group sardeenz-admin platform-admins -n sardeenz
+```
+
+See [RBAC Setup Guide](../docs/rbac-setup.md) for complete configuration options.
+
+### 7. Verify Deployment
 
 ```bash
 # Check deployment status
@@ -124,11 +143,23 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 
 ### Core Resources
 
+- **`serviceaccount.yaml`** - ServiceAccount for the sardeenz pod
+  - Used for RBAC authorization checks via LocalSubjectAccessReview
+  - Required for OAuth authentication mode
+
+- **`rbac.yaml`** - RBAC roles and permissions
+  - `sardeenz-admin` Role: Marker for full admin access
+  - `sardeenz-admin-readonly` Role: Marker for read-only access
+  - `sardeenz-auth-reviewer` Role: Allows ServiceAccount to check user permissions
+  - `sardeenz-auth-reviewer` RoleBinding: Binds ServiceAccount to auth-reviewer role
+  - See [RBAC Setup Guide](../docs/rbac-setup.md) for creating user/group bindings
+
 - **`deployment.yaml`** - Main application deployment with GPU resource requests
   - Configured for single replica (GPU constraint)
   - GPU node selector and tolerations
   - Liveness, readiness, and startup probes
   - Environment variables from ConfigMap and Secret
+  - Uses `sardeenz` ServiceAccount for RBAC
 
 - **`service.yaml`** - ClusterIP service exposing backend (3000) and frontend (80)
 

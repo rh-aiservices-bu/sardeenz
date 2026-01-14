@@ -13,6 +13,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [**Frontend Architecture**](./architecture/frontend-architecture.md) | Frontend component specs, state management, and API integration         |
 | [**API Guide**](./api-guide.md)                                      | API reference with code examples for Controller and Proxy APIs          |
 | [**Deployment Guide**](./deployment.md)                              | Container building and OpenShift/Kubernetes deployment                  |
+| [**RBAC Setup**](./rbac-setup.md)                                    | Kubernetes-native RBAC configuration for OAuth authentication           |
 
 ### 🛠️ Development Guides
 
@@ -75,6 +76,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 **Deploying and managing the platform?**
 
 - [Deployment Guide](./deployment.md) - Container build and OpenShift deployment
+- [RBAC Setup Guide](./rbac-setup.md) - Kubernetes-native RBAC for OAuth authentication
 - [Deployment Guide: Configuration](./deployment.md#configuration) - Environment variables
 - [Deployment Guide: Monitoring](./deployment.md#monitoring) - Prometheus metrics setup
 - [Deployment Guide: Troubleshooting](./deployment.md#troubleshooting) - Common issues
@@ -84,7 +86,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 - GPU-enabled OpenShift cluster setup
 - App Data PVC (required for SQLite)
 - Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](../deployment/README.md#storage-configuration))
-- OAuth 2.0 integration (OpenShift OAuth)
+- OAuth 2.0 integration with Kubernetes RBAC (see [rbac-setup.md](./rbac-setup.md))
 
 ### 📊 Data Scientists / ML Engineers
 
@@ -141,6 +143,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | Document                         | Topics Covered                                                                                                   |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | [deployment.md](./deployment.md) | Container build, Docker Compose, OpenShift deployment, configuration, health checks, monitoring, troubleshooting |
+| [rbac-setup.md](./rbac-setup.md) | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions          |
 | [kvcached/](./kvcached/)         | kvcached installation, configuration, memory segment management                                                  |
 
 ### Development Guides
@@ -309,7 +312,7 @@ Set the `AUTH_MODE` environment variable:
 - `K8S_API_URL=<kubernetes-api-url>`
 - `JWT_SECRET=<your-secret>`
 
-Roles are assigned via OpenShift groups: `sardeenz-admins` (full access) and `sardeenz-admins-readonly` (read-only).
+Roles are assigned via Kubernetes RoleBindings. See [rbac-setup.md](./rbac-setup.md) for complete RBAC configuration.
 
 See [api-guide.md](./api-guide.md#authentication) and [deployment.md](./deployment.md#configuration) for details.
 
