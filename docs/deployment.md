@@ -492,50 +492,23 @@ oc logs -f deployment/sardeenz -n sardeenz
 
 Sardeenz supports three authentication modes for the admin dashboard:
 
-| Mode     | Use Case                       | Configuration                              |
-| -------- | ------------------------------ | ------------------------------------------ |
-| `none`   | Development, testing           | No auth required                           |
-| `simple` | Single-admin deployments       | Username/password with JWT                 |
-| `oauth`  | Enterprise with OpenShift SSO  | OpenShift OAuth 2.0 with group-based RBAC  |
+| Mode     | Use Case                       | Configuration                                      |
+| -------- | ------------------------------ | -------------------------------------------------- |
+| `none`   | Development, testing           | No auth required                                   |
+| `simple` | Single-admin deployments       | Username/password with JWT                         |
+| `oauth`  | Enterprise with OpenShift SSO  | OpenShift OAuth 2.0 with Kubernetes-native RBAC    |
 
 ### OpenShift OAuth Setup
 
-For production deployments, OAuth mode integrates with OpenShift's authentication system and uses group membership for role-based access control.
+For production deployments, OAuth mode integrates with OpenShift's authentication system and uses Kubernetes-native RBAC for role-based access control.
 
-#### 1. Create OpenShift Groups
+**Key Benefits:**
 
-Users must belong to specific OpenShift groups to access the dashboard:
+- **No cluster-admin required** - Deployment only needs namespace-level permissions
+- **Dynamic access management** - Add/remove users via RoleBindings without restarting sardeenz
+- **Flexible binding** - Assign roles to users, groups, or all authenticated users
 
-| Group                      | Role             | Access Level            |
-| -------------------------- | ---------------- | ----------------------- |
-| `sardeenz-admins`          | `admin`          | Full read/write access  |
-| `sardeenz-admins-readonly` | `admin-readonly` | Read-only access        |
-
-**Create the groups:**
-
-```bash
-# Create admin group (full access)
-oc adm groups new sardeenz-admins
-
-# Create read-only group
-oc adm groups new sardeenz-admins-readonly
-```
-
-#### 2. Add Users to Groups
-
-```bash
-# Add users to admin group
-oc adm groups add-users sardeenz-admins user1@example.com user2@example.com
-
-# Add users to read-only group
-oc adm groups add-users sardeenz-admins-readonly readonly-user@example.com
-
-# Verify group membership
-oc get group sardeenz-admins -o yaml
-oc get group sardeenz-admins-readonly -o yaml
-```
-
-#### 3. Create OAuth Client
+#### 1. Create OAuth Client
 
 Register Sardeenz as an OAuth client with OpenShift:
 
@@ -556,7 +529,7 @@ secret: your-oauth-client-secret
 oc apply -f oauth-client.yaml
 ```
 
-#### 4. Configure Environment Variables
+#### 2. Configure Environment Variables
 
 ```bash
 # Create OAuth secret
@@ -574,35 +547,62 @@ oc create secret generic jwt-config \
 
 Add to deployment (see example in OpenShift Deployment section above).
 
-### Access Denied Handling
+#### 3. Configure RBAC
 
-When a user authenticates via OAuth but is not a member of either `sardeenz-admins` or `sardeenz-admins-readonly`:
+Sardeenz uses Kubernetes-native RBAC to control access. Create Roles and RoleBindings to grant users access to the dashboard.
 
-1. **Authentication succeeds** - User is verified by OpenShift
-2. **Authorization fails** - User lacks required group membership
-3. **Access Denied page** - User is redirected to an informative error page
+**For complete RBAC configuration instructions, see [RBAC Setup Guide](./rbac-setup.md).**
 
-The Access Denied page explains:
-
-- The user is not in any authorized groups
-- Which groups are required (`sardeenz-admins` or `sardeenz-admins-readonly`)
-- Instructions to contact an OpenShift administrator
-
-**To grant access:** An OpenShift cluster administrator must add the user to one of the authorized groups:
+Quick example - give read-only access to all authenticated users:
 
 ```bash
-# Grant full admin access
-oc adm groups add-users sardeenz-admins user@example.com
+# Apply the sardeenz Roles
+oc apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sardeenz-admin-readonly
+  namespace: sardeenz
+rules:
+  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
+    resources: ["admin-readonly"]
+    verbs: ["get"]
+EOF
 
-# Grant read-only access
-oc adm groups add-users sardeenz-admins-readonly user@example.com
+# Bind to all authenticated users
+oc adm policy add-role-to-group sardeenz-admin-readonly system:authenticated -n sardeenz
 ```
 
-After being added to a group, the user can click "Try Again" on the Access Denied page to re-authenticate.
+### Access Denied Handling
+
+When a user authenticates via OAuth but is not bound to either `sardeenz-admin` or `sardeenz-admin-readonly` roles:
+
+1. **Authentication succeeds** - User is verified by OpenShift
+2. **Authorization fails** - User lacks required RoleBinding
+3. **Access Denied page** - User is redirected to an informative error page
+
+**To grant access:** Create a RoleBinding for the user or their group:
+
+```bash
+# Grant full admin access to a user
+oc adm policy add-role-to-user sardeenz-admin user@example.com -n sardeenz
+
+# Grant read-only access to a group
+oc adm policy add-role-to-group sardeenz-admin-readonly team-name -n sardeenz
+```
+
+After creating the RoleBinding, the user can click "Try Again" on the Access Denied page to re-authenticate.
 
 ### RBAC Permissions
 
-For detailed permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-roles).
+| Role             | Access Level                                                  |
+| ---------------- | ------------------------------------------------------------- |
+| `admin`          | Full access - load/unload models, run benchmarks, settings    |
+| `admin-readonly` | Read-only - view models, benchmarks, settings (no mutations)  |
+
+For detailed RBAC setup including ServiceAccount permissions, see [RBAC Setup Guide](./rbac-setup.md).
+
+For API permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-roles).
 
 ## Configuration
 
@@ -821,31 +821,33 @@ oc exec -it <pod-name> -- env | grep -E 'ADMIN_USERNAME|ADMIN_PASSWORD'
 
 **5. Authorization Errors (Access Denied)**
 
-If users see the Access Denied page after OAuth login, they have successfully authenticated but are not members of any authorized groups.
+If users see the Access Denied page after OAuth login, they have successfully authenticated but are not bound to any sardeenz roles.
 
 ```bash
-# Check user's group membership
-oc get users <username> -o yaml
+# Check if the Roles exist
+oc get role sardeenz-admin sardeenz-admin-readonly -n sardeenz
 
-# List members of sardeenz groups
-oc get group sardeenz-admins -o yaml
-oc get group sardeenz-admins-readonly -o yaml
+# Check existing RoleBindings
+oc get rolebindings -n sardeenz -o wide
 
-# Add user to appropriate group
-oc adm groups add-users sardeenz-admins <username>
+# Test access with impersonation
+oc auth can-i get admin.sardeenz.rh-aiservices-bu.io -n sardeenz --as=user@example.com
 
-# Verify the groups exist
-oc get groups | grep sardeenz
+# Add user to appropriate role
+oc adm policy add-role-to-user sardeenz-admin <username> -n sardeenz
+
+# Or add a group
+oc adm policy add-role-to-group sardeenz-admin-readonly team-name -n sardeenz
 ```
 
 **Common issues:**
 
-- **User not in any authorized group** → Add user to `sardeenz-admins` or `sardeenz-admins-readonly`
-- **Groups don't exist** → Create groups with `oc adm groups new sardeenz-admins`
-- **Group names misspelled** → Must be exactly `sardeenz-admins` or `sardeenz-admins-readonly`
+- **Roles don't exist** → Create Roles first (see [RBAC Setup Guide](./rbac-setup.md#step-1-create-the-roles))
+- **No RoleBinding for user/group** → Create RoleBinding with `oc adm policy add-role-to-user` or `add-role-to-group`
+- **ServiceAccount token missing** → Check `sardeenz-auth-reviewer` Role/RoleBinding exists
 - **K8S_API_URL incorrect** → Verify URL and connectivity from pod
 
-**Solution:** Add user to the appropriate group, then have them click "Try Again" on the Access Denied page to re-authenticate.
+**Solution:** Create a RoleBinding for the user or their group, then have them click "Try Again" on the Access Denied page. See [RBAC Setup Guide](./rbac-setup.md) for complete setup instructions.
 
 ### Debug Mode
 
@@ -867,4 +869,5 @@ oc logs -f deployment/sardeenz | jq .
 
 - [Architecture](./architecture.md) - System architecture and design
 - [API Guide](./api-guide.md) - API usage examples
+- [RBAC Setup](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
 - [kvcached Documentation](./kvcached/) - GPU memory sharing setup

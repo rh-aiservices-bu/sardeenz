@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Type, type Static } from '@sinclair/typebox'
 import { randomBytes, timingSafeEqual } from 'crypto'
+import { readFileSync, existsSync } from 'fs'
 import { config } from '../config.js'
 
 /**
@@ -86,16 +87,106 @@ function cleanupExpiredStates(): void {
 setInterval(cleanupExpiredStates, 60 * 1000)
 
 /**
- * Map OpenShift groups to application roles
+ * Get the ServiceAccount token for making K8s API calls
+ * Priority: 1) SERVICE_ACCOUNT_TOKEN env var, 2) Token file (K8s mounted)
+ * Returns undefined if neither is available
  */
-function mapGroupsToRoles(groups: string[]): string[] {
+function getServiceAccountToken(): string | undefined {
+  // Priority 1: Direct token from env var (for dev mode)
+  if (config.serviceAccountToken) {
+    return config.serviceAccountToken
+  }
+
+  // Priority 2: Token file (for K8s deployment)
+  if (existsSync(config.serviceAccountTokenPath)) {
+    return readFileSync(config.serviceAccountTokenPath, 'utf-8').trim()
+  }
+
+  return undefined
+}
+
+/**
+ * Check if a user has access to a specific sardeenz role via Kubernetes RBAC
+ * Uses LocalSubjectAccessReview API (namespace-scoped) to check role permissions
+ * Uses ServiceAccount token (not user's OAuth token) for the API call
+ */
+async function checkResourceAccess(
+  username: string,
+  groups: string[],
+  resource: string
+): Promise<boolean> {
+  const saToken = getServiceAccountToken()
+  if (!saToken) {
+    // Not running in K8s and no SA token configured
+    if (config.nodeEnv === 'development') {
+      // In dev mode without SA token, deny access (require proper setup)
+      return false
+    }
+    throw new Error(
+      'ServiceAccount token not found. Set SERVICE_ACCOUNT_TOKEN env var or ensure running in Kubernetes.'
+    )
+  }
+
+  // Use LocalSubjectAccessReview (namespace-scoped) instead of SubjectAccessReview (cluster-scoped)
+  // This only requires a namespace-scoped Role, not a ClusterRole
+  const response = await fetch(
+    `${config.k8sApiUrl}/apis/authorization.k8s.io/v1/namespaces/${config.namespace}/localsubjectaccessreviews`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${saToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        apiVersion: 'authorization.k8s.io/v1',
+        kind: 'LocalSubjectAccessReview',
+        metadata: {
+          namespace: config.namespace,
+        },
+        spec: {
+          user: username,
+          groups,
+          resourceAttributes: {
+            namespace: config.namespace,
+            group: 'sardeenz.rh-aiservices-bu.io',
+            resource,
+            verb: 'get',
+          },
+        },
+      }),
+    }
+  )
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`LocalSubjectAccessReview failed: ${response.status} - ${errorText}`)
+  }
+
+  const result = (await response.json()) as { status?: { allowed?: boolean } }
+  return result.status?.allowed === true
+}
+
+/**
+ * Resolve user roles via Kubernetes LocalSubjectAccessReview API
+ * Uses namespace-scoped Roles in the sardeenz namespace
+ */
+async function resolveUserRolesViaRbac(
+  username: string,
+  groups: string[]
+): Promise<string[]> {
   const roles: string[] = []
-  if (groups.includes('sardeenz-admins')) {
+
+  // Check admin role
+  if (await checkResourceAccess(username, groups, 'admin')) {
     roles.push('admin')
   }
-  if (groups.includes('sardeenz-admins-readonly')) {
+
+  // Check admin-readonly role
+  if (await checkResourceAccess(username, groups, 'admin-readonly')) {
     roles.push('admin-readonly')
   }
+
   return roles
 }
 
@@ -402,16 +493,19 @@ export default async function authRoutes(fastify: FastifyInstance) {
           'User info retrieved'
         )
 
-        // Map OpenShift groups to application roles
-        const roles = mapGroupsToRoles(userInfo.groups || [])
+        // Resolve user roles via Kubernetes RBAC (SubjectAccessReview)
+        const roles = await resolveUserRolesViaRbac(
+          userInfo.metadata.name,
+          userInfo.groups || []
+        )
 
         if (roles.length === 0) {
           fastify.log.warn(
             { username: userInfo.metadata.name, groups: userInfo.groups },
-            'User has no matching groups for access'
+            'User has no matching role bindings for access'
           )
           return reply.redirect(
-            `${config.frontendUrl}/?auth_error=${encodeURIComponent('Access denied: You are not a member of sardeenz-admins or sardeenz-admins-readonly groups.')}`
+            `${config.frontendUrl}/?auth_error=${encodeURIComponent('Access denied: You are not bound to sardeenz-admin or sardeenz-admin-readonly roles. Contact your administrator to create a RoleBinding.')}`
           )
         }
 

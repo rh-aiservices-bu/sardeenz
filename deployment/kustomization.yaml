@@ -14,6 +14,8 @@ commonLabels:
 
 # Resources to deploy
 resources:
+  - serviceaccount.yaml
+  - rbac.yaml
   - pvc.yaml
   - pvc-app-data.yaml
   - configmap.yaml

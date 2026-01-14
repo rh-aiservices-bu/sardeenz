@@ -165,6 +165,140 @@ npm run dev -w apps/frontend
 
 The backend will start but model loading will fail without GPU/vLLM.
 
+## Developing with OAuth Authentication
+
+If you want to test OAuth authentication locally against a remote OpenShift cluster, follow these steps.
+
+### Prerequisites
+
+- Access to an OpenShift cluster with OAuth configured
+- `oc` CLI logged in with namespace admin permissions
+- A namespace for sardeenz RBAC resources (e.g., `sardeenz`)
+
+### Step 1: Create OAuth Client on OpenShift
+
+Register a development OAuth client with localhost callback URL:
+
+```bash
+oc apply -f - <<EOF
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: sardeenz-dev
+grantMethod: auto
+redirectURIs:
+  - http://localhost:3000/api/auth/callback
+secret: dev-secret-change-me
+EOF
+```
+
+> **Note:** Change the `secret` value to something unique for your development environment.
+
+### Step 2: Create RBAC Resources on OpenShift
+
+Create the namespace and apply the RBAC manifests from the deployment folder:
+
+```bash
+# Create namespace (if it doesn't exist)
+oc new-project sardeenz
+
+# Apply ServiceAccount and RBAC resources
+oc apply -f deployment/serviceaccount.yaml -n sardeenz
+oc apply -f deployment/rbac.yaml -n sardeenz
+```
+
+This creates:
+- The `sardeenz` ServiceAccount
+- The `sardeenz-admin` and `sardeenz-admin-readonly` marker Roles
+- The `sardeenz-auth-reviewer` Role and RoleBinding
+
+### Step 3: Create RoleBinding for Your User
+
+Grant yourself admin access:
+
+```bash
+oc adm policy add-role-to-user sardeenz-admin $(oc whoami) -n sardeenz
+```
+
+For complete RBAC configuration options (adding other users, groups, or all authenticated users), see the [RBAC Setup Guide](./rbac-setup.md).
+
+> **Note for Cluster-Admin Users:** If you're logged in as a cluster-admin, you will automatically have access to sardeenz regardless of whether you have a sardeenz-admin RoleBinding. This is expected Kubernetes RBAC behavior—cluster-admin has wildcard permissions on all resources including sardeenz marker roles. To properly test RBAC authorization (denied access, read-only vs admin), use a non-cluster-admin account.
+
+### Step 4: Generate ServiceAccount Token
+
+Generate a long-lived token for local development:
+
+```bash
+oc create token sardeenz -n sardeenz --duration=8760h
+```
+
+Save this token - you'll need it for the environment variable.
+
+### Step 5: Configure Environment Variables
+
+Create or update `apps/backend/.env` with the OAuth configuration:
+
+```bash
+# Authentication mode
+AUTH_MODE=oauth
+
+# OAuth client configuration (must match the OAuthClient created above)
+OAUTH_CLIENT_ID=sardeenz-dev
+OAUTH_CLIENT_SECRET=dev-secret-change-me
+
+# OpenShift URLs
+OAUTH_ISSUER_URL=https://oauth-openshift.apps.your-cluster.com
+K8S_API_URL=https://api.your-cluster.com:6443
+
+# RBAC configuration
+NAMESPACE=sardeenz
+SERVICE_ACCOUNT_TOKEN=<paste token from Step 4>
+
+# Local development URLs
+API_BASE_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:5173
+
+# JWT secret (any random string for development)
+JWT_SECRET=your-dev-jwt-secret-change-me
+```
+
+### Getting the OpenShift URLs
+
+To find the correct URLs for your cluster:
+
+```bash
+# Get the Kubernetes API URL
+oc whoami --show-server
+# Example output: https://api.your-cluster.com:6443
+
+# The OAuth issuer URL is typically derived from the API URL
+# Replace 'api.' with 'oauth-openshift.apps.' and remove the port
+# Example: https://oauth-openshift.apps.your-cluster.com
+```
+
+### Step 6: Start Development
+
+```bash
+npm run dev
+```
+
+Navigate to `http://localhost:5173`. When you click "Login", you'll be redirected to OpenShift OAuth, then back to the local frontend with your session authenticated.
+
+### Troubleshooting OAuth Development
+
+**"Access denied" after login:**
+- Verify your RoleBinding exists: `oc get rolebindings -n sardeenz`
+- Check if you have the right role: `oc auth can-i get admin.sardeenz.rh-aiservices-bu.io -n sardeenz --as=$(oc whoami)`
+
+**"LocalSubjectAccessReview failed" errors:**
+- Check that the `sardeenz-auth-reviewer` RoleBinding exists
+- Verify your SERVICE_ACCOUNT_TOKEN is valid and not expired
+- Ensure K8S_API_URL is correct and reachable from your machine
+
+**"Invalid redirect URI" from OpenShift:**
+- Verify the OAuthClient has `http://localhost:3000/api/auth/callback` in redirectURIs
+- Ensure API_BASE_URL matches exactly
+
 ## Troubleshooting
 
 ### "uv is not installed"
@@ -229,4 +363,5 @@ kvctl limit <segment-name> 4G
 
 - [Architecture Documentation](./architecture.md) - System design and vLLM integration
 - [API Guide](./api-guide.md) - Model loading API endpoints
+- [RBAC Setup Guide](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
 - [kvcached Documentation](./kvcached/) - Detailed kvcached configuration
