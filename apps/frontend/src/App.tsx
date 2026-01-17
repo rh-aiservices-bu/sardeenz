@@ -65,6 +65,7 @@ import { AlertToastGroup } from './components/AlertToastGroup'
 import Login from './pages/Login'
 import OAuthCallback from './pages/OAuthCallback'
 import AccessDenied from './pages/AccessDenied'
+import { InferenceWorkspaceProvider } from './contexts/InferenceWorkspaceContext'
 import axios from 'axios'
 
 function App() {
@@ -405,7 +406,7 @@ function App() {
   }
 
   return (
-    <>
+    <InferenceWorkspaceProvider>
       <AlertToastGroup notifications={toastNotifications} onRemove={removeToastNotification} />
       <Page masthead={masthead} sidebar={sidebar}>
         <Drawer isExpanded={isDrawerOpen} onExpand={() => setIsDrawerOpen(true)}>
@@ -420,7 +421,7 @@ function App() {
           </DrawerContent>
         </Drawer>
       </Page>
-    </>
+    </InferenceWorkspaceProvider>
   )
 }
 

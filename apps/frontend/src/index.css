@@ -1,0 +1,19 @@
+.chat-header {
+  background-color: #113f6f !important;
+  border-top-left-radius: 10px !important;
+  border-top-right-radius: 10px !important;
+  border-bottom-left-radius: 0px !important;
+  border-bottom-right-radius: 0px !important;
+  padding: 5px !important;
+}
+
+.chat-header-title {
+  color: #ffffff !important;
+  width: 100%;
+  text-align: center;
+  padding-top: 0px;
+}
+
+.chat-header-actions-text .pf-v6-c-check__label {
+    color: #ffffff;
+}

@@ -36,7 +36,15 @@ oc new-project sardeenz
 kubectl create namespace sardeenz
 ```
 
-### 3. Configure Secrets
+### 3. Configure Deployment, ConfigMap and Secrets
+
+Edit the file `deployment.yaml` and adjust the values as you need, like the number of GPUs you want to allocate to Sardeenz.
+
+Edit the file `configmap.yaml` and adjust the values as you need.
+
+Edit the file `secret.yaml` and adjust the values as you need. They will be applied at step 4.
+
+As an example, the following commands show how to manually create different secrets for different configurations. The created Secrets can help you configure properly `secrets.yaml`.
 
 Create the application secret based on your authentication mode. See [Authentication Modes](#authentication-modes) for details.
 
@@ -44,7 +52,7 @@ Create the application secret based on your authentication mode. See [Authentica
 
 ```bash
 # HuggingFace token (optional, only needed for gated models when downloading from HuggingFace)
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=hf-token=$HF_TOKEN \
   -n sardeenz
 ```
@@ -52,7 +60,7 @@ oc create secret generic sardeenz-secrets \
 **For simple authentication (AUTH_MODE=simple):**
 
 ```bash
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=jwt-secret=$(openssl rand -base64 32) \
   --from-literal=admin-password=YOUR_SECURE_PASSWORD \
   --from-literal=hf-token=$HF_TOKEN \
@@ -62,7 +70,7 @@ oc create secret generic sardeenz-secrets \
 **For OAuth 2.0 (AUTH_MODE=oauth):**
 
 ```bash
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=client-id=$OAUTH_CLIENT_ID \
   --from-literal=client-secret=$OAUTH_CLIENT_SECRET \
   --from-literal=issuer-url=$OAUTH_ISSUER_URL \
