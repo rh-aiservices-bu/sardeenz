@@ -38,6 +38,17 @@ Core service managing vLLM subprocess lifecycle:
 - **SIGKILL unload**: Uses SIGKILL (not SIGTERM) to bypass Python cleanup that would delete shared IPC
 - **EngineCore PID tracking**: Extracts GPU-using process PID from logs for accurate memory monitoring
 - **Conflict group detection**: Union-Find algorithm groups models sharing any GPU for sequential loading
+- **Sleep mode**: Put models to sleep to free GPU memory (~90%) while remaining loaded for quick wake-up
+
+**Sleep Mode Methods:**
+
+| Method | Description |
+| ------ | ----------- |
+| `sleepModel(instanceId, level)` | Puts a running model to sleep. Level 1 offloads weights to CPU RAM, Level 2 discards weights. Requires model to be loaded with `enableSleepMode: true`. |
+| `wakeModel(instanceId, tags?)` | Wakes a sleeping model, restoring it to running state. Optionally specify `tags` to reload only specific components (weights, kv_cache). |
+| `isSleeping(instanceId)` | Returns whether the model is currently sleeping and at what level. |
+
+Sleep mode requires the `--enable-sleep-mode` vLLM flag and `VLLM_SERVER_DEV_MODE=1` environment variable, which are automatically set when `enableSleepMode: true` is passed to `launchModel()`.
 
 ### ProcessLogBuffer (`src/services/process-log-buffer.ts`)
 

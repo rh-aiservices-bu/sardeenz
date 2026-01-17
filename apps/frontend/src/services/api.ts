@@ -24,6 +24,9 @@ import type {
   LoginRequest,
   LoginResponse,
   CurrentUserResponse,
+  SleepModelResponse,
+  WakeModelResponse,
+  SleepStatusResponse,
 } from '@sardeenz/types'
 
 // Memory Profile types for API responses
@@ -452,6 +455,29 @@ class ApiClient {
   async unloadModelByInstanceId(instanceId: string): Promise<UnloadModelResponse> {
     const response = await this.client.delete<UnloadModelResponse>(
       `/api/models/instances/${instanceId}`
+    )
+    return response.data
+  }
+
+  async sleepModel(instanceId: string, level: 1 | 2 = 1): Promise<SleepModelResponse> {
+    const response = await this.client.post<SleepModelResponse>(
+      `/api/models/instances/${instanceId}/sleep`,
+      { level }
+    )
+    return response.data
+  }
+
+  async wakeModel(instanceId: string, tags?: 'weights' | 'kv_cache'): Promise<WakeModelResponse> {
+    const response = await this.client.post<WakeModelResponse>(
+      `/api/models/instances/${instanceId}/wake`,
+      tags ? { tags } : {}
+    )
+    return response.data
+  }
+
+  async getSleepStatus(instanceId: string): Promise<SleepStatusResponse> {
+    const response = await this.client.get<SleepStatusResponse>(
+      `/api/models/instances/${instanceId}/sleep-status`
     )
     return response.data
   }

@@ -7,6 +7,7 @@ This guide provides practical examples for using the Sardeenz APIs.
 - [Overview](#overview)
 - [Authentication](#authentication)
 - [Controller API](#controller-api)
+- [Sleep Mode API](#sleep-mode-api)
 - [GPU API](#gpu-api)
 - [Direct Proxy API](#direct-proxy-api)
 - [Proxy API](#proxy-api)
@@ -286,6 +287,7 @@ When authenticated with the `admin-readonly` role, the frontend displays visual 
 | `gpu_ids`              | number[] | No       | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory        |
 | `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). kvcached is disabled when >1 |
 | `extra_args`           | string[] | No       | Additional vLLM CLI arguments                                                    |
+| `enable_sleep_mode`    | boolean  | No       | Enable sleep mode for this model. When enabled, the model can be put to sleep to free GPU memory (~90%) while remaining loaded for quick wake-up. See [Sleep Mode API](#sleep-mode-api). |
 
 **Response (202 Accepted):**
 
@@ -772,6 +774,164 @@ Each GPU with loaded models includes a `kvcache` object with per-GPU KVCache met
 The KVCache total is calculated dynamically as: `GPU Total - Model Baselines - Other Processes`. This replaces the old approach of reading a stale `total_size` from the IPC segment.
 
 **Note:** For tensor-parallel models spanning multiple GPUs, KVCache usage is split evenly across participating GPUs.
+
+## Sleep Mode API
+
+Sleep mode allows models to be put to sleep to free GPU memory (~90%) while remaining loaded for quick wake-up. This is useful for models that are not frequently used but need to be available on short notice.
+
+> **Important:** Sleep mode must be enabled when loading the model via the `enable_sleep_mode` parameter. Models loaded without this flag cannot be put to sleep.
+
+### How Sleep Mode Works
+
+vLLM's sleep mode offloads model weights from GPU to CPU RAM:
+
+| Level | Action | Memory Freed | Use Case |
+| ----- | ------ | ------------ | -------- |
+| 1 | Offload weights to CPU RAM, discard KV cache | ~90% | Quick sleep/wake cycles |
+| 2 | Discard weights and KV cache entirely | ~95% | Model switching, RLHF |
+
+Wake-up reloads the weights from CPU back to GPU, which is faster than loading from disk.
+
+### Put Model to Sleep
+
+**Endpoint:** `POST /api/models/instances/:instance_id/sleep`
+
+Puts a running model to sleep to free GPU memory.
+
+**Query Parameters:**
+
+| Parameter | Type   | Default | Description                                      |
+| --------- | ------ | ------- | ------------------------------------------------ |
+| `level`   | number | 1       | Sleep level: 1 (offload to CPU) or 2 (discard)   |
+
+**Response (200 OK):**
+
+```json
+{
+  "status": "success",
+  "instance_id": "llama-3-2-1b-abc123",
+  "model_path": "meta-llama/Llama-3.2-1B",
+  "sleep_level": 1,
+  "slept_at": "2025-11-29T12:00:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Condition | Message |
+| ------ | --------- | ------- |
+| 400 | Sleep mode not enabled | Model was not loaded with sleep mode enabled |
+| 404 | Instance not found | Model instance {id} not found |
+| 409 | Model not running | Cannot sleep model: current status is {status} |
+
+**Example (curl):**
+
+```bash
+# Put model to sleep (level 1 - offload to CPU)
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/models/instances/abc123/sleep?level=1"
+
+# Put model to deep sleep (level 2 - discard)
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/models/instances/abc123/sleep?level=2"
+```
+
+### Wake Up Model
+
+**Endpoint:** `POST /api/models/instances/:instance_id/wake`
+
+Wakes a sleeping model, restoring it to running state.
+
+**Request Body (optional):**
+
+```json
+{
+  "tags": "weights"
+}
+```
+
+**Request Fields:**
+
+| Field  | Type   | Required | Description                                                              |
+| ------ | ------ | -------- | ------------------------------------------------------------------------ |
+| `tags` | string | No       | What to reload: `weights` (model weights) or `kv_cache` (KV cache data) |
+
+**Response (200 OK):**
+
+```json
+{
+  "status": "success",
+  "instance_id": "llama-3-2-1b-abc123",
+  "model_path": "meta-llama/Llama-3.2-1B",
+  "woke_at": "2025-11-29T12:05:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Condition | Message |
+| ------ | --------- | ------- |
+| 404 | Instance not found | Model instance {id} not found |
+| 409 | Model not sleeping | Model is not sleeping |
+
+**Example (curl):**
+
+```bash
+# Wake up model
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/models/instances/abc123/wake"
+```
+
+### Get Sleep Status
+
+**Endpoint:** `GET /api/models/instances/:instance_id/sleep-status`
+
+Returns the current sleep status of a model instance.
+
+**Response (200 OK):**
+
+```json
+{
+  "instance_id": "llama-3-2-1b-abc123",
+  "is_sleeping": true,
+  "sleep_level": 1
+}
+```
+
+When the model is not sleeping:
+
+```json
+{
+  "instance_id": "llama-3-2-1b-abc123",
+  "is_sleeping": false
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/models/instances/abc123/sleep-status"
+```
+
+### Sleep Mode and Inference
+
+When a model is sleeping, inference requests to that model will receive a 503 error:
+
+```json
+{
+  "error": {
+    "message": "Model {model_name} is sleeping. Wake it up to serve requests.",
+    "type": "service_unavailable",
+    "code": "model_sleeping"
+  }
+}
+```
+
+Wake the model before sending inference requests.
 
 ## GPU API
 

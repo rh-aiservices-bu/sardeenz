@@ -95,6 +95,9 @@ export function LoadModelDialog({
   const [isCheckingMemory, setIsCheckingMemory] = useState(false)
   const memoryCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Sleep mode state (enabled by default)
+  const [enableSleepMode, setEnableSleepMode] = useState(true)
+
   // GPU info state (needed for memory check)
   const [gpuName, setGpuName] = useState<string | null>(null)
 
@@ -278,6 +281,11 @@ export function LoadModelDialog({
         }
       }
 
+      // Include sleep mode option
+      if (enableSleepMode) {
+        request.enable_sleep_mode = true
+      }
+
       const result = await onLoad(request)
 
       // Start listening for events from this instance
@@ -312,6 +320,7 @@ export function LoadModelDialog({
     setLocalModels([])
     setCurrentSubpath('')
     setLocalModelsBasePath('')
+    setEnableSleepMode(false)
     onClose()
   }, [onClose])
 
@@ -718,6 +727,16 @@ export function LoadModelDialog({
                     </HelperText>
                   </FormHelperText>
                 ) : null}
+              </FormGroup>
+
+              <FormGroup fieldId="enable-sleep-mode">
+                <Checkbox
+                  id="enable-sleep-mode"
+                  label="Enable Sleep Mode"
+                  description="Allows model to be put to sleep to free GPU memory (~90%) while keeping it loaded for quick wake-up"
+                  isChecked={enableSleepMode}
+                  onChange={(_event, checked) => setEnableSleepMode(checked)}
+                />
               </FormGroup>
 
               <FormGroup label="Additional vLLM Arguments" fieldId="extra-args">

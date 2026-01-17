@@ -37,6 +37,7 @@ interface EntryRow {
   gpu_ids: string | null // JSON
   tensor_parallel_size: number
   load_order: number
+  sleep_mode_enabled: number // SQLite stores booleans as 0/1
 }
 
 // Convert row to domain object
@@ -63,6 +64,7 @@ function rowToEntry(row: EntryRow): ModelConfigurationEntry {
     gpuIds: row.gpu_ids ? JSON.parse(row.gpu_ids) : undefined,
     tensorParallelSize: row.tensor_parallel_size,
     loadOrder: row.load_order,
+    sleepModeEnabled: row.sleep_mode_enabled === 1,
   }
 }
 
@@ -83,8 +85,10 @@ class ModelConfigurationStore {
     const id = randomUUID()
     const now = new Date().toISOString()
 
-    // Filter to only running models
-    const runningInstances = instances.filter((i) => i.status === 'running')
+    // Filter to running and sleeping models (both are valid active configurations)
+    const activeInstances = instances.filter(
+      (i) => i.status === 'running' || i.status === 'sleeping'
+    )
 
     const insertConfig = this.db.prepare(`
       INSERT INTO model_configurations (id, name, description, model_count, created_at)
@@ -93,14 +97,14 @@ class ModelConfigurationStore {
 
     const insertEntry = this.db.prepare(`
       INSERT INTO model_configuration_entries
-      (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const transaction = this.db.transaction(() => {
-      insertConfig.run(id, input.name, input.description ?? null, runningInstances.length, now)
+      insertConfig.run(id, input.name, input.description ?? null, activeInstances.length, now)
 
-      runningInstances.forEach((instance, index) => {
+      activeInstances.forEach((instance, index) => {
         // Determine if served_model_name differs from model path
         const servedModelName =
           instance.modelName !== instance.modelPath ? instance.modelName : null
@@ -115,7 +119,8 @@ class ModelConfigurationStore {
           null, // Extra args not captured from running instance
           instance.gpuIds.length > 0 ? JSON.stringify(instance.gpuIds) : null,
           instance.tensorParallelSize,
-          index
+          index,
+          instance.sleepModeEnabled ? 1 : 0
         )
       })
     })
@@ -126,7 +131,7 @@ class ModelConfigurationStore {
       id,
       name: input.name,
       description: input.description,
-      modelCount: runningInstances.length,
+      modelCount: activeInstances.length,
       createdAt: now,
     }
   }

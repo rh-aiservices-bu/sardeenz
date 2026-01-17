@@ -89,6 +89,12 @@ export interface ModelInstance {
   kvcachedEnabled: boolean
   /** Memory baseline per GPU in GB (captured when model becomes 'running', before any inference) */
   memoryBaselineByGpu: Record<number, number>
+  /** Whether sleep mode is enabled for this instance (requires --enable-sleep-mode flag) */
+  sleepModeEnabled: boolean
+  /** Current sleep level if sleeping (1 = weights to CPU, 2 = discard all) */
+  sleepLevel?: 1 | 2
+  /** Timestamp when model went to sleep */
+  sleptAt?: Date
 }
 
 export interface InferenceRequest {
