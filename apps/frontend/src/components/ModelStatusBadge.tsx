@@ -1,4 +1,5 @@
 import { Label, Spinner } from '@patternfly/react-core'
+import { MoonIcon } from '@patternfly/react-icons'
 import type { ModelStatus } from '@sardeenz/types'
 
 interface ModelStatusBadgeProps {
@@ -33,9 +34,16 @@ export function ModelStatusBadge({ status, isCompact = false }: ModelStatusBadge
   }
 
   const isLoading = status === 'starting' || status === 'stopping'
+  const isSleeping = status === 'sleeping'
+
+  const getIcon = () => {
+    if (isLoading) return <Spinner size="sm" />
+    if (isSleeping) return <MoonIcon />
+    return undefined
+  }
 
   return (
-    <Label color={getColor()} isCompact={isCompact} icon={isLoading ? <Spinner size="sm" /> : undefined}>
+    <Label color={getColor()} isCompact={isCompact} icon={getIcon()}>
       {getLabel()}
     </Label>
   )

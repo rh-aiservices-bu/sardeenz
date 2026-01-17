@@ -157,16 +157,18 @@ export class MemoryMonitor {
         pidToGpuMemory.set(proc.pid, { gpuIndex: proc.gpu, memoryMB: proc.gpuMemoryMB })
       }
 
-      // Get all running model instances
+      // Get all running and sleeping model instances (sleeping models still consume some GPU memory)
       const allInstances = modelStore.getAll()
-      const runningInstances = allInstances.filter((i) => i.status === 'running')
+      const activeInstances = allInstances.filter(
+        (i) => i.status === 'running' || i.status === 'sleeping'
+      )
 
       // Group models by GPU with display name management
       const modelsByGpu = new Map<number, ModelGpuMemory[]>()
       const displayNameCounts = new Map<string, number>()
 
-      for (let index = 0; index < runningInstances.length; index++) {
-        const instance = runningInstances[index]
+      for (let index = 0; index < activeInstances.length; index++) {
+        const instance = activeInstances[index]
         const gpuPid = instance.engineCorePid ?? instance.processId
         const baseName = getDisplayName(instance.modelPath)
         const count = (displayNameCounts.get(baseName) ?? 0) + 1
@@ -200,6 +202,7 @@ export class MemoryMonitor {
               display_name: `${displayName} (TP)`,
               gpu_memory_gb: perGpuMemoryGb,
               color: getModelColor(instance.id, index),
+              is_sleeping: instance.status === 'sleeping',
             })
           }
         } else {
@@ -217,13 +220,14 @@ export class MemoryMonitor {
             display_name: displayName,
             gpu_memory_gb: memoryGb,
             color: getModelColor(instance.id, index),
+            is_sleeping: instance.status === 'sleeping',
           })
         }
       }
 
       // Sum model baselines per GPU (from memoryBaselineByGpu captured at model load)
       const baselinesByGpu = new Map<number, number>() // gpuId -> total baseline GB
-      for (const instance of runningInstances) {
+      for (const instance of activeInstances) {
         for (const [gpuIdStr, baselineGb] of Object.entries(instance.memoryBaselineByGpu ?? {})) {
           const gpuId = parseInt(gpuIdStr)
           baselinesByGpu.set(gpuId, (baselinesByGpu.get(gpuId) ?? 0) + baselineGb)

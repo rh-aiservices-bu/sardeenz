@@ -9,7 +9,11 @@ interface GpuGroupSectionProps {
   isExpanded: boolean
   onToggle: (gpuKey: string) => void
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
+  onSleep?: (instanceId: string) => void
+  onWake?: (instanceId: string) => void
   unloadingInstanceId: string | null
+  sleepingInstanceId?: string | null
+  wakingInstanceId?: string | null
   expandedCards: Set<string>
   onCardToggle: (instanceId: string) => void
 }
@@ -25,7 +29,11 @@ export function GpuGroupSection({
   isExpanded,
   onToggle,
   onUnload,
+  onSleep,
+  onWake,
   unloadingInstanceId,
+  sleepingInstanceId,
+  wakingInstanceId,
   expandedCards,
   onCardToggle,
 }: GpuGroupSectionProps) {
@@ -68,7 +76,7 @@ export function GpuGroupSection({
       )}
       {statusCounts.sleeping > 0 && (
         <FlexItem>
-          <Label isCompact color="orange">
+          <Label isCompact color="purple">
             {statusCounts.sleeping} sleeping
           </Label>
         </FlexItem>
@@ -105,7 +113,11 @@ export function GpuGroupSection({
               id={`model-card-${model.id}`}
               model={model}
               onUnload={onUnload}
+              onSleep={onSleep}
+              onWake={onWake}
               isUnloading={unloadingInstanceId === model.id}
+              isSleeping={sleepingInstanceId === model.id}
+              isWaking={wakingInstanceId === model.id}
               isExpanded={expandedCards.has(model.id)}
               onToggle={() => onCardToggle(model.id)}
             />

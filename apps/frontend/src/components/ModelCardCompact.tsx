@@ -29,7 +29,7 @@ import {
   Tooltip,
   ClipboardCopyButton,
 } from '@patternfly/react-core'
-import { EllipsisVIcon, FileIcon, TrashIcon, OutlinedClockIcon } from '@patternfly/react-icons'
+import { EllipsisVIcon, FileIcon, TrashIcon, OutlinedClockIcon, MoonIcon, SunIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO, ModelStatus } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
 import { ViewLogsDialog } from './ViewLogsDialog'
@@ -40,7 +40,11 @@ import { useAuth } from '../contexts/AuthContext'
 interface ModelCardCompactProps {
   model: ModelInstanceDTO
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
+  onSleep?: (instanceId: string) => void
+  onWake?: (instanceId: string) => void
   isUnloading?: boolean
+  isSleeping?: boolean
+  isWaking?: boolean
   isExpanded: boolean
   onToggle: () => void
   id?: string
@@ -63,7 +67,11 @@ const STATUS_BORDER_COLORS: Record<ModelStatus, string> = {
 export function ModelCardCompact({
   model,
   onUnload,
+  onSleep,
+  onWake,
   isUnloading = false,
+  isSleeping = false,
+  isWaking = false,
   isExpanded,
   onToggle,
   id,
@@ -194,7 +202,7 @@ export function ModelCardCompact({
                 )}
               >
               <DropdownList>
-                {(model.status === 'running' || model.status === 'failed') && (
+                {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && (
                   <DropdownItem
                     key="logs"
                     icon={<FileIcon />}
@@ -211,7 +219,27 @@ export function ModelCardCompact({
                     Memory details
                   </DropdownItem>
                 )}
-                {(model.status === 'running' || model.status === 'failed') && <Divider key="divider" />}
+                {model.status === 'running' && model.sleep_mode_enabled && onSleep && (
+                  <DropdownItem
+                    key="sleep"
+                    icon={<MoonIcon />}
+                    onClick={() => onSleep(model.id)}
+                    isDisabled={isSleeping || !canWrite}
+                  >
+                    {isSleeping ? 'Sleeping...' : 'Put to Sleep'}
+                  </DropdownItem>
+                )}
+                {model.status === 'sleeping' && onWake && (
+                  <DropdownItem
+                    key="wake"
+                    icon={<SunIcon />}
+                    onClick={() => onWake(model.id)}
+                    isDisabled={isWaking || !canWrite}
+                  >
+                    {isWaking ? 'Waking...' : 'Wake Up'}
+                  </DropdownItem>
+                )}
+                {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && <Divider key="divider" />}
                 <DropdownItem
                   key="unload"
                   icon={<TrashIcon />}

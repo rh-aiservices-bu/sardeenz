@@ -13,6 +13,7 @@ export interface LoadModelRequest {
   tensor_parallel_size?: number // For large models spanning multiple GPUs (default: 1)
   source_type?: ModelSourceType // Model source type (default: 'huggingface')
   served_model_name?: string // Name for vLLM --served-model-name (default: model_path)
+  enable_sleep_mode?: boolean // Enable vLLM sleep mode for GPU memory offloading
 }
 
 export interface LoadModelResponse {
@@ -68,6 +69,9 @@ export interface ModelInstanceDTO {
   tensor_parallel_size: number // 1 = single GPU, >1 = spanning multiple GPUs
   kvcached_enabled: boolean // Whether kvcached is enabled (false for tensor parallel)
   memory_baseline_by_gpu?: Record<number, number> // Memory baseline per GPU in GB
+  sleep_mode_enabled: boolean // Whether sleep mode is enabled for this instance
+  sleep_level?: 1 | 2 // Current sleep level if sleeping
+  slept_at?: string // ISO timestamp when model went to sleep
 }
 
 export interface GetModelResponse {
@@ -104,6 +108,7 @@ export interface ModelGpuMemory {
   display_name: string // Short name for legend, unique per instance (e.g., "Llama-3.2-1B", "Llama-3.2-1B (2)")
   gpu_memory_gb: number // Model's GPU footprint (weights + CUDA graphs)
   color: string // Assigned color for visualization
+  is_sleeping?: boolean // Whether model is currently sleeping
 }
 
 export interface MemoryUsageResponse {
@@ -356,4 +361,42 @@ export interface ListLocalModelsResponse {
 export interface LocalModelsStatusResponse {
   enabled: boolean
   path?: string
+}
+
+// Sleep Mode API types
+
+/** Request to put a model to sleep */
+export interface SleepModelRequest {
+  /** Sleep level: 1 = offload weights to CPU, 2 = discard weights and KV cache */
+  level?: 1 | 2
+}
+
+/** Response after putting a model to sleep */
+export interface SleepModelResponse {
+  status: 'success'
+  instance_id: string
+  model_path: string
+  sleep_level: 1 | 2
+  slept_at: string
+}
+
+/** Request to wake a sleeping model */
+export interface WakeModelRequest {
+  /** Optional tags for selective wake (vLLM-specific) */
+  tags?: 'weights' | 'kv_cache'
+}
+
+/** Response after waking a model */
+export interface WakeModelResponse {
+  status: 'success'
+  instance_id: string
+  model_path: string
+  woke_at: string
+}
+
+/** Response for checking sleep status */
+export interface SleepStatusResponse {
+  instance_id: string
+  is_sleeping: boolean
+  sleep_level?: 1 | 2
 }

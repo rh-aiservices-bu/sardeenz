@@ -62,6 +62,7 @@ export const LoadModelRequestSchema = Type.Object({
   tensor_parallel_size: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
   source_type: Type.Optional(ModelSourceTypeSchema),
   served_model_name: Type.Optional(Type.String({ minLength: 1 })),
+  enable_sleep_mode: Type.Optional(Type.Boolean()),
 })
 
 export const LoadModelResponseSchema = Type.Object({
@@ -104,6 +105,9 @@ export const ModelInstanceDTOSchema = Type.Object({
   gpu_ids: Type.Array(Type.Integer()),
   tensor_parallel_size: Type.Integer(),
   kvcached_enabled: Type.Boolean(),
+  sleep_mode_enabled: Type.Boolean(),
+  sleep_level: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+  slept_at: Type.Optional(Type.String({ format: 'date-time' })),
 })
 
 export const ListModelsResponseSchema = Type.Object({
@@ -244,6 +248,7 @@ export const ModelGpuMemorySchema = Type.Object({
   display_name: Type.String(),
   gpu_memory_gb: Type.Number(),
   color: Type.String(),
+  is_sleeping: Type.Optional(Type.Boolean()),
 })
 
 export const KVCacheMetricsSchema = Type.Object({
@@ -371,3 +376,41 @@ export type DetokenizeRequest = Static<typeof DetokenizeRequestSchema>
 export type VLLMGenericRequest = Static<typeof VLLMGenericRequestSchema>
 export type VLLMModel = Static<typeof VLLMModelSchema>
 export type VLLMModelsListResponse = Static<typeof VLLMModelsListResponseSchema>
+
+// Sleep Mode schemas
+export const SleepLevelSchema = Type.Union([Type.Literal(1), Type.Literal(2)])
+
+export const SleepModelRequestSchema = Type.Object({
+  level: Type.Optional(SleepLevelSchema),
+})
+
+export const SleepModelResponseSchema = Type.Object({
+  status: Type.Literal('success'),
+  instance_id: Type.String({ format: 'uuid' }),
+  model_path: Type.String(),
+  sleep_level: SleepLevelSchema,
+  slept_at: Type.String({ format: 'date-time' }),
+})
+
+export const WakeModelRequestSchema = Type.Object({
+  tags: Type.Optional(Type.Union([Type.Literal('weights'), Type.Literal('kv_cache')])),
+})
+
+export const WakeModelResponseSchema = Type.Object({
+  status: Type.Literal('success'),
+  instance_id: Type.String({ format: 'uuid' }),
+  model_path: Type.String(),
+  woke_at: Type.String({ format: 'date-time' }),
+})
+
+export const SleepStatusResponseSchema = Type.Object({
+  instance_id: Type.String({ format: 'uuid' }),
+  is_sleeping: Type.Boolean(),
+  sleep_level: Type.Optional(SleepLevelSchema),
+})
+
+export type SleepModelRequestType = Static<typeof SleepModelRequestSchema>
+export type SleepModelResponseType = Static<typeof SleepModelResponseSchema>
+export type WakeModelRequestType = Static<typeof WakeModelRequestSchema>
+export type WakeModelResponseType = Static<typeof WakeModelResponseSchema>
+export type SleepStatusResponseType = Static<typeof SleepStatusResponseSchema>

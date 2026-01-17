@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Sleep Mode**: Put models to sleep to free GPU memory (~90%) while keeping them loaded for quick wake-up
+  - Enable sleep mode per-model at load time via `enable_sleep_mode` parameter
+  - Level 1: Offload weights to CPU RAM (~90% GPU freed)
+  - Level 2: Discard weights and KV cache (for model switching/RLHF)
+  - New API endpoints: `POST /api/models/instances/:id/sleep`, `POST .../wake`, `GET .../sleep-status`
+  - UI: "Enable Sleep Mode" checkbox in Load Model dialog
+  - UI: Sleep/Wake actions in model dropdown menus with moon/sun icons
+  - Purple "sleeping" status badge with moon icon
+  - Proxy returns 503 with clear message for sleeping models
+
 ## [0.3.0] - 2026-01-10
 
 ### Per-GPU KVCache Metrics

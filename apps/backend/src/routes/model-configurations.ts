@@ -392,6 +392,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
                   sourceType: entry.sourceType,
                   servedModelName: entry.servedModelName,
                   extraArgs: entry.extraArgs,
+                  enableSleepMode: entry.sleepModeEnabled,
                 })
                 fastify.log.info(
                   { modelPath: entry.modelPath, gpuIds: entry.gpuIds },

@@ -12,7 +12,7 @@ import {
   Tooltip,
   ClipboardCopyButton,
 } from '@patternfly/react-core'
-import { TrashIcon, FileIcon, OutlinedClockIcon } from '@patternfly/react-icons'
+import { TrashIcon, FileIcon, OutlinedClockIcon, MoonIcon, SunIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
 import { ViewLogsDialog } from './ViewLogsDialog'
@@ -28,7 +28,11 @@ interface ModelTableProps {
   sortDirection: SortDirection
   onSort: (field: SortField) => void
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
+  onSleep?: (instanceId: string) => void
+  onWake?: (instanceId: string) => void
   unloadingInstanceId: string | null
+  sleepingInstanceId?: string | null
+  wakingInstanceId?: string | null
 }
 
 // Column definitions for sorting
@@ -43,7 +47,11 @@ export function ModelTable({
   sortDirection,
   onSort,
   onUnload,
+  onSleep,
+  onWake,
   unloadingInstanceId,
+  sleepingInstanceId,
+  wakingInstanceId,
 }: ModelTableProps) {
   const { canWrite } = useAuth()
 
@@ -194,7 +202,7 @@ export function ModelTable({
                 </Td>
                 <Td dataLabel="Actions">
                   <Flex gap={{ default: 'gapXs' }}>
-                    {(model.status === 'running' || model.status === 'failed') && (
+                    {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && (
                       <FlexItem>
                         <Tooltip content="View logs">
                           <Button
@@ -202,6 +210,34 @@ export function ModelTable({
                             icon={<FileIcon />}
                             aria-label={`View logs for ${model.model_path}`}
                             onClick={() => setLogsModalOpen(model.id)}
+                          />
+                        </Tooltip>
+                      </FlexItem>
+                    )}
+                    {model.status === 'running' && model.sleep_mode_enabled && onSleep && (
+                      <FlexItem>
+                        <Tooltip content={!canWrite ? 'You do not have permission' : 'Put to Sleep'}>
+                          <Button
+                            variant="plain"
+                            icon={<MoonIcon />}
+                            aria-label={`Put ${model.model_path} to sleep`}
+                            onClick={() => onSleep(model.id)}
+                            isDisabled={sleepingInstanceId === model.id || !canWrite}
+                            isLoading={sleepingInstanceId === model.id}
+                          />
+                        </Tooltip>
+                      </FlexItem>
+                    )}
+                    {model.status === 'sleeping' && onWake && (
+                      <FlexItem>
+                        <Tooltip content={!canWrite ? 'You do not have permission' : 'Wake Up'}>
+                          <Button
+                            variant="plain"
+                            icon={<SunIcon />}
+                            aria-label={`Wake up ${model.model_path}`}
+                            onClick={() => onWake(model.id)}
+                            isDisabled={wakingInstanceId === model.id || !canWrite}
+                            isLoading={wakingInstanceId === model.id}
                           />
                         </Tooltip>
                       </FlexItem>

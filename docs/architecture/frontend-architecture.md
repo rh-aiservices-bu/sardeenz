@@ -568,7 +568,7 @@ export function useWebSocket(url: string) {
 
 ## Key Component Specifications
 
-### 1. ModelCard
+### 1. ModelCard / ModelCardCompact
 
 **Purpose:** Display a single model instance with status, GPU placement, and actions.
 
@@ -577,7 +577,11 @@ export function useWebSocket(url: string) {
 interface ModelCardProps {
   model: ModelInstanceDTO;
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void;
+  onSleep?: (instanceId: string) => void;
+  onWake?: (instanceId: string) => void;
   isUnloading?: boolean;
+  isSleeping?: boolean;
+  isWaking?: boolean;
 }
 ```
 
@@ -587,6 +591,8 @@ interface ModelCardProps {
 - `Badge` (via `ModelStatusBadge` for status)
 - `Button` (for actions)
 - `ExpandableSection` (for launch command)
+- `Dropdown` with `DropdownItem` for actions menu
+- `MoonIcon`, `SunIcon` (for sleep/wake actions)
 
 **Layout:**
 ```
@@ -628,6 +634,7 @@ interface LoadModelConfig {
   displayName: string;
   gpuMemoryLimit: number; // 0.1 - 0.9
   port?: number; // Optional, auto-assign if not provided
+  enableSleepMode?: boolean; // Enable sleep mode for this model
 }
 ```
 
@@ -637,6 +644,7 @@ interface LoadModelConfig {
 - `TextInput` (model path, display name)
 - `Slider` (GPU memory allocation)
 - `NumberInput` (port, optional)
+- `Checkbox` (Enable Sleep Mode)
 - `Button` (Load, Cancel)
 
 **Validation:**
@@ -644,6 +652,7 @@ interface LoadModelConfig {
 - Display name: Required, max 50 chars
 - GPU memory: 0.1-0.9 (10%-90%)
 - Port: Optional, 1024-65535
+- Enable Sleep Mode: Optional checkbox to allow the model to be put to sleep later
 
 ### 3. MemoryUsageChart
 
@@ -677,17 +686,19 @@ interface MemoryUsageChartProps {
 **Props:**
 ```tsx
 interface ModelStatusBadgeProps {
-  status: 'starting' | 'active' | 'stopping' | 'failed';
+  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed';
 }
 ```
 
 **PatternFly Components:**
 - `Badge`
-- `Spinner` (for 'starting' status)
+- `Spinner` (for 'starting', 'stopping' status)
+- `MoonIcon` (for 'sleeping' status)
 
 **Color Mapping:**
 - `starting` → Blue badge with spinner
 - `active` → Green badge
+- `sleeping` → Purple badge with moon icon
 - `stopping` → Orange badge with spinner
 - `failed` → Red badge
 

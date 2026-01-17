@@ -15,6 +15,7 @@ import {
   Tab,
   TabTitleText,
 } from '@patternfly/react-core'
+import { MoonIcon } from '@patternfly/react-icons'
 import { ResponsiveBar } from '@nivo/bar'
 import type { MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient } from '../services/api'
@@ -37,6 +38,19 @@ const KVCACHE_COLORS = {
 
 const FREE_COLOR = '#D2D2D2' // Light gray for free space
 
+// Pattern definition for sleeping models (diagonal hatching)
+const SLEEPING_PATTERN_DEFS = [
+  {
+    id: 'sleeping-pattern',
+    type: 'patternLines' as const,
+    background: 'inherit',
+    color: 'rgba(0, 0, 0, 0.3)',
+    rotation: -45,
+    lineWidth: 3,
+    spacing: 8,
+  },
+]
+
 // Nivo tooltip theme - detects PatternFly dark mode for proper styling
 const getTooltipTheme = () => {
   const isDark = document.documentElement.classList.contains('pf-v6-theme-dark')
@@ -57,6 +71,7 @@ const getTooltipTheme = () => {
 interface GpuMemoryPanelProps {
   defaultRefreshInterval?: number | null
   onModelClick?: (instanceId: string) => void
+  refreshTrigger?: number
 }
 
 /**
@@ -66,7 +81,11 @@ interface GpuMemoryPanelProps {
  * - KVCache: shared pool (Prealloc / Used / Free)
  * - GPU: per-model breakdown with colors
  */
-export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: GpuMemoryPanelProps) {
+export function GpuMemoryPanel({
+  defaultRefreshInterval = 5000,
+  onModelClick,
+  refreshTrigger,
+}: GpuMemoryPanelProps) {
   const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -94,7 +113,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
 
     const interval = setInterval(fetchMemoryUsage, refreshInterval)
     return () => clearInterval(interval)
-  }, [fetchMemoryUsage, refreshInterval])
+  }, [fetchMemoryUsage, refreshInterval, refreshTrigger])
 
   // Get the currently selected GPU data
   const selectedGpu: PerGpuMetrics | null = useMemo(() => {
@@ -122,7 +141,13 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
 
   // Build GPU bar data with per-model breakdown for selected GPU
   const gpuData = useMemo(() => {
-    if (!selectedGpu) return { data: [], keys: [], colors: {} as Record<string, string> }
+    if (!selectedGpu)
+      return {
+        data: [],
+        keys: [],
+        colors: {} as Record<string, string>,
+        fill: [] as Array<{ match: { id: string }; id: string }>,
+      }
 
     const { models } = selectedGpu
     const modelsMemory = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
@@ -133,6 +158,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
     const dataObj: Record<string, number | string> = { id: 'GPU' }
     const keys: string[] = []
     const colors: Record<string, string> = {}
+    const fill: Array<{ match: { id: string }; id: string }> = []
 
     // Add each model
     models.forEach((model) => {
@@ -140,6 +166,11 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
       dataObj[key] = Number(model.gpu_memory_gb.toFixed(2))
       keys.push(key)
       colors[key] = model.color
+
+      // Apply hatching pattern to sleeping models
+      if (model.is_sleeping) {
+        fill.push({ match: { id: key }, id: 'sleeping-pattern' })
+      }
     })
 
     // Add Other (system processes, etc.)
@@ -154,7 +185,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
     keys.push('Free')
     colors['Free'] = FREE_COLOR
 
-    return { data: [dataObj], keys, colors }
+    return { data: [dataObj], keys, colors, fill }
   }, [selectedGpu])
 
   const formatGb = (value: number) => `${value.toFixed(2)} GB`
@@ -257,8 +288,8 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
               {memoryData && memoryData.gpus.length === 1 && selectedGpu && (
                 <>{selectedGpu.name} — </>
               )}
-              {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}{' '}
-              ({selectedGpu?.utilization_percent.toFixed(0) ?? 0}% utilized)
+              VRAM: {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}{' — '}
+              GPU Load: {selectedGpu?.utilization_percent.toFixed(0) ?? 0}%
             </Content>
             <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
               <ResponsiveBar
@@ -269,6 +300,8 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
                 margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
                 padding={0}
                 colors={(bar) => gpuData.colors[bar.id as string] || '#ccc'}
+                defs={SLEEPING_PATTERN_DEFS}
+                fill={gpuData.fill}
                 borderRadius={4}
                 enableLabel={false}
                 enableGridY={false}
@@ -322,9 +355,20 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000, onModelClick }: 
                     style={{
                       cursor: onModelClick ? 'pointer' : 'default',
                       fontSize: 'var(--pf-t--global--font--size--sm)',
+                      opacity: model.is_sleeping ? 0.7 : 1,
                     }}
                   >
-                    <span style={{ color: model.color }}>●</span> {model.display_name} ({formatGb(model.gpu_memory_gb)})
+                    <span style={{ color: model.color }}>●</span> {model.display_name}
+                    {model.is_sleeping && (
+                      <MoonIcon
+                        style={{
+                          marginLeft: '4px',
+                          fontSize: 'var(--pf-t--global--font--size--xs)',
+                          color: 'var(--pf-t--global--text--color--subtle)',
+                        }}
+                      />
+                    )}{' '}
+                    ({formatGb(model.gpu_memory_gb)})
                   </span>
                 </FlexItem>
               ))}

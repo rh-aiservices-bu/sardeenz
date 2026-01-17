@@ -20,6 +20,7 @@ export interface ModelConfigurationEntry {
   gpuIds?: number[]
   tensorParallelSize: number
   loadOrder: number
+  sleepModeEnabled?: boolean
 }
 
 /**

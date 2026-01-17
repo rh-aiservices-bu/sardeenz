@@ -50,10 +50,13 @@ function ModelManagement() {
   const [loading, setLoading] = useState(true)
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false)
   const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
+  const [sleepingInstanceId, setSleepingInstanceId] = useState<string | null>(null)
+  const [wakingInstanceId, setWakingInstanceId] = useState<string | null>(null)
   const [isSaveConfigOpen, setIsSaveConfigOpen] = useState(false)
   const [isLoadConfigOpen, setIsLoadConfigOpen] = useState(false)
   const [isUnloadAllModalOpen, setIsUnloadAllModalOpen] = useState(false)
   const [isUnloadingAll, setIsUnloadingAll] = useState(false)
+  const [gpuRefreshTrigger, setGpuRefreshTrigger] = useState(0)
 
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('card')
@@ -74,6 +77,11 @@ function ModelManagement() {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
 
   const { addNotification } = useNotifications()
+
+  // Trigger GPU memory panel refresh
+  const triggerGpuRefresh = useCallback(() => {
+    setGpuRefreshTrigger((prev) => prev + 1)
+  }, [])
 
   // Count running models for configuration save
   const runningModelCount = useMemo(
@@ -201,6 +209,7 @@ function ModelManagement() {
 
   const handleLoadSuccess = () => {
     fetchModels()
+    triggerGpuRefresh()
     addNotification({
       title: 'Model loaded',
       description: 'Model is now ready for inference',
@@ -220,6 +229,7 @@ function ModelManagement() {
         variant: 'success',
       })
       await fetchModels()
+      triggerGpuRefresh()
     } catch (err) {
       addNotification({
         title: isFailed ? 'Failed to remove model' : 'Failed to unload model',
@@ -228,6 +238,56 @@ function ModelManagement() {
       })
     } finally {
       setUnloadingInstanceId(null)
+    }
+  }
+
+  const handleSleepModel = async (instanceId: string) => {
+    const model = models.find((m) => m.id === instanceId)
+    if (!model) return
+
+    setSleepingInstanceId(instanceId)
+    try {
+      await apiClient.sleepModel(instanceId)
+      addNotification({
+        title: 'Model sleeping',
+        description: `${model.model_path} has been put to sleep`,
+        variant: 'success',
+      })
+      await fetchModels()
+      triggerGpuRefresh()
+    } catch (err) {
+      addNotification({
+        title: 'Failed to sleep model',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      })
+    } finally {
+      setSleepingInstanceId(null)
+    }
+  }
+
+  const handleWakeModel = async (instanceId: string) => {
+    const model = models.find((m) => m.id === instanceId)
+    if (!model) return
+
+    setWakingInstanceId(instanceId)
+    try {
+      await apiClient.wakeModel(instanceId)
+      addNotification({
+        title: 'Model woken up',
+        description: `${model.model_path} is now ready for inference`,
+        variant: 'success',
+      })
+      await fetchModels()
+      triggerGpuRefresh()
+    } catch (err) {
+      addNotification({
+        title: 'Failed to wake model',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      })
+    } finally {
+      setWakingInstanceId(null)
     }
   }
 
@@ -245,7 +305,10 @@ function ModelManagement() {
       description: message,
       variant: 'info',
     })
-    setTimeout(fetchModels, 2000)
+    setTimeout(() => {
+      fetchModels()
+      triggerGpuRefresh()
+    }, 2000)
   }
 
   const handleUnloadAll = async () => {
@@ -268,6 +331,7 @@ function ModelManagement() {
         variant: 'success',
       })
       await fetchModels()
+      triggerGpuRefresh()
     } catch (err) {
       addNotification({
         title: 'Error unloading models',
@@ -436,7 +500,7 @@ function ModelManagement() {
 
         {/* GPU Memory Overview Panel */}
         <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
-          <GpuMemoryPanel onModelClick={handleMemoryBarClick} />
+          <GpuMemoryPanel onModelClick={handleMemoryBarClick} refreshTrigger={gpuRefreshTrigger} />
         </div>
 
         {models.length === 0 ? (
@@ -506,7 +570,11 @@ function ModelManagement() {
                       isExpanded={expandedGpuGroups.has(gpuKey)}
                       onToggle={handleGpuGroupToggle}
                       onUnload={handleUnloadModel}
+                      onSleep={handleSleepModel}
+                      onWake={handleWakeModel}
                       unloadingInstanceId={unloadingInstanceId}
+                      sleepingInstanceId={sleepingInstanceId}
+                      wakingInstanceId={wakingInstanceId}
                       expandedCards={expandedCards}
                       onCardToggle={handleCardToggle}
                     />
@@ -520,7 +588,11 @@ function ModelManagement() {
                   sortDirection={sortDirection}
                   onSort={handleTableSort}
                   onUnload={handleUnloadModel}
+                  onSleep={handleSleepModel}
+                  onWake={handleWakeModel}
                   unloadingInstanceId={unloadingInstanceId}
+                  sleepingInstanceId={sleepingInstanceId}
+                  wakingInstanceId={wakingInstanceId}
                 />
               )}
             </div>

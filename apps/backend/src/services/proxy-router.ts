@@ -111,7 +111,15 @@ export class ProxyRouter {
         )
       }
 
-      // Instances exist but none are running
+      // Check if there are sleeping instances
+      const sleepingInstances = allInstances.filter((i) => i.status === 'sleeping')
+      if (sleepingInstances.length > 0) {
+        throw new ServiceUnavailableError(
+          `Model ${modelPath} is sleeping. Wake it up to serve requests.`
+        )
+      }
+
+      // Instances exist but none are running (and not sleeping)
       const statuses = allInstances.map((i) => `${i.id.slice(0, 8)}:${i.status}`).join(', ')
       throw new ServiceUnavailableError(
         `Model ${modelPath} has no running instances. Instance states: ${statuses}`

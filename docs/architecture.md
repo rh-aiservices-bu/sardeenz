@@ -239,8 +239,13 @@ python -m vllm.entrypoints.openai.api_server \
 **Lifecycle States:**
 - `starting` → Process spawning, waiting for API readiness
 - `active` → Serving requests
+- `sleeping` → Sleep mode active (GPU memory freed, model weights in CPU RAM)
 - `stopping` → Graceful shutdown in progress
 - `failed` → Process crashed or failed health check
+
+**Sleep Mode:**
+
+Models loaded with `enable_sleep_mode=true` can be put to sleep to free GPU memory (~90%) while remaining loaded for quick wake-up. Sleep mode offloads model weights from GPU to CPU RAM (level 1) or discards them entirely (level 2). See [Sleep Mode API](./api-guide.md#sleep-mode-api) for details.
 
 **Background Monitoring:**
 
@@ -270,7 +275,7 @@ interface ModelInstance {
   id: string;                      // Unique instance ID
   modelPath: string;               // Path to model files
   displayName: string;             // Human-readable name
-  status: 'starting' | 'active' | 'stopping' | 'failed';
+  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed';
   port: number;                    // vLLM API port
   processId: number;               // API Server PID (from spawn)
   engineCorePid?: number;          // EngineCore PID (allocates GPU VRAM)
@@ -283,6 +288,11 @@ interface ModelInstance {
   stoppedAt?: Date;
   errorMessage?: string;
   memoryMetrics?: ModelMemoryMetrics; // Parsed from vLLM logs after loading
+
+  // Sleep mode (requires --enable-sleep-mode flag at load)
+  sleepModeEnabled: boolean;       // Whether sleep mode is enabled for this instance
+  sleepLevel?: 1 | 2;              // Current sleep level (1=CPU offload, 2=discard)
+  sleptAt?: Date;                  // When the model went to sleep
 }
 
 interface ModelMemoryMetrics {
