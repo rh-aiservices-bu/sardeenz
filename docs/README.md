@@ -17,12 +17,12 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 ### 🛠️ Development Guides
 
-| Resource                                                        | Description                                            |
-| --------------------------------------------------------------- | ------------------------------------------------------ |
-| [**Development Guide**](./development/README.md)                | Getting started with local development                 |
-| [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, kvcached, uv)             |
-| [**PatternFly 6 Guide**](./development/pf6-guide/README.md)     | Complete UI development guide with PatternFly 6        |
-| [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend                |
+| Resource                                                        | Description                                     |
+| --------------------------------------------------------------- | ----------------------------------------------- |
+| [**Development Guide**](./development/README.md)                | Getting started with local development          |
+| [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, kvcached, uv)      |
+| [**PatternFly 6 Guide**](./development/pf6-guide/README.md)     | Complete UI development guide with PatternFly 6 |
+| [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend         |
 
 ### 🔧 Technical Resources
 
@@ -283,6 +283,7 @@ No, vLLM requires GPU acceleration. CPU-only inference is not supported.
 <summary><strong>Is persistent storage required?</strong></summary>
 
 Yes, an App Data PVC (1Gi) is required for the SQLite database that stores benchmarks and memory profiles. For models, you can either:
+
 - Use a Model Cache PVC for HuggingFace downloads (optional)
 - Mount pre-downloaded models via `LOCAL_MODELS_PATH` (optional)
 - Or use both sources simultaneously

@@ -72,132 +72,132 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         const { name, mode, scenarios } = request.body
 
         // Validate all instance IDs exist
-      for (const scenario of scenarios) {
-        const instance = modelStore.get(scenario.instanceId)
-        if (!instance) {
-          return reply.status(400).send({
-            error: {
-              message: `Model instance not found: ${scenario.instanceId}`,
-              type: 'validation_error',
-            },
+        for (const scenario of scenarios) {
+          const instance = modelStore.get(scenario.instanceId)
+          if (!instance) {
+            return reply.status(400).send({
+              error: {
+                message: `Model instance not found: ${scenario.instanceId}`,
+                type: 'validation_error',
+              },
+            })
+          }
+          if (instance.status !== 'running') {
+            return reply.status(400).send({
+              error: {
+                message: `Model instance is not running: ${scenario.instanceId} (status: ${instance.status})`,
+                type: 'validation_error',
+              },
+            })
+          }
+        }
+
+        // Detect if kvcached is enabled
+        const kvcachedEnabled = config.enableKvcached ?? false
+
+        // Create the benchmark run
+        const benchmarkConfig = { name, mode, scenarios, kvcachedEnabled }
+        const run = store.createRun(benchmarkConfig, kvcachedEnabled)
+
+        // Create scenarios
+        for (const scenarioConfig of scenarios) {
+          const instance = modelStore.get(scenarioConfig.instanceId)!
+          store.createScenario({
+            runId: run.id,
+            instanceId: scenarioConfig.instanceId,
+            routingMode: scenarioConfig.routingMode || 'direct',
+            modelPath: instance.modelPath,
+            modelName: instance.modelName,
+            inputTokens: scenarioConfig.inputTokens,
+            outputTokens: scenarioConfig.outputTokens,
+            concurrency: scenarioConfig.concurrency,
+            warmupRequests: scenarioConfig.warmupRequests,
+            totalRequests: scenarioConfig.totalRequests,
+            slaThresholdMs: scenarioConfig.slaThresholdMs,
           })
         }
-        if (instance.status !== 'running') {
-          return reply.status(400).send({
-            error: {
-              message: `Model instance is not running: ${scenario.instanceId} (status: ${instance.status})`,
-              type: 'validation_error',
-            },
-          })
-        }
-      }
 
-      // Detect if kvcached is enabled
-      const kvcachedEnabled = config.enableKvcached ?? false
+        // Get the full run with details
+        const runWithDetails = store.getRunWithDetails(run.id)!
 
-      // Create the benchmark run
-      const benchmarkConfig = { name, mode, scenarios, kvcachedEnabled }
-      const run = store.createRun(benchmarkConfig, kvcachedEnabled)
-
-      // Create scenarios
-      for (const scenarioConfig of scenarios) {
-        const instance = modelStore.get(scenarioConfig.instanceId)!
-        store.createScenario({
-          runId: run.id,
-          instanceId: scenarioConfig.instanceId,
-          routingMode: scenarioConfig.routingMode || 'direct',
-          modelPath: instance.modelPath,
-          modelName: instance.modelName,
-          inputTokens: scenarioConfig.inputTokens,
-          outputTokens: scenarioConfig.outputTokens,
-          concurrency: scenarioConfig.concurrency,
-          warmupRequests: scenarioConfig.warmupRequests,
-          totalRequests: scenarioConfig.totalRequests,
-          slaThresholdMs: scenarioConfig.slaThresholdMs,
+        // Start the benchmark execution asynchronously
+        startBenchmark(run.id).catch((err) => {
+          fastify.log.error({ err, runId: run.id }, 'Benchmark execution failed')
         })
-      }
 
-      // Get the full run with details
-      const runWithDetails = store.getRunWithDetails(run.id)!
-
-      // Start the benchmark execution asynchronously
-      startBenchmark(run.id).catch((err) => {
-        fastify.log.error({ err, runId: run.id }, 'Benchmark execution failed')
-      })
-
-      reply.status(201)
-      return {
-        benchmark: {
-          id: runWithDetails.id,
-          name: runWithDetails.name,
-          status: runWithDetails.status,
-          mode: runWithDetails.mode,
-          kvcached_enabled: runWithDetails.kvcachedEnabled,
-          created_at: runWithDetails.createdAt,
-          started_at: runWithDetails.startedAt,
-          completed_at: runWithDetails.completedAt,
-          error_message: runWithDetails.errorMessage,
-          total_requests: runWithDetails.totalRequests,
-          successful_requests: runWithDetails.successfulRequests,
-          failed_requests: runWithDetails.failedRequests,
-          duration_seconds: runWithDetails.durationSeconds,
-          scenarios: runWithDetails.scenarios.map((s) => ({
-            id: s.id,
-            run_id: s.runId,
-            instance_id: s.instanceId,
-            routing_mode: s.routingMode,
-            model_path: s.modelPath,
-            model_name: s.modelName,
-            input_tokens: s.inputTokens,
-            output_tokens: s.outputTokens,
-            concurrency: s.concurrency,
-            warmup_requests: s.warmupRequests,
-            total_requests: s.totalRequests,
-            sla_threshold_ms: s.slaThresholdMs,
-            status: s.status,
-            started_at: s.startedAt,
-            completed_at: s.completedAt,
-            error_message: s.errorMessage,
-            metrics: s.metrics
-              ? {
-                  scenario_id: s.metrics.scenarioId,
-                  ttft_min: s.metrics.ttftMin,
-                  ttft_max: s.metrics.ttftMax,
-                  ttft_avg: s.metrics.ttftAvg,
-                  ttft_p50: s.metrics.ttftP50,
-                  ttft_p90: s.metrics.ttftP90,
-                  ttft_p95: s.metrics.ttftP95,
-                  ttft_p99: s.metrics.ttftP99,
-                  tps_min: s.metrics.tpsMin,
-                  tps_max: s.metrics.tpsMax,
-                  tps_avg: s.metrics.tpsAvg,
-                  tps_p50: s.metrics.tpsP50,
-                  tps_p90: s.metrics.tpsP90,
-                  tps_p95: s.metrics.tpsP95,
-                  tps_p99: s.metrics.tpsP99,
-                  e2e_min: s.metrics.e2eMin,
-                  e2e_max: s.metrics.e2eMax,
-                  e2e_avg: s.metrics.e2eAvg,
-                  e2e_p50: s.metrics.e2eP50,
-                  e2e_p90: s.metrics.e2eP90,
-                  e2e_p95: s.metrics.e2eP95,
-                  e2e_p99: s.metrics.e2eP99,
-                  goodput_count: s.metrics.goodputCount,
-                  goodput_percent: s.metrics.goodputPercent,
-                  sla_threshold_ms: s.metrics.slaThresholdMs,
-                  kvcache_used_avg_gb: s.metrics.kvcacheUsedAvgGb,
-                  kvcache_peak_gb: s.metrics.kvcachePeakGb,
-                  gpu_memory_peak_gb: s.metrics.gpuMemoryPeakGb,
-                  total_requests: s.metrics.totalRequests,
-                  successful_requests: s.metrics.successfulRequests,
-                  failed_requests: s.metrics.failedRequests,
-                  requests_per_second: s.metrics.requestsPerSecond,
-                  tokens_per_second_total: s.metrics.tokenPerSecondTotal,
-                }
-              : undefined,
-          })),
-        },
-      }
+        reply.status(201)
+        return {
+          benchmark: {
+            id: runWithDetails.id,
+            name: runWithDetails.name,
+            status: runWithDetails.status,
+            mode: runWithDetails.mode,
+            kvcached_enabled: runWithDetails.kvcachedEnabled,
+            created_at: runWithDetails.createdAt,
+            started_at: runWithDetails.startedAt,
+            completed_at: runWithDetails.completedAt,
+            error_message: runWithDetails.errorMessage,
+            total_requests: runWithDetails.totalRequests,
+            successful_requests: runWithDetails.successfulRequests,
+            failed_requests: runWithDetails.failedRequests,
+            duration_seconds: runWithDetails.durationSeconds,
+            scenarios: runWithDetails.scenarios.map((s) => ({
+              id: s.id,
+              run_id: s.runId,
+              instance_id: s.instanceId,
+              routing_mode: s.routingMode,
+              model_path: s.modelPath,
+              model_name: s.modelName,
+              input_tokens: s.inputTokens,
+              output_tokens: s.outputTokens,
+              concurrency: s.concurrency,
+              warmup_requests: s.warmupRequests,
+              total_requests: s.totalRequests,
+              sla_threshold_ms: s.slaThresholdMs,
+              status: s.status,
+              started_at: s.startedAt,
+              completed_at: s.completedAt,
+              error_message: s.errorMessage,
+              metrics: s.metrics
+                ? {
+                    scenario_id: s.metrics.scenarioId,
+                    ttft_min: s.metrics.ttftMin,
+                    ttft_max: s.metrics.ttftMax,
+                    ttft_avg: s.metrics.ttftAvg,
+                    ttft_p50: s.metrics.ttftP50,
+                    ttft_p90: s.metrics.ttftP90,
+                    ttft_p95: s.metrics.ttftP95,
+                    ttft_p99: s.metrics.ttftP99,
+                    tps_min: s.metrics.tpsMin,
+                    tps_max: s.metrics.tpsMax,
+                    tps_avg: s.metrics.tpsAvg,
+                    tps_p50: s.metrics.tpsP50,
+                    tps_p90: s.metrics.tpsP90,
+                    tps_p95: s.metrics.tpsP95,
+                    tps_p99: s.metrics.tpsP99,
+                    e2e_min: s.metrics.e2eMin,
+                    e2e_max: s.metrics.e2eMax,
+                    e2e_avg: s.metrics.e2eAvg,
+                    e2e_p50: s.metrics.e2eP50,
+                    e2e_p90: s.metrics.e2eP90,
+                    e2e_p95: s.metrics.e2eP95,
+                    e2e_p99: s.metrics.e2eP99,
+                    goodput_count: s.metrics.goodputCount,
+                    goodput_percent: s.metrics.goodputPercent,
+                    sla_threshold_ms: s.metrics.slaThresholdMs,
+                    kvcache_used_avg_gb: s.metrics.kvcacheUsedAvgGb,
+                    kvcache_peak_gb: s.metrics.kvcachePeakGb,
+                    gpu_memory_peak_gb: s.metrics.gpuMemoryPeakGb,
+                    total_requests: s.metrics.totalRequests,
+                    successful_requests: s.metrics.successfulRequests,
+                    failed_requests: s.metrics.failedRequests,
+                    requests_per_second: s.metrics.requestsPerSecond,
+                    tokens_per_second_total: s.metrics.tokenPerSecondTotal,
+                  }
+                : undefined,
+            })),
+          },
+        }
       } catch (err) {
         fastify.log.error({ err, body: request.body }, 'Benchmark creation failed')
         throw err
@@ -478,7 +478,9 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         description: 'Export benchmark results as CSV or JSON',
         params: BenchmarkIdParamsSchema,
         body: Type.Object({
-          format: Type.Optional(Type.Union([Type.Literal('csv'), Type.Literal('json')], { default: 'csv' })),
+          format: Type.Optional(
+            Type.Union([Type.Literal('csv'), Type.Literal('json')], { default: 'csv' })
+          ),
           include_warmup: Type.Optional(Type.Boolean({ default: false })),
         }),
       },
@@ -605,10 +607,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       },
       onRequest: fastify.requireRole('admin-readonly'),
     },
-    async (
-      request: FastifyRequest<{ Params: { id: string } }>,
-      reply: FastifyReply
-    ) => {
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const { id } = request.params
 
       // Verify run exists
@@ -679,7 +678,12 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           eventType: 'progress',
           data: {
             runId: id,
-            phase: currentRun.status === 'completed' ? 'completed' : currentRun.status === 'failed' ? 'failed' : 'starting',
+            phase:
+              currentRun.status === 'completed'
+                ? 'completed'
+                : currentRun.status === 'failed'
+                  ? 'failed'
+                  : 'starting',
             message: statusMessage,
           },
         } as unknown as SSEEvent)

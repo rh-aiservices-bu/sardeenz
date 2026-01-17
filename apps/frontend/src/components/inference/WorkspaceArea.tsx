@@ -1,5 +1,10 @@
 import { useMemo, useEffect, useState } from 'react'
-import type { LayoutMode, WorkspaceSession, SessionStatus, PaneAssignments } from './workspace-types'
+import type {
+  LayoutMode,
+  WorkspaceSession,
+  SessionStatus,
+  PaneAssignments,
+} from './workspace-types'
 import { WorkspaceToolbar } from './WorkspaceToolbar'
 import { WorkspaceGrid } from './WorkspaceGrid'
 

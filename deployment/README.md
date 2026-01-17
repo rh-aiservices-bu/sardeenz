@@ -191,36 +191,36 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 
 #### ConfigMap Variables (configmap.yaml)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `production` | Node.js environment |
-| `PORT` | `3000` | Backend API port |
-| `HOST` | `0.0.0.0` | Backend bind address |
-| `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
-| `AUTH_MODE` | `none` | Authentication mode: `none`, `simple`, `oauth` |
-| `ADMIN_USERNAME` | `admin` | Username for simple auth mode |
-| `JWT_EXPIRATION_HOURS` | `8` | JWT token lifetime in hours |
-| `API_BASE_URL` | - | Base URL for OAuth callbacks (your route URL) |
-| `ENABLE_KVCACHED` | `true` | Enable kvcached GPU memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patch vLLM for kvcached |
-| `VLLM_BASE_PORT` | `12346` | Starting port for vLLM instances |
-| `VLLM_MAX_INSTANCES` | `10` | Maximum concurrent model instances |
-| `VLLM_STARTUP_TIMEOUT` | `1800000` | Model startup timeout in ms (30 min default) |
-| `LOCAL_MODELS_PATH` | - | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
-| `DEBUG_STREAMING` | `false` | Enable SSE streaming debug logs |
+| Variable               | Default      | Description                                                                                                                                                    |
+| ---------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`             | `production` | Node.js environment                                                                                                                                            |
+| `PORT`                 | `3000`       | Backend API port                                                                                                                                               |
+| `HOST`                 | `0.0.0.0`    | Backend bind address                                                                                                                                           |
+| `LOG_LEVEL`            | `info`       | Logging level (debug, info, warn, error)                                                                                                                       |
+| `AUTH_MODE`            | `none`       | Authentication mode: `none`, `simple`, `oauth`                                                                                                                 |
+| `ADMIN_USERNAME`       | `admin`      | Username for simple auth mode                                                                                                                                  |
+| `JWT_EXPIRATION_HOURS` | `8`          | JWT token lifetime in hours                                                                                                                                    |
+| `API_BASE_URL`         | -            | Base URL for OAuth callbacks (your route URL)                                                                                                                  |
+| `ENABLE_KVCACHED`      | `true`       | Enable kvcached GPU memory sharing                                                                                                                             |
+| `KVCACHED_AUTOPATCH`   | `1`          | Auto-patch vLLM for kvcached                                                                                                                                   |
+| `VLLM_BASE_PORT`       | `12346`      | Starting port for vLLM instances                                                                                                                               |
+| `VLLM_MAX_INSTANCES`   | `10`         | Maximum concurrent model instances                                                                                                                             |
+| `VLLM_STARTUP_TIMEOUT` | `1800000`    | Model startup timeout in ms (30 min default)                                                                                                                   |
+| `LOCAL_MODELS_PATH`    | -            | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
+| `DEBUG_STREAMING`      | `false`      | Enable SSE streaming debug logs                                                                                                                                |
 
 #### Secret Variables (secret.yaml)
 
-| Variable | Description |
-|----------|-------------|
-| `jwt-secret` | Secret for JWT token signing (required if AUTH_MODE ≠ none) |
-| `admin-password` | Password for simple auth mode |
-| `client-id` | OAuth client ID |
-| `client-secret` | OAuth client secret |
-| `issuer-url` | OAuth provider URL |
-| `k8s-api-url` | Kubernetes API URL for OAuth user info |
+| Variable            | Description                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| `jwt-secret`        | Secret for JWT token signing (required if AUTH_MODE ≠ none)        |
+| `admin-password`    | Password for simple auth mode                                      |
+| `client-id`         | OAuth client ID                                                    |
+| `client-secret`     | OAuth client secret                                                |
+| `issuer-url`        | OAuth provider URL                                                 |
+| `k8s-api-url`       | Kubernetes API URL for OAuth user info                             |
 | `inference-api-key` | API key for `/v1/*` endpoints (optional, separate from admin auth) |
-| `hf-token` | HuggingFace token for gated models |
+| `hf-token`          | HuggingFace token for gated models                                 |
 
 ### Resource Limits
 
@@ -229,16 +229,17 @@ Configured in `deployment.yaml`:
 ```yaml
 resources:
   requests:
-    cpu: "2"
-    memory: "8Gi"
+    cpu: '2'
+    memory: '8Gi'
     nvidia.com/gpu: 1
   limits:
-    cpu: "8"
-    memory: "32Gi"
+    cpu: '8'
+    memory: '32Gi'
     nvidia.com/gpu: 1
 ```
 
 **Adjust based on your workload:**
+
 - Small models (7B): 2 CPU, 8Gi RAM
 - Medium models (13B): 4 CPU, 16Gi RAM
 - Large models (70B): 8 CPU, 32Gi RAM
@@ -249,7 +250,7 @@ The deployment uses node selectors to target GPU nodes:
 
 ```yaml
 nodeSelector:
-  nvidia.com/gpu.present: "true"
+  nvidia.com/gpu.present: 'true'
 
 tolerations:
   - key: nvidia.com/gpu
@@ -267,7 +268,7 @@ oc get nodes -l nvidia.com/gpu.present=true
 
 ```yaml
 nodeSelector:
-  feature.node.kubernetes.io/pci-10de.present: "true"  # NVIDIA vendor ID
+  feature.node.kubernetes.io/pci-10de.present: 'true' # NVIDIA vendor ID
 ```
 
 ## Health Checks
@@ -289,7 +290,7 @@ startupProbe:
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 10
-  failureThreshold: 12  # 2 minutes to start
+  failureThreshold: 12 # 2 minutes to start
 
 livenessProbe:
   httpGet:
@@ -338,6 +339,7 @@ Use this if you download models from HuggingFace at runtime.
 - **Mount Path:** `/opt/app-root/models` (sets `HF_HOME`)
 
 **Model size reference:**
+
 - 7B models: ~14GB
 - 13B models: ~26GB
 - 70B models: ~140GB
@@ -388,7 +390,7 @@ Remove the HuggingFace cache volume and add your local models mount:
 volumes:
   - name: local-models
     persistentVolumeClaim:
-      claimName: your-models-pvc  # Or use hostPath, NFS, etc.
+      claimName: your-models-pvc # Or use hostPath, NFS, etc.
   - name: app-data
     persistentVolumeClaim:
       claimName: sardeenz-app-data
@@ -439,7 +441,7 @@ To use a specific storage class for any PVC:
 
 ```yaml
 spec:
-  storageClassName: fast-ssd  # or 'gp3', 'ocs-storagecluster-ceph-rbd', etc.
+  storageClassName: fast-ssd # or 'gp3', 'ocs-storagecluster-ceph-rbd', etc.
 ```
 
 ## Networking
@@ -452,6 +454,7 @@ spec:
 ### OpenShift Route
 
 The route exposes the frontend (port 80) with:
+
 - Edge TLS termination (automatic certificate)
 - HTTP to HTTPS redirect
 - 5-minute timeout for long inference requests
@@ -463,6 +466,7 @@ oc get route sardeenz -o jsonpath='{.spec.host}'
 ```
 
 **Access endpoints:**
+
 - Frontend: `https://<route-host>/`
 - Controller API: `https://<route-host>/api/models`
 - Inference API: `https://<route-host>/v1/chat/completions`
@@ -516,6 +520,7 @@ Default mode. No authentication required for admin dashboard.
 Username/password authentication for admin dashboard.
 
 **Required configuration:**
+
 1. Set `AUTH_MODE: "simple"` in ConfigMap
 2. Set `ADMIN_USERNAME` in ConfigMap (default: `admin`)
 3. Create secret with `admin-password` and `jwt-secret`
@@ -532,6 +537,7 @@ oc create secret generic sardeenz-secrets \
 Full OAuth 2.0 integration with OpenShift or external providers.
 
 **Required configuration:**
+
 1. Set `AUTH_MODE: "oauth"` in ConfigMap
 2. Set `API_BASE_URL` in ConfigMap to your route URL
 3. Create OAuth application in your identity provider
@@ -549,6 +555,7 @@ oc create secret generic sardeenz-secrets \
 ```
 
 **The application supports:**
+
 - OAuth 2.0 Authorization Code flow
 - Manual OAuth configuration (for OpenShift OAuth and other non-OIDC providers)
 - JWT token validation
@@ -601,6 +608,7 @@ curl https://<route-host>/metrics
 ```
 
 **Key metrics:**
+
 - `vllm_model_load_duration_seconds` - Model loading time
 - `vllm_routing_latency_seconds` - Proxy routing overhead
 - `vllm_active_models` - Currently loaded models
@@ -640,6 +648,7 @@ oc describe pod -l app=sardeenz
 ```
 
 **Common issues:**
+
 - No GPU nodes available → Scale GPU nodes or adjust node selector
 - GPU already allocated → Check for other GPU workloads
 - Image pull errors → Verify image name and registry credentials
@@ -653,6 +662,7 @@ oc logs -f deployment/sardeenz
 ```
 
 **Common causes:**
+
 - vLLM taking too long to start → Increase `startupProbe.failureThreshold`
 - Out of GPU memory → Reduce model size or adjust `VLLM_MAX_INSTANCES`
 - Port conflicts → Check `VLLM_BASE_PORT` configuration
@@ -666,6 +676,7 @@ oc logs deployment/sardeenz | grep -i error
 ```
 
 **Common causes:**
+
 - Insufficient GPU memory → Unload other models or use smaller models
 - Model not cached → First download takes longer; ensure HuggingFace cache PVC is configured if downloading models
 - kvcached not enabled → Verify `ENABLE_KVCACHED=true` in ConfigMap
@@ -679,6 +690,7 @@ oc adm top pod -l app=sardeenz
 ```
 
 **Optimize:**
+
 - Increase CPU/memory limits in `deployment.yaml`
 - Enable kvcached for better GPU memory sharing
 - Use faster storage class for PVC
@@ -700,6 +712,7 @@ oc rollout status deployment/sardeenz
 ### Recreate Strategy
 
 The deployment uses `Recreate` strategy (not `RollingUpdate`) because:
+
 - GPU resources cannot be shared between old and new pods
 - Ensures clean shutdown of vLLM processes
 - Prevents port conflicts on GPU device

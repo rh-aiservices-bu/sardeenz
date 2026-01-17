@@ -20,14 +20,14 @@ npm install @patternfly/chatbot
 
 ```jsx
 // ✅ MUST import CSS - chatbot components require specific styling
-import '@patternfly/chatbot/dist/css/main.css';
+import '@patternfly/chatbot/dist/css/main.css'
 ```
 
 ### Webpack Configuration (if needed)
 
 ```javascript
 // stylePaths.js - Add to webpack if CSS not loading
-module.exports = [require.resolve('@patternfly/chatbot/dist/css/main.css')];
+module.exports = [require.resolve('@patternfly/chatbot/dist/css/main.css')]
 ```
 
 ## Import Rules
@@ -39,13 +39,13 @@ module.exports = [require.resolve('@patternfly/chatbot/dist/css/main.css')];
 
 ```jsx
 // ✅ Correct - Use dynamic imports
-import { Chatbot } from '@patternfly/chatbot/dist/dynamic/Chatbot';
-import { ChatbotContent } from '@patternfly/chatbot/dist/dynamic/ChatbotContent';
-import { MessageBox } from '@patternfly/chatbot/dist/dynamic/MessageBox';
-import { Message } from '@patternfly/chatbot/dist/dynamic/Message';
+import { Chatbot } from '@patternfly/chatbot/dist/dynamic/Chatbot'
+import { ChatbotContent } from '@patternfly/chatbot/dist/dynamic/ChatbotContent'
+import { MessageBox } from '@patternfly/chatbot/dist/dynamic/MessageBox'
+import { Message } from '@patternfly/chatbot/dist/dynamic/Message'
 
 // ❌ Wrong - Standard imports may not work
-import { Chatbot, ChatbotContent } from '@patternfly/chatbot';
+import { Chatbot, ChatbotContent } from '@patternfly/chatbot'
 ```
 
 ## Implementation Rules
@@ -88,7 +88,7 @@ const createMessage = (content, role) => ({
   role, // 'user' | 'assistant' | 'system'
   timestamp: new Date(),
   status: 'sent',
-});
+})
 ```
 
 ### Demo Implementation Rules

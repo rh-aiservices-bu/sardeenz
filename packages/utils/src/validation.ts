@@ -16,10 +16,7 @@ export interface ValidationResult<T> {
 /**
  * Validate data against a TypeBox schema
  */
-export function validate<T extends TSchema>(
-  schema: T,
-  data: unknown
-): ValidationResult<Static<T>> {
+export function validate<T extends TSchema>(schema: T, data: unknown): ValidationResult<Static<T>> {
   const errors: ValidationError[] = []
 
   if (!Value.Check(schema, data)) {

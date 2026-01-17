@@ -49,10 +49,13 @@ export default async function eventsRoutes(fastify: FastifyInstance) {
       },
       onRequest: fastify.requireRole('admin-readonly'),
     },
-    async (request: FastifyRequest<{
-      Params: { instance_id: string }
-      Querystring: { types?: string; replay_logs?: string }
-    }>, reply: FastifyReply) => {
+    async (
+      request: FastifyRequest<{
+        Params: { instance_id: string }
+        Querystring: { types?: string; replay_logs?: string }
+      }>,
+      reply: FastifyReply
+    ) => {
       const { instance_id } = request.params
       const { types, replay_logs } = request.query
       const shouldReplayLogs = replay_logs !== 'false' // Default true
@@ -67,7 +70,9 @@ export default async function eventsRoutes(fastify: FastifyInstance) {
 
       // Parse event type filters
       const eventFilters: SSEEventType[] = types
-        ? (types.split(',').filter((t) => VALID_EVENT_TYPES.includes(t as SSEEventType)) as SSEEventType[])
+        ? (types
+            .split(',')
+            .filter((t) => VALID_EVENT_TYPES.includes(t as SSEEventType)) as SSEEventType[])
         : [...VALID_EVENT_TYPES]
 
       // Set up SSE headers using raw response
@@ -80,7 +85,10 @@ export default async function eventsRoutes(fastify: FastifyInstance) {
       })
 
       const connectionId = randomUUID()
-      fastify.log.info({ connectionId, instance_id, filters: eventFilters }, 'SSE connection opened')
+      fastify.log.info(
+        { connectionId, instance_id, filters: eventFilters },
+        'SSE connection opened'
+      )
 
       // Helper to send SSE event
       const sendEvent = (event: SSEEvent): void => {

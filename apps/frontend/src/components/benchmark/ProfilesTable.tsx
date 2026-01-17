@@ -1,13 +1,5 @@
 import { useState } from 'react'
-import {
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  ThProps,
-} from '@patternfly/react-table'
+import { Table, Thead, Tbody, Tr, Th, Td, ThProps } from '@patternfly/react-table'
 import {
   Button,
   Modal,
@@ -102,7 +94,9 @@ export function ProfilesTable({
         setSortDirection('asc')
       }
     },
-    columnIndex: ['model_path', 'max_tokens', 'gpu_name', 'fixed_cost', 'created_at'].indexOf(column),
+    columnIndex: ['model_path', 'max_tokens', 'gpu_name', 'fixed_cost', 'created_at'].indexOf(
+      column
+    ),
   })
 
   const handleDeleteClick = (profile: MemoryProfileResponse) => {
@@ -222,7 +216,9 @@ export function ProfilesTable({
                   aria-label={`Delete profile ${profile.profile_name}`}
                   onClick={() => handleDeleteClick(profile)}
                   isDisabled={!canWrite}
-                  title={!canWrite ? 'You do not have permission to delete memory profiles' : undefined}
+                  title={
+                    !canWrite ? 'You do not have permission to delete memory profiles' : undefined
+                  }
                 />
               </Td>
             </Tr>

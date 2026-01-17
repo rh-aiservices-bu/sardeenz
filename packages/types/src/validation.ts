@@ -219,9 +219,12 @@ export const DetokenizeRequestSchema = Type.Object({
 })
 
 // Generic vLLM request with required model field (for pooling, classification, score, re-rank)
-export const VLLMGenericRequestSchema = Type.Object({
-  model: Type.String({ minLength: 1 }),
-}, { additionalProperties: true })
+export const VLLMGenericRequestSchema = Type.Object(
+  {
+    model: Type.String({ minLength: 1 }),
+  },
+  { additionalProperties: true }
+)
 
 // vLLM models list response (for aggregation)
 export const VLLMModelSchema = Type.Object({

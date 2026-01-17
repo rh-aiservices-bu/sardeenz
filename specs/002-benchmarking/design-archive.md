@@ -20,12 +20,14 @@ Together, these provide quantitative data to answer critical questions about mod
 Multi-model LLM deployment is complex. Teams need answers to:
 
 **Performance Questions:**
+
 - **"How fast is this model?"** - Baseline latency and throughput metrics
 - **"Is kvcached actually helping?"** - A/B comparison with/without memory sharing
 - **"Can we handle production load?"** - Contention testing with concurrent models
 - **"Which model should we deploy?"** - Data-driven model selection
 
 **Capacity Planning Questions:**
+
 - **"Will this model fit?"** - Know VRAM requirements before loading
 - **"How much memory at different token limits?"** - Profile at 512, 1024, 2048, 4096 max_tokens
 - **"Which GPU should host this model?"** - Data for multi-GPU/multi-instance scheduling
@@ -34,12 +36,12 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Key Value Propositions
 
-| For... | Performance Benchmarking | Memory Profiling |
-|--------|--------------------------|------------------|
-| **ML Engineers** | Quantify model performance before production | Know exact VRAM requirements |
-| **Platform Operators** | Capacity planning with concurrency data | Pre-load warnings prevent OOM failures |
-| **Decision Makers** | Data-driven model selection | Cost optimization via memory awareness |
-| **kvcached Users** | Measure performance impact | Understand memory overhead per model |
+| For...                 | Performance Benchmarking                     | Memory Profiling                       |
+| ---------------------- | -------------------------------------------- | -------------------------------------- |
+| **ML Engineers**       | Quantify model performance before production | Know exact VRAM requirements           |
+| **Platform Operators** | Capacity planning with concurrency data      | Pre-load warnings prevent OOM failures |
+| **Decision Makers**    | Data-driven model selection                  | Cost optimization via memory awareness |
+| **kvcached Users**     | Measure performance impact                   | Understand memory overhead per model   |
 
 ---
 
@@ -47,23 +49,23 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Performance Metrics
 
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **TTFT** (Time to First Token) | Latency from request to first response token | User-perceived responsiveness; critical for streaming UX |
-| **TPS** (Tokens Per Second) | Token generation throughput | Raw model speed; higher = faster completions |
-| **TPOT** (Time Per Output Token) | Average time between tokens (excludes TTFT) | Consistent generation speed; affects streaming smoothness |
-| **E2E Latency** | Total request-to-completion time | Overall response time; combines TTFT + generation |
-| **Goodput** | % of requests meeting SLA threshold | Production reliability; what % of requests are "fast enough" |
+| Metric                           | What It Measures                             | Why It Matters                                               |
+| -------------------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| **TTFT** (Time to First Token)   | Latency from request to first response token | User-perceived responsiveness; critical for streaming UX     |
+| **TPS** (Tokens Per Second)      | Token generation throughput                  | Raw model speed; higher = faster completions                 |
+| **TPOT** (Time Per Output Token) | Average time between tokens (excludes TTFT)  | Consistent generation speed; affects streaming smoothness    |
+| **E2E Latency**                  | Total request-to-completion time             | Overall response time; combines TTFT + generation            |
+| **Goodput**                      | % of requests meeting SLA threshold          | Production reliability; what % of requests are "fast enough" |
 
 ### Memory Metrics
 
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **Weights Memory** | Model parameters loaded to GPU | Fixed cost - cannot be reduced |
-| **CUDA Graphs** | Pre-compiled inference kernels | Fixed cost after warmup |
-| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via kvcached) |
-| **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency |
-| **Baseline Memory** | Weights + CUDA Graphs | Minimum VRAM to load model |
+| Metric                   | What It Measures                       | Why It Matters                          |
+| ------------------------ | -------------------------------------- | --------------------------------------- |
+| **Weights Memory**       | Model parameters loaded to GPU         | Fixed cost - cannot be reduced          |
+| **CUDA Graphs**          | Pre-compiled inference kernels         | Fixed cost after warmup                 |
+| **KV Cache Available**   | Memory pool for attention cache        | Shared across all models (via kvcached) |
+| **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency    |
+| **Baseline Memory**      | Weights + CUDA Graphs                  | Minimum VRAM to load model              |
 
 ### Statistical Percentiles
 
@@ -77,12 +79,14 @@ Raw averages hide outliers. We report **P50/P90/P95/P99**:
 ### Testing Modes
 
 **Isolated Mode (Sequential)**
+
 - Runs scenarios one at a time
 - Each model tested independently
 - Clean metrics without interference
 - Use for: Baseline profiling, model comparison
 
 **Contention Mode (Parallel)**
+
 - Runs all scenarios simultaneously
 - Models compete for GPU resources
 - Real-world multi-tenant behavior
@@ -91,6 +95,7 @@ Raw averages hide outliers. We report **P50/P90/P95/P99**:
 ### Warmup Requests
 
 First few requests are discarded because:
+
 - CUDA kernels need compilation (cold start)
 - KV cache is empty
 - Memory allocation happens on first use
@@ -106,6 +111,7 @@ Default: 3 warmup requests before measurement begins.
 **Goal:** Establish performance baseline for a single model.
 
 **Setup:**
+
 - Select one model instance
 - Isolated mode
 - Configure: 512 input tokens, 128 output tokens, concurrency 1
@@ -122,11 +128,13 @@ Default: 3 warmup requests before measurement begins.
 **Goal:** Quantify the performance impact of kvcached memory sharing.
 
 **Setup:**
+
 1. Run benchmark with kvcached **enabled**
 2. Run identical benchmark with kvcached **disabled**
 3. Compare metrics side-by-side
 
 **Key Questions Answered:**
+
 - Does shared KV cache add latency overhead?
 - How much memory is saved?
 - Is the tradeoff worth it?
@@ -140,12 +148,14 @@ Default: 3 warmup requests before measurement begins.
 **Goal:** Understand real-world performance under load.
 
 **Setup:**
+
 - Select 2-4 loaded models
 - Contention mode (parallel execution)
 - Configure realistic concurrency (e.g., 10 concurrent requests per model)
 - Vary input/output token counts to match expected workload
 
 **Key Questions Answered:**
+
 - What throughput can we sustain with multiple models?
 - How does contention affect tail latency?
 - Where is the breaking point?
@@ -159,12 +169,14 @@ Default: 3 warmup requests before measurement begins.
 **Goal:** Capture baseline VRAM footprint for capacity planning.
 
 **Setup:**
+
 1. Load a model with desired `max_tokens` configuration
 2. Navigate to Benchmark → Memory Profiles tab
 3. Select the running model instance
 4. Click "Capture Profile"
 
 **What Gets Captured:**
+
 - Model weights memory (from vLLM logs)
 - CUDA graphs memory (from vLLM logs)
 - KV cache available after load
@@ -182,6 +194,7 @@ Default: 3 warmup requests before measurement begins.
 **Goal:** Warn before loading models that may not fit in available GPU memory.
 
 **Flow:**
+
 1. User opens Load Model dialog
 2. Enters model path and max_tokens
 3. System checks for existing memory profile
@@ -190,6 +203,7 @@ Default: 3 warmup requests before measurement begins.
    - User can proceed anyway (warn-only, never block)
 
 **Key Behavior:**
+
 - Warnings are advisory, never blocking
 - "No profile found" shows info-level notice
 - Profile lookup is debounced (500ms) to avoid excessive API calls
@@ -242,12 +256,12 @@ Default: 3 warmup requests before measurement begins.
 
 ### Integration Points
 
-| Existing System | Integration |
-|-----------------|-------------|
-| **EventBus** | Emit `benchmark_progress`, `benchmark_request` events |
-| **ModelManager** | Query running instances for model selection |
-| **MemoryMonitor** | Sample KVCache/GPU usage during benchmarks |
-| **vLLM API** | Streaming chat completions for TTFT measurement |
+| Existing System   | Integration                                           |
+| ----------------- | ----------------------------------------------------- |
+| **EventBus**      | Emit `benchmark_progress`, `benchmark_request` events |
+| **ModelManager**  | Query running instances for model selection           |
+| **MemoryMonitor** | Sample KVCache/GPU usage during benchmarks            |
+| **vLLM API**      | Streaming chat completions for TTFT measurement       |
 
 ---
 
@@ -256,6 +270,7 @@ Default: 3 warmup requests before measurement begins.
 ### Overview
 
 The Benchmark page has two tabs:
+
 - **Performance**: Configure and run inference benchmarks
 - **Memory Profiles**: Capture and manage memory profiles for capacity planning
 
@@ -264,17 +279,20 @@ The Benchmark page has two tabs:
 #### Step 1: Access Benchmarking
 
 Navigate to Model Benchmark page from sidebar → Performance tab. See:
+
 - **Configuration Panel** (left): Set up new benchmark
 - **History Panel** (right): Previous benchmark runs
 
 #### Step 2: Configure Benchmark
 
 **Model Selection**
+
 - Checkboxes for each running model instance
 - Select one (baseline), several (comparison), or all (stress test)
 - Shows model name, path, current status
 
 **Test Parameters**
+
 - **Mode**: Toggle between Isolated and Contention
 - **Input Tokens**: Slider 64-4096 (default: 512)
 - **Output Tokens**: Slider 16-2048 (default: 128)
@@ -283,6 +301,7 @@ Navigate to Model Benchmark page from sidebar → Performance tab. See:
 - **Warmup**: 0-10 warmup requests (default: 3)
 
 **Advanced Options**
+
 - **SLA Threshold**: ms threshold for goodput calculation (default: 5000)
 - **KVCache Override**: Enable/Disable for A/B testing
 
@@ -300,16 +319,19 @@ Click "Start Benchmark" to begin. UI transitions to progress view:
 Upon completion, view comprehensive results:
 
 **Summary Cards**
+
 - Total duration, success rate, requests/second
 - Per-model TTFT P50/P90/P99
 - Per-model TPS P50/P90/P99
 
 **Charts**
+
 - Grouped bar chart: TTFT by model (P50/P90/P99)
 - Grouped bar chart: TPS by model
 - Goodput percentage per model
 
 **Detail View**
+
 - Per-scenario breakdown
 - Individual request results (expandable)
 - KVCache/GPU memory peak during test
@@ -336,6 +358,7 @@ Upon completion, view comprehensive results:
 #### Step 2: View Saved Profiles
 
 Profiles table shows:
+
 - **Model**: HuggingFace path or local path
 - **Max Tokens**: Configuration when profiled
 - **Fixed Cost**: `weights + CUDA graphs` (baseline memory)
@@ -345,6 +368,7 @@ Profiles table shows:
 #### Step 3: Pre-Load Warnings (Automatic)
 
 When loading a new model via Load Model dialog:
+
 1. As you type model path and select max_tokens, system checks for matching profile
 2. If profile exists and estimated memory > available GPU:
    - **Danger** (red): Model requires more than available memory
@@ -469,27 +493,27 @@ CREATE INDEX idx_memory_profiles_model_path ON memory_profiles(model_path);
 
 #### Performance Benchmarking
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/benchmarks` | Create and start benchmark |
-| GET | `/api/benchmarks` | List runs (paginated, filterable) |
-| GET | `/api/benchmarks/:id` | Get run details + scenarios + metrics |
-| GET | `/api/benchmarks/:id/events` | SSE stream for real-time progress |
-| GET | `/api/benchmarks/:id/scenarios/:sid/results` | Individual request results |
-| DELETE | `/api/benchmarks/:id` | Cancel running / delete completed |
-| POST | `/api/benchmarks/:id/export` | Export as CSV/JSON |
+| Method | Endpoint                                     | Description                           |
+| ------ | -------------------------------------------- | ------------------------------------- |
+| POST   | `/api/benchmarks`                            | Create and start benchmark            |
+| GET    | `/api/benchmarks`                            | List runs (paginated, filterable)     |
+| GET    | `/api/benchmarks/:id`                        | Get run details + scenarios + metrics |
+| GET    | `/api/benchmarks/:id/events`                 | SSE stream for real-time progress     |
+| GET    | `/api/benchmarks/:id/scenarios/:sid/results` | Individual request results            |
+| DELETE | `/api/benchmarks/:id`                        | Cancel running / delete completed     |
+| POST   | `/api/benchmarks/:id/export`                 | Export as CSV/JSON                    |
 
 #### Memory Profiling
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/memory/profiles` | List all memory profiles |
-| GET | `/api/memory/profiles/:id` | Get profile by ID |
-| GET | `/api/memory/profiles/lookup` | Find by model_path + max_tokens |
-| POST | `/api/memory/profiles` | Create from instance or manual entry |
-| PUT | `/api/memory/profiles/:id` | Update name/comments |
-| DELETE | `/api/memory/profiles/:id` | Delete profile |
-| POST | `/api/memory/check-before-load` | Pre-load memory check with warnings |
+| Method | Endpoint                        | Description                          |
+| ------ | ------------------------------- | ------------------------------------ |
+| GET    | `/api/memory/profiles`          | List all memory profiles             |
+| GET    | `/api/memory/profiles/:id`      | Get profile by ID                    |
+| GET    | `/api/memory/profiles/lookup`   | Find by model_path + max_tokens      |
+| POST   | `/api/memory/profiles`          | Create from instance or manual entry |
+| PUT    | `/api/memory/profiles/:id`      | Update name/comments                 |
+| DELETE | `/api/memory/profiles/:id`      | Delete profile                       |
+| POST   | `/api/memory/check-before-load` | Pre-load memory check with warnings  |
 
 ### 6.3 SSE Event Types
 
@@ -528,40 +552,41 @@ interface BenchmarkRequestEvent {
 
 #### Performance Benchmarking
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `packages/types/src/benchmark.ts` | Create | Type definitions |
-| `packages/types/src/schemas/benchmark.ts` | Create | TypeBox validation |
-| `apps/backend/src/stores/benchmark-store.ts` | Create | SQLite persistence |
-| `apps/backend/src/services/benchmark-runner.ts` | Create | Execution engine |
-| `apps/backend/src/utils/prompt-generator.ts` | Create | Token-sized prompts |
-| `apps/backend/src/routes/benchmarks.ts` | Create | API endpoints |
+| File                                            | Action | Purpose             |
+| ----------------------------------------------- | ------ | ------------------- |
+| `packages/types/src/benchmark.ts`               | Create | Type definitions    |
+| `packages/types/src/schemas/benchmark.ts`       | Create | TypeBox validation  |
+| `apps/backend/src/stores/benchmark-store.ts`    | Create | SQLite persistence  |
+| `apps/backend/src/services/benchmark-runner.ts` | Create | Execution engine    |
+| `apps/backend/src/utils/prompt-generator.ts`    | Create | Token-sized prompts |
+| `apps/backend/src/routes/benchmarks.ts`         | Create | API endpoints       |
 
 #### Memory Profiling
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `apps/backend/src/stores/memory-profile-store.ts` | Create | SQLite persistence for profiles |
-| `apps/backend/src/services/memory-profiler.ts` | Create | Profile creation & pre-load checks |
-| `apps/backend/src/routes/memory-profiles.ts` | Create | Profile API endpoints |
-| `apps/frontend/src/components/benchmark/MemoryProfilesTab.tsx` | Create | Memory profiles tab |
-| `apps/frontend/src/components/benchmark/CreateProfileCard.tsx` | Create | Capture profile form |
-| `apps/frontend/src/components/benchmark/ProfilesTable.tsx` | Create | Saved profiles table |
-| `apps/frontend/src/components/LoadModelDialog.tsx` | Modify | Add pre-load warnings |
+| File                                                           | Action | Purpose                            |
+| -------------------------------------------------------------- | ------ | ---------------------------------- |
+| `apps/backend/src/stores/memory-profile-store.ts`              | Create | SQLite persistence for profiles    |
+| `apps/backend/src/services/memory-profiler.ts`                 | Create | Profile creation & pre-load checks |
+| `apps/backend/src/routes/memory-profiles.ts`                   | Create | Profile API endpoints              |
+| `apps/frontend/src/components/benchmark/MemoryProfilesTab.tsx` | Create | Memory profiles tab                |
+| `apps/frontend/src/components/benchmark/CreateProfileCard.tsx` | Create | Capture profile form               |
+| `apps/frontend/src/components/benchmark/ProfilesTable.tsx`     | Create | Saved profiles table               |
+| `apps/frontend/src/components/LoadModelDialog.tsx`             | Modify | Add pre-load warnings              |
 
 #### Shared
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `apps/backend/src/server.ts` | Modify | Register all new routes |
+| File                                         | Action | Purpose                                  |
+| -------------------------------------------- | ------ | ---------------------------------------- |
+| `apps/backend/src/server.ts`                 | Modify | Register all new routes                  |
 | `apps/frontend/src/pages/ModelBenchmark.tsx` | Modify | Add tabs (Performance / Memory Profiles) |
-| `apps/frontend/src/services/api.ts` | Modify | API client methods |
+| `apps/frontend/src/services/api.ts`          | Modify | API client methods                       |
 
 ---
 
 ## 7. Implementation Phases
 
 ### Phase 1: Foundation (Backend Core)
+
 - Add `better-sqlite3` dependency
 - Create benchmark types and schemas
 - Implement shared SQLite database infrastructure
@@ -569,12 +594,14 @@ interface BenchmarkRequestEvent {
 - Create basic API routes (CRUD for both features)
 
 ### Phase 2: Memory Profiling Backend
+
 - Implement MemoryProfiler service
 - Profile creation from running instances
 - Pre-load check endpoint with warnings
 - Profile lookup by model_path + max_tokens
 
 ### Phase 3: Performance Benchmarking Engine
+
 - Implement BenchmarkRunner service
 - Add prompt generator utility
 - Streaming inference with TTFT measurement
@@ -582,6 +609,7 @@ interface BenchmarkRequestEvent {
 - Percentile calculation
 
 ### Phase 4: Frontend - Tabbed Interface
+
 - Update ModelBenchmark.tsx with tabs (Performance / Memory Profiles)
 - Create MemoryProfilesTab component
 - Create CreateProfileCard (capture from running model)
@@ -589,12 +617,14 @@ interface BenchmarkRequestEvent {
 - Wire up API client methods
 
 ### Phase 5: Frontend - Pre-Load Warnings
+
 - Modify LoadModelDialog.tsx
 - Add debounced pre-load check on model path/max_tokens change
 - Display warnings as PatternFly Alerts
 - Handle "no profile" gracefully
 
 ### Phase 6: Frontend - Performance Results
+
 - BenchmarkConfigForm component
 - BenchmarkProgress with SSE subscription
 - BenchmarkResultsPanel with Nivo charts
@@ -602,6 +632,7 @@ interface BenchmarkRequestEvent {
 - Export functionality
 
 ### Phase 7: Polish & Integration
+
 - KVCache toggle for A/B testing
 - Comparison view for multiple runs
 - Error handling refinements
@@ -613,25 +644,25 @@ interface BenchmarkRequestEvent {
 
 ### Performance Benchmarking
 
-| Decision | Rationale |
-|----------|-----------|
-| SQLite over PostgreSQL | Simpler deployment, no external deps, sufficient for PoC |
-| Streaming for TTFT | Only way to accurately measure first-token timing |
-| Warmup requests | Avoids cold-start skew from CUDA compilation |
-| Store individual results | Enables accurate percentile calculation post-hoc |
-| Reuse EventBus | Consistent with model loading progress pattern |
-| 4:1 char-to-token ratio | Reasonable approximation for prompt generation |
+| Decision                 | Rationale                                                |
+| ------------------------ | -------------------------------------------------------- |
+| SQLite over PostgreSQL   | Simpler deployment, no external deps, sufficient for PoC |
+| Streaming for TTFT       | Only way to accurately measure first-token timing        |
+| Warmup requests          | Avoids cold-start skew from CUDA compilation             |
+| Store individual results | Enables accurate percentile calculation post-hoc         |
+| Reuse EventBus           | Consistent with model loading progress pattern           |
+| 4:1 char-to-token ratio  | Reasonable approximation for prompt generation           |
 
 ### Memory Profiling
 
-| Decision | Rationale |
-|----------|-----------|
-| Separate from benchmarking | Different workflow, different metrics - cleaner separation |
-| Capture from running instance | Memory metrics already parsed during load - no re-work |
-| Key by model_path + max_tokens | Same model at different token limits has different memory |
-| Warn-only pre-load | User knows best - avoid blocking legitimate experiments |
-| Standard presets + custom | Cover common cases (512, 1024, 2048, 4096) + allow experimentation |
-| Shared SQLite database | Same infrastructure as benchmarking - avoid multiple DBs |
+| Decision                       | Rationale                                                          |
+| ------------------------------ | ------------------------------------------------------------------ |
+| Separate from benchmarking     | Different workflow, different metrics - cleaner separation         |
+| Capture from running instance  | Memory metrics already parsed during load - no re-work             |
+| Key by model_path + max_tokens | Same model at different token limits has different memory          |
+| Warn-only pre-load             | User knows best - avoid blocking legitimate experiments            |
+| Standard presets + custom      | Cover common cases (512, 1024, 2048, 4096) + allow experimentation |
+| Shared SQLite database         | Same infrastructure as benchmarking - avoid multiple DBs           |
 
 ---
 

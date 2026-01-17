@@ -357,9 +357,7 @@ export function useWorkspaceState(): WorkspaceState & WorkspaceActions {
       }
 
       // Find if this session is already assigned to another pane
-      const existingPaneIndex = Object.entries(prev).find(
-        ([, id]) => id === sessionId
-      )?.[0]
+      const existingPaneIndex = Object.entries(prev).find(([, id]) => id === sessionId)?.[0]
 
       if (existingPaneIndex !== undefined) {
         // Swap: give the other pane our current assignment
@@ -492,6 +490,14 @@ export function useWorkspaceState(): WorkspaceState & WorkspaceActions {
     }),
     // Only depend on state values - callbacks are stable (empty deps, use refs)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessions, activeSessionId, layout, sidebarExpanded, searchTerm, expandedGpuGroups, paneAssignments]
+    [
+      sessions,
+      activeSessionId,
+      layout,
+      sidebarExpanded,
+      searchTerm,
+      expandedGpuGroups,
+      paneAssignments,
+    ]
   )
 }

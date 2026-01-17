@@ -16,13 +16,13 @@ This approach allows you to manage access via standard OpenShift tooling without
 
 The deployment manifests in `deployment/` already include:
 
-| Resource | File | Description |
-|----------|------|-------------|
-| **ServiceAccount** | `serviceaccount.yaml` | The `sardeenz` ServiceAccount used by the pod |
-| **sardeenz-admin Role** | `rbac.yaml` | Marker role for full admin access |
-| **sardeenz-admin-readonly Role** | `rbac.yaml` | Marker role for read-only access |
-| **sardeenz-auth-reviewer Role** | `rbac.yaml` | Allows ServiceAccount to check user permissions |
-| **sardeenz-auth-reviewer RoleBinding** | `rbac.yaml` | Binds ServiceAccount to auth-reviewer role |
+| Resource                               | File                  | Description                                     |
+| -------------------------------------- | --------------------- | ----------------------------------------------- |
+| **ServiceAccount**                     | `serviceaccount.yaml` | The `sardeenz` ServiceAccount used by the pod   |
+| **sardeenz-admin Role**                | `rbac.yaml`           | Marker role for full admin access               |
+| **sardeenz-admin-readonly Role**       | `rbac.yaml`           | Marker role for read-only access                |
+| **sardeenz-auth-reviewer Role**        | `rbac.yaml`           | Allows ServiceAccount to check user permissions |
+| **sardeenz-auth-reviewer RoleBinding** | `rbac.yaml`           | Binds ServiceAccount to auth-reviewer role      |
 
 **What you need to create:** RoleBindings to grant users/groups access to sardeenz (see [Step 2](#step-2-create-rolebindings)).
 
@@ -43,21 +43,21 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: sardeenz-admin
-  namespace: sardeenz  # Change to your namespace
+  namespace: sardeenz # Change to your namespace
 rules:
-  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
-    resources: ["admin"]
-    verbs: ["get"]
+  - apiGroups: ['sardeenz.rh-aiservices-bu.io']
+    resources: ['admin']
+    verbs: ['get']
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: sardeenz-admin-readonly
-  namespace: sardeenz  # Change to your namespace
+  namespace: sardeenz # Change to your namespace
 rules:
-  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
-    resources: ["admin-readonly"]
-    verbs: ["get"]
+  - apiGroups: ['sardeenz.rh-aiservices-bu.io']
+    resources: ['admin-readonly']
+    verbs: ['get']
 ```
 
 Apply with:
@@ -189,7 +189,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: sardeenz
-  namespace: sardeenz  # Change to your namespace
+  namespace: sardeenz # Change to your namespace
 ```
 
 ### Create the Role and RoleBinding
@@ -199,17 +199,17 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: sardeenz-auth-reviewer
-  namespace: sardeenz  # Change to your namespace
+  namespace: sardeenz # Change to your namespace
 rules:
-  - apiGroups: ["authorization.k8s.io"]
-    resources: ["localsubjectaccessreviews"]
-    verbs: ["create"]
+  - apiGroups: ['authorization.k8s.io']
+    resources: ['localsubjectaccessreviews']
+    verbs: ['create']
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: sardeenz-auth-reviewer
-  namespace: sardeenz  # Change to your namespace
+  namespace: sardeenz # Change to your namespace
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -217,7 +217,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: sardeenz
-    namespace: sardeenz  # Change to your namespace
+    namespace: sardeenz # Change to your namespace
 ```
 
 Apply with:
@@ -308,11 +308,13 @@ A user can have both roles. The `admin` role implies full access, so having both
 ### User gets "Access denied" after login
 
 1. Check if the Roles exist:
+
    ```bash
    oc get role sardeenz-admin sardeenz-admin-readonly -n sardeenz
    ```
 
 2. Check if the user has a RoleBinding:
+
    ```bash
    oc get rolebindings -n sardeenz -o wide
    ```
@@ -332,9 +334,9 @@ Ensure the `NAMESPACE` environment variable in sardeenz matches where the Roles 
 
 ## Configuration Reference
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `AUTH_MODE` | `none` | Set to `oauth` to enable OAuth with RBAC |
-| `NAMESPACE` | `sardeenz` | Kubernetes namespace for RBAC checks |
-| `K8S_API_URL` | (required) | Kubernetes API URL for LocalSubjectAccessReview calls |
-| `SERVICE_ACCOUNT_TOKEN` | (auto) | ServiceAccount token for RBAC checks. In K8s, auto-mounted. For dev, set manually. |
+| Environment Variable    | Default    | Description                                                                        |
+| ----------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| `AUTH_MODE`             | `none`     | Set to `oauth` to enable OAuth with RBAC                                           |
+| `NAMESPACE`             | `sardeenz` | Kubernetes namespace for RBAC checks                                               |
+| `K8S_API_URL`           | (required) | Kubernetes API URL for LocalSubjectAccessReview calls                              |
+| `SERVICE_ACCOUNT_TOKEN` | (auto)     | ServiceAccount token for RBAC checks. In K8s, auto-mounted. For dev, set manually. |

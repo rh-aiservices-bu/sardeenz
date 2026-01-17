@@ -128,13 +128,11 @@ npx @patternfly/tokens-update --fix path/to/code
 ### Tasks Codemods Don't Handle
 
 1. **Component Structure Changes**
-
    - New wrapper divs in buttons
    - Table component restructuring
    - Select/Dropdown pattern updates
 
 2. **Test Updates**
-
    - Change `aria-disabled` checks to `disabled`
    - Update `byText` queries to `byRole` for buttons
    - Fix breakpoint tests for rem units
@@ -189,30 +187,30 @@ The following components are deprecated in v6 and require manual migration:
 
 ```jsx
 // Before
-expect(button).toHaveAttribute('aria-disabled', 'true');
+expect(button).toHaveAttribute('aria-disabled', 'true')
 
 // After
-expect(button).toBeDisabled();
+expect(button).toBeDisabled()
 ```
 
 2. **Text Queries**
 
 ```jsx
 // Before - may fail due to wrapper divs
-screen.getByText('Button text');
+screen.getByText('Button text')
 
 // After - more reliable
-screen.getByRole('button', { name: 'Button text' });
+screen.getByRole('button', { name: 'Button text' })
 ```
 
 3. **Class Name Checks**
 
 ```jsx
 // Before
-expect(element).toHaveClass('pf-c-button');
+expect(element).toHaveClass('pf-c-button')
 
 // After
-expect(element).toHaveClass('pf-v6-c-button');
+expect(element).toHaveClass('pf-v6-c-button')
 ```
 
 ## Troubleshooting Codemod Issues

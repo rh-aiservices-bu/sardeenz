@@ -18,7 +18,7 @@ import ChatbotHeader, {
   ChatbotHeaderActions,
   ChatbotHeaderMain,
   ChatbotHeaderTitle,
-} from '@patternfly/chatbot/dist/dynamic/ChatbotHeader';
+} from '@patternfly/chatbot/dist/dynamic/ChatbotHeader'
 import ChatbotFooter from '@patternfly/chatbot/dist/dynamic/ChatbotFooter'
 import MessageBar from '@patternfly/chatbot/dist/dynamic/MessageBar'
 import ChatbotWelcomePrompt from '@patternfly/chatbot/dist/dynamic/ChatbotWelcomePrompt'
@@ -90,15 +90,16 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
     setInputValue('') // Clear after send
   }
 
-  const handleInputChange = (_event: React.ChangeEvent<HTMLTextAreaElement>, value: string | number) => {
+  const handleInputChange = (
+    _event: React.ChangeEvent<HTMLTextAreaElement>,
+    value: string | number
+  ) => {
     setInputValue(String(value))
   }
 
   return (
     <Card style={{ height: '100%' }}>
-      <CardBody
-        style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column' }}
-      >
+      <CardBody style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Chatbot container */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Chatbot displayMode={ChatbotDisplayMode.embedded}>
@@ -122,7 +123,6 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
                           >
                             (no chat template)
                           </span>
-
                         )}
                       </FlexItem>
                       <FlexItem>
@@ -140,15 +140,17 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
                   style={{
                     padding: '0',
                   }}
-                  alignItems={{ default: 'alignItemsFlexStart'}}
+                  alignItems={{ default: 'alignItemsFlexStart' }}
                 >
                   <FlexItem>
-                    <Flex direction={{ default: 'column' }}
-                    spaceItems={{ default: 'spaceItemsNone' }}
-                    alignItems={{ default: 'alignItemsStretch'}}
-                    style={{
-                    padding: '0',
-                  }}>
+                    <Flex
+                      direction={{ default: 'column' }}
+                      spaceItems={{ default: 'spaceItemsNone' }}
+                      alignItems={{ default: 'alignItemsStretch' }}
+                      style={{
+                        padding: '0',
+                      }}
+                    >
                       <FlexItem>
                         <Checkbox
                           id={`streaming-${model.id}`}
@@ -156,7 +158,7 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
                           isChecked={useStreaming}
                           isDisabled={isGenerating}
                           onChange={(_, checked) => updateSettings({ useStreaming: checked })}
-                          className='chat-header-actions-text'
+                          className="chat-header-actions-text"
                         />
                       </FlexItem>
                       <FlexItem>
@@ -166,7 +168,7 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
                           isChecked={!useDirectCall}
                           isDisabled={isGenerating}
                           onChange={(_, checked) => updateSettings({ useDirectCall: checked })}
-                          className='chat-header-actions-text'
+                          className="chat-header-actions-text"
                         />
                       </FlexItem>
                     </Flex>
@@ -222,13 +224,7 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
 /**
  * Message component with timestamp that includes metrics for bot messages.
  */
-function MessageWithTimestamp({
-  message,
-  modelName,
-}: {
-  message: ChatMessage
-  modelName: string
-}) {
+function MessageWithTimestamp({ message, modelName }: { message: ChatMessage; modelName: string }) {
   return (
     <div>
       <Message

@@ -1,7 +1,12 @@
 import { useMemo, CSSProperties } from 'react'
 import { EmptyState, EmptyStateBody, EmptyStateActions, Button } from '@patternfly/react-core'
 import { CubesIcon } from '@patternfly/react-icons'
-import type { LayoutMode, WorkspaceSession, SessionStatus, PaneAssignments } from './workspace-types'
+import type {
+  LayoutMode,
+  WorkspaceSession,
+  SessionStatus,
+  PaneAssignments,
+} from './workspace-types'
 import { ModelChatCard } from './ModelChatCard'
 import { PaneSessionSelector } from './PaneSessionSelector'
 
@@ -90,9 +95,7 @@ export function WorkspaceGrid({
         }}
       >
         <EmptyState titleText="No sessions open" icon={CubesIcon}>
-          <EmptyStateBody>
-            Select a model from the sidebar to start a chat session.
-          </EmptyStateBody>
+          <EmptyStateBody>Select a model from the sidebar to start a chat session.</EmptyStateBody>
           <EmptyStateActions>
             <Button
               variant="link"

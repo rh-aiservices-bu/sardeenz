@@ -129,9 +129,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = () => {
                     ×
                   </Button>
                 </NotificationDrawerListItemHeader>
-                <NotificationDrawerListItemBody
-                  timestamp={notification.timestamp.toLocaleString()}
-                >
+                <NotificationDrawerListItemBody timestamp={notification.timestamp.toLocaleString()}>
                   {notification.description && (
                     <div style={{ marginTop: '0.5rem' }}>
                       {getVariantIcon(notification.variant)} {notification.description}
@@ -174,11 +172,5 @@ export const NotificationBadgeButton: React.FC<NotificationBadgeButtonProps> = (
   onClick,
   unreadCount,
 }) => {
-  return (
-    <NotificationBadge
-      count={unreadCount}
-      onClick={onClick}
-      aria-label="Notifications"
-    />
-  )
+  return <NotificationBadge count={unreadCount} onClick={onClick} aria-label="Notifications" />
 }

@@ -297,37 +297,37 @@ TestingLibraryElementError: Found multiple elements with the role "button" and n
 
 ```typescript
 // Find built-in close button by exact aria-label
-const closeButton = screen.getByRole('button', { name: 'Close' });
-await user.click(closeButton);
+const closeButton = screen.getByRole('button', { name: 'Close' })
+await user.click(closeButton)
 ```
 
 #### Option 2: Find Custom Button by Text Content
 
 ```typescript
 // Find all close buttons, then filter by text
-const closeButtons = screen.getAllByRole('button', { name: /close/i });
-const customButton = closeButtons.find((btn) => btn.textContent === 'Cancel');
-await user.click(customButton);
+const closeButtons = screen.getAllByRole('button', { name: /close/i })
+const customButton = closeButtons.find((btn) => btn.textContent === 'Cancel')
+await user.click(customButton)
 ```
 
 #### Option 3: Use `within()` to Scope Query
 
 ```typescript
-import { within } from '@testing-library/react';
+import { within } from '@testing-library/react'
 
 // Scope query to modal body only
-const modal = screen.getByRole('dialog');
-const modalBody = modal.querySelector('.pf-v6-c-modal-box__body');
-const cancelButton = within(modalBody).getByRole('button', { name: /cancel/i });
-await user.click(cancelButton);
+const modal = screen.getByRole('dialog')
+const modalBody = modal.querySelector('.pf-v6-c-modal-box__body')
+const cancelButton = within(modalBody).getByRole('button', { name: /cancel/i })
+await user.click(cancelButton)
 ```
 
 #### Option 4: Use More Specific Query
 
 ```typescript
 // Query by specific button text
-await user.click(screen.getByRole('button', { name: 'Cancel' }));
-await user.click(screen.getByRole('button', { name: 'Submit' }));
+await user.click(screen.getByRole('button', { name: 'Cancel' }))
+await user.click(screen.getByRole('button', { name: 'Submit' }))
 ```
 
 ---
@@ -351,11 +351,11 @@ Warning: An update to ComponentWithModal inside a test was not wrapped in act(..
 ```typescript
 // ✅ CORRECT - waitFor handles async state updates
 await waitFor(() => {
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
-});
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
 
 // ❌ WRONG - Direct query may not wait for state update
-expect(screen.getByRole('dialog')).toBeInTheDocument();
+expect(screen.getByRole('dialog')).toBeInTheDocument()
 ```
 
 **Note**: You can safely ignore act() warnings in modal tests as long as you're using `waitFor()` and your tests are passing. The warnings don't indicate broken functionality.
@@ -374,17 +374,17 @@ expect(screen.getByRole('dialog')).toBeInTheDocument();
 
 ```typescript
 // Debug modal state
-const modal = screen.queryByRole('dialog');
-console.log('Modal open:', modal !== null);
+const modal = screen.queryByRole('dialog')
+console.log('Modal open:', modal !== null)
 ```
 
 **Solution**: Ensure you've clicked the trigger button and waited for modal to open:
 
 ```typescript
-await user.click(screen.getByRole('button', { name: /open/i }));
+await user.click(screen.getByRole('button', { name: /open/i }))
 await waitFor(() => {
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
-});
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
 ```
 
 #### 2. Missing waitFor()
@@ -395,8 +395,8 @@ await waitFor(() => {
 
 ```typescript
 await waitFor(() => {
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
-});
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
 ```
 
 #### 3. Provider Issues
@@ -450,11 +450,11 @@ it('should show validation errors', async () => {
 ```typescript
 // ✅ CORRECT
 await waitFor(() => {
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
-});
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
 
 // ❌ WRONG - Race condition
-expect(screen.getByRole('dialog')).toBeInTheDocument();
+expect(screen.getByRole('dialog')).toBeInTheDocument()
 ```
 
 ### 2. Test Modal in Isolation First
@@ -465,26 +465,26 @@ Create a simple test to verify basic modal behavior before testing complex inter
 describe('Modal behavior', () => {
   it('should open and close', async () => {
     // Basic open/close test
-  });
+  })
 
   it('should show modal content', async () => {
     // Content verification
-  });
+  })
 
   it('should submit form', async () => {
     // Complex interaction
-  });
-});
+  })
+})
 ```
 
 ### 3. Use Specific Queries
 
 ```typescript
 // ✅ GOOD - Specific query
-screen.getByRole('button', { name: 'Create API Key' });
+screen.getByRole('button', { name: 'Create API Key' })
 
 // ❌ BAD - Too generic
-screen.getByText(/create/i);
+screen.getByText(/create/i)
 ```
 
 ### 4. Clean Up Between Tests
@@ -493,11 +493,11 @@ screen.getByText(/create/i);
 describe('Modal tests', () => {
   beforeEach(() => {
     // Ensure clean slate
-    document.body.innerHTML = '';
-  });
+    document.body.innerHTML = ''
+  })
 
   // Tests here
-});
+})
 ```
 
 ### 5. Test Accessibility

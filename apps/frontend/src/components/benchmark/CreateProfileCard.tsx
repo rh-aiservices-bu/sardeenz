@@ -118,11 +118,7 @@ export function CreateProfileCard({ onProfileCreated }: CreateProfileCardProps) 
         )}
 
         <Form onSubmit={handleSubmit}>
-          <FormGroup
-            label="Running Model"
-            isRequired
-            fieldId="instance-select"
-          >
+          <FormGroup label="Running Model" isRequired fieldId="instance-select">
             <FormSelect
               id="instance-select"
               value={selectedInstanceId}
@@ -151,16 +147,13 @@ export function CreateProfileCard({ onProfileCreated }: CreateProfileCardProps) 
           {selectedInstance && (
             <FormGroup label="Model Details" fieldId="model-details">
               <div style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
-                <strong>Max Tokens:</strong> {selectedInstance.max_tokens} |{' '}
-                <strong>Port:</strong> {selectedInstance.port}
+                <strong>Max Tokens:</strong> {selectedInstance.max_tokens} | <strong>Port:</strong>{' '}
+                {selectedInstance.port}
               </div>
             </FormGroup>
           )}
 
-          <FormGroup
-            label="Profile Name"
-            fieldId="profile-name"
-          >
+          <FormGroup label="Profile Name" fieldId="profile-name">
             <TextInput
               id="profile-name"
               value={profileName}
@@ -175,10 +168,7 @@ export function CreateProfileCard({ onProfileCreated }: CreateProfileCardProps) 
             </FormHelperText>
           </FormGroup>
 
-          <FormGroup
-            label="Comments"
-            fieldId="comments"
-          >
+          <FormGroup label="Comments" fieldId="comments">
             <TextArea
               id="comments"
               value={comments}

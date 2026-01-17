@@ -5,10 +5,12 @@ This guide covers setting up a local development environment with NVIDIA GPU sup
 ## Prerequisites
 
 ### Hardware
+
 - NVIDIA GPU with CUDA 12.x drivers
 - 8GB+ VRAM (16GB+ recommended for larger models)
 
 ### Software
+
 - **Node.js 22.x** - See main README for installation
 - **Python 3.12** - Required for vLLM (auto-installed by uv on first run)
 - **uv** - Fast Python package manager
@@ -43,6 +45,7 @@ npm run dev
 ```
 
 On first run, the script will:
+
 1. Create a Python virtual environment at `apps/backend/.venv`
 2. Install dependencies from `apps/backend/pyproject.toml` (vLLM, kvcached)
 3. Set up kvcached environment variables
@@ -56,17 +59,17 @@ The backend uses environment variables for configuration. A reference file is av
 
 **kvcached variables** (configured by start-dev script):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_KVCACHED` | `true` | Enables kvcached memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for kvcached support |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index |
+| Variable               | Default | Description                            |
+| ---------------------- | ------- | -------------------------------------- |
+| `ENABLE_KVCACHED`      | `true`  | Enables kvcached memory sharing        |
+| `KVCACHED_AUTOPATCH`   | `1`     | Auto-patches vLLM for kvcached support |
+| `CUDA_VISIBLE_DEVICES` | `0`     | GPU device index                       |
 
 **HuggingFace authentication** (for gated models like Llama):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HF_TOKEN` | (none) | HuggingFace access token for gated models |
+| Variable   | Default | Description                               |
+| ---------- | ------- | ----------------------------------------- |
+| `HF_TOKEN` | (none)  | HuggingFace access token for gated models |
 
 Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens). You can also set this via the Settings page in the web UI.
 
@@ -83,12 +86,12 @@ Models are loaded dynamically via the API or Admin Dashboard - no models are pre
 
 For development and testing on 8GB GPUs:
 
-| Model | Parameters | VRAM Usage | Notes |
-|-------|-----------|------------|-------|
-| `Qwen/Qwen3-0.6B` | 0.6B | ~2GB | Ideal for testing, fast inference |
-| `meta-llama/Llama-3.2-1B` | 1B | ~3GB | Good balance of size and capability |
-| `microsoft/phi-2` | 2.7B | ~6GB | Near 8GB limit, good quality |
-| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1.1B | ~3GB | Chat-optimized small model |
+| Model                                | Parameters | VRAM Usage | Notes                               |
+| ------------------------------------ | ---------- | ---------- | ----------------------------------- |
+| `Qwen/Qwen3-0.6B`                    | 0.6B       | ~2GB       | Ideal for testing, fast inference   |
+| `meta-llama/Llama-3.2-1B`            | 1B         | ~3GB       | Good balance of size and capability |
+| `microsoft/phi-2`                    | 2.7B       | ~6GB       | Near 8GB limit, good quality        |
+| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1.1B       | ~3GB       | Chat-optimized small model          |
 
 ### Memory Tips
 
@@ -102,10 +105,10 @@ Python dependencies are managed via `apps/backend/pyproject.toml` using [uv](htt
 
 ### Dependency Groups
 
-| Group | Packages | Used In |
-|-------|----------|---------|
-| (base) | kvcached | Dev + Docker |
-| dev | vllm | Dev only (Docker base image has vLLM) |
+| Group  | Packages | Used In                               |
+| ------ | -------- | ------------------------------------- |
+| (base) | kvcached | Dev + Docker                          |
+| dev    | vllm     | Dev only (Docker base image has vLLM) |
 
 ### Adding New Packages
 
@@ -114,12 +117,14 @@ Python dependencies are managed via `apps/backend/pyproject.toml` using [uv](htt
    - Add to `[dependency-groups] dev` for development-only packages
 
 2. Regenerate lock file:
+
    ```bash
    cd apps/backend
    uv lock
    ```
 
 3. Install updated dependencies:
+
    ```bash
    uv sync --locked --group dev
    ```
@@ -141,6 +146,7 @@ source .venv/bin/activate
 ```
 
 Then run the server without the wrapper:
+
 ```bash
 # Set environment variables manually
 export ENABLE_KVCACHED=true
@@ -208,6 +214,7 @@ oc apply -f deployment/rbac.yaml -n sardeenz
 ```
 
 This creates:
+
 - The `sardeenz` ServiceAccount
 - The `sardeenz-admin` and `sardeenz-admin-readonly` marker Roles
 - The `sardeenz-auth-reviewer` Role and RoleBinding
@@ -287,15 +294,18 @@ Navigate to `http://localhost:5173`. When you click "Login", you'll be redirecte
 ### Troubleshooting OAuth Development
 
 **"Access denied" after login:**
+
 - Verify your RoleBinding exists: `oc get rolebindings -n sardeenz`
 - Check if you have the right role: `oc auth can-i get admin.sardeenz.rh-aiservices-bu.io -n sardeenz --as=$(oc whoami)`
 
 **"LocalSubjectAccessReview failed" errors:**
+
 - Check that the `sardeenz-auth-reviewer` RoleBinding exists
 - Verify your SERVICE_ACCOUNT_TOKEN is valid and not expired
 - Ensure K8S_API_URL is correct and reachable from your machine
 
 **"Invalid redirect URI" from OpenShift:**
+
 - Verify the OAuthClient has `http://localhost:3000/api/auth/callback` in redirectURIs
 - Ensure API_BASE_URL matches exactly
 
@@ -304,6 +314,7 @@ Navigate to `http://localhost:5173`. When you click "Login", you'll be redirecte
 ### "uv is not installed"
 
 Install uv:
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc  # or restart terminal
@@ -312,6 +323,7 @@ source ~/.bashrc  # or restart terminal
 ### "nvidia-smi: command not found"
 
 NVIDIA drivers are not installed. Install them from:
+
 - Ubuntu: `sudo apt install nvidia-driver-535`
 - Fedora: `sudo dnf install akmod-nvidia`
 - Or download from [NVIDIA's website](https://www.nvidia.com/drivers)
@@ -326,6 +338,7 @@ NVIDIA drivers are not installed. Install them from:
 ### "vLLM not found" or spawn errors
 
 Ensure the virtual environment is activated and vLLM is installed:
+
 ```bash
 cd apps/backend
 uv sync --locked --group dev
@@ -336,6 +349,7 @@ which vllm  # Should show path in .venv/bin/
 ### kvcached IPC errors
 
 If you see IPC segment errors:
+
 ```bash
 # Clear stale IPC segments
 ipcs -m | grep $(whoami) | awk '{print $2}' | xargs -I {} ipcrm -m {}

@@ -105,7 +105,14 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         initiatedBy: 'system', // TODO: Get from auth context
         initiatedAt: new Date(),
         status: OperationStatus.InProgress,
-        parameters: { max_tokens, extra_args, gpu_ids, tensor_parallel_size, source_type, served_model_name },
+        parameters: {
+          max_tokens,
+          extra_args,
+          gpu_ids,
+          tensor_parallel_size,
+          source_type,
+          served_model_name,
+        },
       }
 
       operationStore.add(operation)
@@ -347,9 +354,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
             status: 'unhealthy',
             model: decodedPath,
             port: instance.port,
-            uptime_seconds: instance.readyAt
-              ? (Date.now() - instance.readyAt.getTime()) / 1000
-              : 0,
+            uptime_seconds: instance.readyAt ? (Date.now() - instance.readyAt.getTime()) / 1000 : 0,
           })
         }
 
@@ -357,9 +362,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           status: 'healthy' as const,
           model: decodedPath,
           port: instance.port,
-          uptime_seconds: instance.readyAt
-            ? (Date.now() - instance.readyAt.getTime()) / 1000
-            : 0,
+          uptime_seconds: instance.readyAt ? (Date.now() - instance.readyAt.getTime()) / 1000 : 0,
         }
       } catch {
         return reply.code(503).send({

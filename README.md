@@ -56,13 +56,13 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 
 ## Documentation
 
-| | |
-|---|---|
-| **[Full Documentation](./docs/README.md)** | Complete documentation index |
-| **[Deployment Guide](./docs/deployment.md)** | Container and OpenShift deployment |
-| **[Development Guide](./docs/development/README.md)** | Build from source, contribute |
-| **[API Guide](./docs/api-guide.md)** | API reference with code examples |
-| **[Architecture](./docs/architecture.md)** | System design and components |
+|                                                       |                                    |
+| ----------------------------------------------------- | ---------------------------------- |
+| **[Full Documentation](./docs/README.md)**            | Complete documentation index       |
+| **[Deployment Guide](./docs/deployment.md)**          | Container and OpenShift deployment |
+| **[Development Guide](./docs/development/README.md)** | Build from source, contribute      |
+| **[API Guide](./docs/api-guide.md)**                  | API reference with code examples   |
+| **[Architecture](./docs/architecture.md)**            | System design and components       |
 
 ## License
 

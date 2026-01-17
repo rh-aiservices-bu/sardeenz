@@ -21,7 +21,7 @@ npm install @patternfly/react-component-groups
 ### Required CSS Import
 
 ```jsx
-import '@patternfly/react-component-groups/dist/css/main.css';
+import '@patternfly/react-component-groups/dist/css/main.css'
 ```
 
 ## Import Rules
@@ -33,10 +33,10 @@ import '@patternfly/react-component-groups/dist/css/main.css';
 
 ```jsx
 // ✅ Correct
-import { BulkSelect } from '@patternfly/react-component-groups/dist/dynamic/BulkSelect';
+import { BulkSelect } from '@patternfly/react-component-groups/dist/dynamic/BulkSelect'
 
 // ❌ Wrong
-import { BulkSelect } from '@patternfly/react-component-groups';
+import { BulkSelect } from '@patternfly/react-component-groups'
 ```
 
 ## Implementation Rules
@@ -50,9 +50,8 @@ import { BulkSelect } from '@patternfly/react-component-groups';
 ### Example Usage
 
 ```jsx
-import { BulkSelect } from '@patternfly/react-component-groups/dist/dynamic/BulkSelect';
-
-<BulkSelect items={items} selectedItems={selectedItems} onSelect={handleSelect} />;
+import { BulkSelect } from '@patternfly/react-component-groups/dist/dynamic/BulkSelect'
+;<BulkSelect items={items} selectedItems={selectedItems} onSelect={handleSelect} />
 ```
 
 ### Component API Rules

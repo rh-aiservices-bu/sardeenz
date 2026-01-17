@@ -4,7 +4,14 @@ import { randomUUID } from 'crypto'
 import type { ModelInstance, ModelStatus } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
-import { getNextPort, killProcessImmediate, isProcessRunning, getDescendantPids, findVllmProcessesByPort, findProcessesByEnvMarker } from '../utils/process.js'
+import {
+  getNextPort,
+  killProcessImmediate,
+  isProcessRunning,
+  getDescendantPids,
+  findVllmProcessesByPort,
+  findProcessesByEnvMarker,
+} from '../utils/process.js'
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
 import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
@@ -157,12 +164,7 @@ export class ModelManager extends EventEmitter {
       const hfToken = runtimeSettings.getHfToken()
 
       // Build the command arguments array
-      const baseArgs = [
-        'serve',
-        modelPath,
-        '--disable-log-stats',
-        `--port=${port}`,
-      ]
+      const baseArgs = ['serve', modelPath, '--disable-log-stats', `--port=${port}`]
 
       // Add --served-model-name only if not overridden in extra args
       if (!hasArg(sanitizedExtraArgs, '--served-model-name')) {
@@ -335,7 +337,11 @@ export class ModelManager extends EventEmitter {
    * Monitor model startup in background and update status when ready
    * Called without await so API can return immediately
    */
-  private async monitorModelStartup(instanceId: string, port: number, modelPath: string): Promise<void> {
+  private async monitorModelStartup(
+    instanceId: string,
+    port: number,
+    modelPath: string
+  ): Promise<void> {
     try {
       // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
       await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
@@ -419,7 +425,13 @@ export class ModelManager extends EventEmitter {
           )
         } else {
           this.logger.warn(
-            { modelPath, instanceId, engineCorePid: instance.engineCorePid, processId: instance.processId, searchedPids: Array.from(allPids) },
+            {
+              modelPath,
+              instanceId,
+              engineCorePid: instance.engineCorePid,
+              processId: instance.processId,
+              searchedPids: Array.from(allPids),
+            },
             'No matching processes found in nvidia-smi output'
           )
         }
@@ -449,10 +461,7 @@ export class ModelManager extends EventEmitter {
           'Parsed memory metrics from vLLM logs'
         )
       } else {
-        this.logger.warn(
-          { instanceId, modelPath },
-          'Could not parse memory metrics from vLLM logs'
-        )
+        this.logger.warn({ instanceId, modelPath }, 'Could not parse memory metrics from vLLM logs')
       }
 
       // Test if model supports chat templates
@@ -477,7 +486,10 @@ export class ModelManager extends EventEmitter {
           // Check if error is about missing chat template
           if (errorMsg.includes('chat template') || errorMsg.includes('chat_template')) {
             instance.hasChatTemplate = false
-            this.logger.info({ modelPath, instanceId }, 'Model does not support chat templates (will need manual wrapping)')
+            this.logger.info(
+              { modelPath, instanceId },
+              'Model does not support chat templates (will need manual wrapping)'
+            )
           } else {
             // Different 400 error, assume templates work
             instance.hasChatTemplate = true
@@ -576,7 +588,10 @@ export class ModelManager extends EventEmitter {
       // Remove from store
       modelStore.delete(instance.id)
 
-      this.logger.info({ instanceId: instance.id, modelPath: instance.modelPath }, 'Model entry removed')
+      this.logger.info(
+        { instanceId: instance.id, modelPath: instance.modelPath },
+        'Model entry removed'
+      )
       this.emit('model:unloaded', instance)
       return
     }
@@ -594,7 +609,10 @@ export class ModelManager extends EventEmitter {
       if (instance.engineCorePid) {
         try {
           process.kill(instance.engineCorePid, 'SIGKILL')
-          this.logger.debug({ instanceId: instance.id, engineCorePid: instance.engineCorePid }, 'Killed EngineCore process')
+          this.logger.debug(
+            { instanceId: instance.id, engineCorePid: instance.engineCorePid },
+            'Killed EngineCore process'
+          )
         } catch {
           // Process may have already exited
         }
@@ -642,11 +660,16 @@ export class ModelManager extends EventEmitter {
       modelStore.delete(instance.id)
       this.processes.delete(instance.id)
 
-      this.logger.info({ instanceId: instance.id, modelPath: instance.modelPath }, 'Model unloaded successfully')
+      this.logger.info(
+        { instanceId: instance.id, modelPath: instance.modelPath },
+        'Model unloaded successfully'
+      )
       this.emit('model:unloaded', instance)
     } catch (err) {
       this.logger.error({ instanceId: instance.id, err }, 'Error unloading model')
-      throw new InternalError(`Failed to unload model: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      throw new InternalError(
+        `Failed to unload model: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
     }
   }
 
@@ -743,7 +766,9 @@ export class ModelManager extends EventEmitter {
       if (err instanceof NotFoundError || err instanceof InternalError) {
         throw err
       }
-      throw new InternalError(`Failed to put model to sleep: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      throw new InternalError(
+        `Failed to put model to sleep: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
     }
   }
 
@@ -824,7 +849,9 @@ export class ModelManager extends EventEmitter {
       if (err instanceof NotFoundError || err instanceof InternalError) {
         throw err
       }
-      throw new InternalError(`Failed to wake model: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      throw new InternalError(
+        `Failed to wake model: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
     }
   }
 
@@ -850,8 +877,11 @@ export class ModelManager extends EventEmitter {
         })
 
         if (response.ok) {
-          const data = await response.json() as { is_sleeping: boolean }
-          return { isSleeping: data.is_sleeping, level: data.is_sleeping ? instance.sleepLevel : undefined }
+          const data = (await response.json()) as { is_sleeping: boolean }
+          return {
+            isSleeping: data.is_sleeping,
+            level: data.is_sleeping ? instance.sleepLevel : undefined,
+          }
         }
       } catch {
         // If endpoint fails, rely on stored state
@@ -894,11 +924,7 @@ export class ModelManager extends EventEmitter {
    */
   private getIpcSegmentName(modelPath: string, instanceId: string): string {
     // Convert "meta-llama/Llama-3.2-1B" -> "VLLM_META_LLAMA_LLAMA_3_2_1B"
-    const name = modelPath
-      .replace(/\//g, '_')
-      .replace(/-/g, '_')
-      .replace(/\./g, '_')
-      .toUpperCase()
+    const name = modelPath.replace(/\//g, '_').replace(/-/g, '_').replace(/\./g, '_').toUpperCase()
     // Add short instance suffix for uniqueness
     const suffix = instanceId.slice(0, 8).toUpperCase()
     return `VLLM_${name}_${suffix}`
@@ -966,7 +992,11 @@ export class ModelManager extends EventEmitter {
   /**
    * Handle process exit
    */
-  private handleProcessExit(instanceId: string, code: number | null, signal: NodeJS.Signals | null): void {
+  private handleProcessExit(
+    instanceId: string,
+    code: number | null,
+    signal: NodeJS.Signals | null
+  ): void {
     const instance = modelStore.get(instanceId)
     if (!instance) return
 
@@ -991,7 +1021,10 @@ export class ModelManager extends EventEmitter {
         )
       )
 
-      this.logger.error({ instanceId, modelPath: instance.modelPath, errorMessage }, 'Model failed to load')
+      this.logger.error(
+        { instanceId, modelPath: instance.modelPath, errorMessage },
+        'Model failed to load'
+      )
       this.emit('model:failed', instance)
 
       // Schedule cleanup of logs after 30 minutes for failed instances
@@ -1013,9 +1046,7 @@ export class ModelManager extends EventEmitter {
 
     // Try to extract better error from logs, fall back to err.message
     const logs = processLogBuffer.getBuffer(instanceId)
-    const extractedError = logs.length > 0
-      ? buildErrorMessage(logs, null, null)
-      : err.message
+    const extractedError = logs.length > 0 ? buildErrorMessage(logs, null, null) : err.message
 
     const previousStatus = instance.status
     instance.status = 'failed' as ModelStatus
@@ -1033,7 +1064,10 @@ export class ModelManager extends EventEmitter {
       )
     )
 
-    this.logger.error({ instanceId, modelPath: instance.modelPath, errorMessage: extractedError }, 'Model process error')
+    this.logger.error(
+      { instanceId, modelPath: instance.modelPath, errorMessage: extractedError },
+      'Model process error'
+    )
     this.emit('model:failed', instance)
 
     // Schedule cleanup of logs after 30 minutes for failed instances
@@ -1053,7 +1087,10 @@ export class ModelManager extends EventEmitter {
       try {
         await this.unloadModel(model.id)
       } catch (err) {
-        this.logger.error({ instanceId: model.id, modelPath: model.modelPath, err }, 'Error cleaning up model')
+        this.logger.error(
+          { instanceId: model.id, modelPath: model.modelPath, err },
+          'Error cleaning up model'
+        )
       }
     }
 

@@ -31,6 +31,7 @@ These endpoints are compatible with the OpenAI API specification, allowing drop-
 Generate text completions for a given prompt.
 
 **Request Body**:
+
 ```json
 {
   "model": "meta-llama/Llama-3.2-1B",
@@ -43,6 +44,7 @@ Generate text completions for a given prompt.
 ```
 
 **Request Parameters**:
+
 - `model` (string, required): Model name/identifier
 - `prompt` (string, required): Input text to complete
 - `max_tokens` (integer, optional): Maximum tokens to generate
@@ -52,6 +54,7 @@ Generate text completions for a given prompt.
 - Additional vLLM-supported parameters
 
 **Response (Non-Streaming)**:
+
 ```json
 {
   "id": "cmpl-xxxx",
@@ -75,6 +78,7 @@ Generate text completions for a given prompt.
 ```
 
 **Response (Streaming)**:
+
 ```
 data: {"id":"cmpl-xxxx","object":"text_completion","created":1234567890,"choices":[{"text":"Once","index":0}],"model":"meta-llama/Llama-3.2-1B"}
 
@@ -84,6 +88,7 @@ data: [DONE]
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/v1/completions \
   -H "Content-Type: application/json" \
@@ -99,6 +104,7 @@ curl http://localhost:8080/v1/completions \
 Generate chat-based completions for a conversation.
 
 **Request Body**:
+
 ```json
 {
   "model": "meta-llama/Llama-3.2-1B",
@@ -119,6 +125,7 @@ Generate chat-based completions for a conversation.
 ```
 
 **Request Parameters**:
+
 - `model` (string, required): Model name/identifier
 - `messages` (array, required): Conversation history
   - `role` (string): One of "system", "user", "assistant"
@@ -129,6 +136,7 @@ Generate chat-based completions for a conversation.
 - Additional vLLM-supported parameters
 
 **Response (Non-Streaming)**:
+
 ```json
 {
   "id": "chatcmpl-xxxx",
@@ -154,6 +162,7 @@ Generate chat-based completions for a conversation.
 ```
 
 **Response (Streaming)**:
+
 ```
 data: {"id":"chatcmpl-xxxx","object":"chat.completion.chunk","created":1234567890,"model":"meta-llama/Llama-3.2-1B","choices":[{"index":0,"delta":{"role":"assistant","content":"The"},"finish_reason":null}]}
 
@@ -163,6 +172,7 @@ data: [DONE]
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -181,6 +191,7 @@ curl http://localhost:8080/v1/chat/completions \
 List all configured models with their endpoint information.
 
 **Response**:
+
 ```json
 {
   "object": "list",
@@ -210,6 +221,7 @@ List all configured models with their endpoint information.
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/models
 ```
@@ -219,9 +231,11 @@ curl http://localhost:8080/models
 List models that are currently idle (no recent activity).
 
 **Query Parameters**:
+
 - `threshold` (integer, optional): Idle time threshold in seconds (default: 300)
 
 **Response**:
+
 ```json
 {
   "idle_models": [
@@ -236,6 +250,7 @@ List models that are currently idle (no recent activity).
 ```
 
 **Example**:
+
 ```bash
 # Get models idle for more than 5 minutes
 curl http://localhost:8080/models/idle?threshold=300
@@ -246,10 +261,12 @@ curl http://localhost:8080/models/idle?threshold=300
 List models that are currently active (recent activity).
 
 **Query Parameters**:
+
 - `threshold` (integer, optional): Activity threshold in seconds (default: 300)
 - `window` (integer, optional): Time window to consider in seconds
 
 **Response**:
+
 ```json
 {
   "active_models": [
@@ -265,6 +282,7 @@ List models that are currently active (recent activity).
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/models/active
 ```
@@ -276,9 +294,11 @@ curl http://localhost:8080/models/active
 Get overall traffic statistics across all models.
 
 **Query Parameters**:
+
 - `window` (integer, optional): Time window in seconds for statistics (default: all time)
 
 **Response**:
+
 ```json
 {
   "overall": {
@@ -310,6 +330,7 @@ Get overall traffic statistics across all models.
 ```
 
 **Metrics Explanation**:
+
 - `total_requests`: Total number of requests received
 - `successful_requests`: Requests completed successfully
 - `failed_requests`: Requests that failed
@@ -318,6 +339,7 @@ Get overall traffic statistics across all models.
 - `last_activity`: Timestamp of last request
 
 **Example**:
+
 ```bash
 # Get all-time stats
 curl http://localhost:8080/traffic/stats
@@ -331,12 +353,15 @@ curl http://localhost:8080/traffic/stats?window=300
 Get traffic statistics for a specific model.
 
 **Path Parameters**:
+
 - `model_name` (string, required): Model identifier (URL-encoded)
 
 **Query Parameters**:
+
 - `window` (integer, optional): Time window in seconds (default: all time)
 
 **Response**:
+
 ```json
 {
   "model": "meta-llama/Llama-3.2-1B",
@@ -351,6 +376,7 @@ Get traffic statistics for a specific model.
 ```
 
 **Example**:
+
 ```bash
 # URL encode the model name
 MODEL_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
@@ -364,6 +390,7 @@ curl http://localhost:8080/traffic/stats/$MODEL_NAME
 Get the current sleep status of all models.
 
 **Response**:
+
 ```json
 {
   "models": {
@@ -381,11 +408,13 @@ Get the current sleep status of all models.
 ```
 
 **Status Values**:
+
 - `active`: Model is running and available
 - `sleeping`: Model is in sleep mode
 - `waking`: Model is in the process of waking up
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/sleep/status
 ```
@@ -395,6 +424,7 @@ curl http://localhost:8080/sleep/status
 List models that are eligible for sleep (idle beyond threshold).
 
 **Response**:
+
 ```json
 {
   "candidates": [
@@ -411,6 +441,7 @@ List models that are eligible for sleep (idle beyond threshold).
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/sleep/candidates
 ```
@@ -420,11 +451,13 @@ curl http://localhost:8080/sleep/candidates
 Manually put a specific model to sleep.
 
 **Path Parameters**:
+
 - `model_name` (string, required): Model identifier (URL-encoded)
 
 **Request Body**: None required (empty body or `{}`)
 
 **Response (Success)**:
+
 ```json
 {
   "status": "success",
@@ -435,6 +468,7 @@ Manually put a specific model to sleep.
 ```
 
 **Response (Error - Model Already Sleeping)**:
+
 ```json
 {
   "status": "error",
@@ -444,6 +478,7 @@ Manually put a specific model to sleep.
 ```
 
 **Example**:
+
 ```bash
 MODEL_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl -X POST http://localhost:8080/action/sleep/$MODEL_NAME \
@@ -456,11 +491,13 @@ curl -X POST http://localhost:8080/action/sleep/$MODEL_NAME \
 Manually wake up a sleeping model.
 
 **Path Parameters**:
+
 - `model_name` (string, required): Model identifier (URL-encoded)
 
 **Request Body**: None required (empty body or `{}`)
 
 **Response (Success)**:
+
 ```json
 {
   "status": "success",
@@ -471,6 +508,7 @@ Manually wake up a sleeping model.
 ```
 
 **Response (Error - Model Already Active)**:
+
 ```json
 {
   "status": "error",
@@ -480,6 +518,7 @@ Manually wake up a sleeping model.
 ```
 
 **Response (Error - Minimum Sleep Duration Not Met)**:
+
 ```json
 {
   "status": "error",
@@ -491,6 +530,7 @@ Manually wake up a sleeping model.
 ```
 
 **Example**:
+
 ```bash
 MODEL_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl -X POST http://localhost:8080/action/wakeup/$MODEL_NAME \
@@ -505,6 +545,7 @@ curl -X POST http://localhost:8080/action/wakeup/$MODEL_NAME \
 Check the overall health of the Controller.
 
 **Response**:
+
 ```json
 {
   "status": "healthy",
@@ -516,6 +557,7 @@ Check the overall health of the Controller.
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/health
 ```
@@ -525,9 +567,11 @@ curl http://localhost:8080/health
 Check the health of a specific model endpoint.
 
 **Path Parameters**:
+
 - `model_name` (string, required): Model identifier (URL-encoded)
 
 **Response (Healthy)**:
+
 ```json
 {
   "model": "meta-llama/Llama-3.2-1B",
@@ -541,6 +585,7 @@ Check the health of a specific model endpoint.
 ```
 
 **Response (Unhealthy)**:
+
 ```json
 {
   "model": "meta-llama/Llama-3.2-1B",
@@ -554,6 +599,7 @@ Check the health of a specific model endpoint.
 ```
 
 **Example**:
+
 ```bash
 MODEL_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl http://localhost:8080/health/$MODEL_NAME
@@ -564,6 +610,7 @@ curl http://localhost:8080/health/$MODEL_NAME
 Get server information (for compatibility).
 
 **Response**:
+
 ```json
 {
   "version": "0.1.0",
@@ -572,6 +619,7 @@ Get server information (for compatibility).
 ```
 
 **Example**:
+
 ```bash
 curl http://localhost:8080/get_server_info
 ```
@@ -601,6 +649,7 @@ curl http://localhost:8080/get_server_info
 ### Common Error Scenarios
 
 **Model Not Found**:
+
 ```json
 {
   "error": {
@@ -612,6 +661,7 @@ curl http://localhost:8080/get_server_info
 ```
 
 **Model Waking Up**:
+
 ```json
 {
   "error": {
@@ -623,6 +673,7 @@ curl http://localhost:8080/get_server_info
 ```
 
 **Invalid Parameters**:
+
 ```json
 {
   "error": {
@@ -697,17 +748,17 @@ const response = await fetch('http://localhost:8080/v1/completions', {
   body: JSON.stringify({
     model: 'meta-llama/Llama-3.2-1B',
     prompt: 'Hello, world!',
-    max_tokens: 50
-  })
-});
+    max_tokens: 50,
+  }),
+})
 
-const data = await response.json();
-console.log(data.choices[0].text);
+const data = await response.json()
+console.log(data.choices[0].text)
 
 // Get sleep status
-const sleepStatus = await fetch('http://localhost:8080/sleep/status');
-const sleepData = await sleepStatus.json();
-console.log(sleepData);
+const sleepStatus = await fetch('http://localhost:8080/sleep/status')
+const sleepData = await sleepStatus.json()
+console.log(sleepData)
 ```
 
 ### cURL Examples

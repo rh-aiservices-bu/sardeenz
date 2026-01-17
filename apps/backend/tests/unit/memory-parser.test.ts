@@ -20,9 +20,15 @@ describe('memory-parser utility', () => {
   describe('extractVllmMemoryInfo', () => {
     it('should extract model loading size from logs', () => {
       const logs: LogEntry[] = [
-        createLogEntry('INFO 11-26 17:29:24 [gpu_model_runner.py:2602] Starting to load model Qwen/Qwen3-0.6B...'),
-        createLogEntry('INFO 11-26 17:29:25 [default_loader.py:267] Loading weights took 0.40 seconds'),
-        createLogEntry('INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 1.1201 GiB and 0.760489 seconds'),
+        createLogEntry(
+          'INFO 11-26 17:29:24 [gpu_model_runner.py:2602] Starting to load model Qwen/Qwen3-0.6B...'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:25 [default_loader.py:267] Loading weights took 0.40 seconds'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 1.1201 GiB and 0.760489 seconds'
+        ),
       ]
 
       const result = extractVllmMemoryInfo(logs)
@@ -33,8 +39,13 @@ describe('memory-parser utility', () => {
 
     it('should extract CUDA graphs size from logs', () => {
       const logs: LogEntry[] = [
-        createLogEntry('Capturing CUDA graphs (decode, FULL): 100%|██████████| 35/35 [00:01<00:00, 24.62it/s]', 'stderr'),
-        createLogEntry('INFO 11-26 17:29:40 [gpu_model_runner.py:3480] Graph capturing finished in 4 secs, took 0.55 GiB'),
+        createLogEntry(
+          'Capturing CUDA graphs (decode, FULL): 100%|██████████| 35/35 [00:01<00:00, 24.62it/s]',
+          'stderr'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:40 [gpu_model_runner.py:3480] Graph capturing finished in 4 secs, took 0.55 GiB'
+        ),
       ]
 
       const result = extractVllmMemoryInfo(logs)
@@ -45,7 +56,9 @@ describe('memory-parser utility', () => {
 
     it('should extract KV cache available memory from logs', () => {
       const logs: LogEntry[] = [
-        createLogEntry('INFO 11-26 17:29:35 [gpu_worker.py:298] Available KV cache memory: 4.34 GiB'),
+        createLogEntry(
+          'INFO 11-26 17:29:35 [gpu_worker.py:298] Available KV cache memory: 4.34 GiB'
+        ),
       ]
 
       const result = extractVllmMemoryInfo(logs)
@@ -71,17 +84,32 @@ describe('memory-parser utility', () => {
     it('should extract all memory info from real vLLM logs', () => {
       // Real log entries from a Qwen/Qwen3-0.6B load
       const logs: LogEntry[] = [
-        createLogEntry('[kvcached][INFO][2025-11-26 17:29:11][patch_base.py:98] Applying 6 patches for vllm', 'stderr'),
-        createLogEntry('INFO 11-26 17:29:12 [__init__.py:216] Automatically detected platform cuda.'),
+        createLogEntry(
+          '[kvcached][INFO][2025-11-26 17:29:11][patch_base.py:98] Applying 6 patches for vllm',
+          'stderr'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:12 [__init__.py:216] Automatically detected platform cuda.'
+        ),
         createLogEntry(
           '[kvcached][WARNING][2025-11-26 17:29:24][patches.py:749] Ignoring GPU free-memory check: Free memory on device (6.53/7.62 GiB) on startup is less than desired GPU memory utilization (0.9, 6.86 GiB).',
           'stderr'
         ),
-        createLogEntry('INFO 11-26 17:29:24 [gpu_model_runner.py:2602] Starting to load model Qwen/Qwen3-0.6B...'),
-        createLogEntry('INFO 11-26 17:29:25 [default_loader.py:267] Loading weights took 0.40 seconds'),
-        createLogEntry('INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 1.1201 GiB and 0.760489 seconds'),
-        createLogEntry('INFO 11-26 17:29:35 [gpu_worker.py:298] Available KV cache memory: 4.34 GiB'),
-        createLogEntry('INFO 11-26 17:29:40 [gpu_model_runner.py:3480] Graph capturing finished in 4 secs, took 0.55 GiB'),
+        createLogEntry(
+          'INFO 11-26 17:29:24 [gpu_model_runner.py:2602] Starting to load model Qwen/Qwen3-0.6B...'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:25 [default_loader.py:267] Loading weights took 0.40 seconds'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 1.1201 GiB and 0.760489 seconds'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:35 [gpu_worker.py:298] Available KV cache memory: 4.34 GiB'
+        ),
+        createLogEntry(
+          'INFO 11-26 17:29:40 [gpu_model_runner.py:3480] Graph capturing finished in 4 secs, took 0.55 GiB'
+        ),
       ]
 
       const result = extractVllmMemoryInfo(logs)
@@ -106,7 +134,9 @@ describe('memory-parser utility', () => {
 
     it('should return partial info when only some patterns match', () => {
       const logs: LogEntry[] = [
-        createLogEntry('INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 2.5 GiB and 1.0 seconds'),
+        createLogEntry(
+          'INFO 11-26 17:29:26 [gpu_model_runner.py:2653] Model loading took 2.5 GiB and 1.0 seconds'
+        ),
         createLogEntry('INFO: No other memory info'),
       ]
 

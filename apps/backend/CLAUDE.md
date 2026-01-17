@@ -30,6 +30,7 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | `src/plugins/inference-auth.ts`      | Inference API key auth (separate from admin JWT)                               |
 
 **Sleep Mode Endpoints** (in `src/routes/models.ts`):
+
 - `POST /api/models/instances/:instance_id/sleep` - Put model to sleep (frees ~90% GPU memory)
 - `POST /api/models/instances/:instance_id/wake` - Wake sleeping model
 - `GET /api/models/instances/:instance_id/sleep-status` - Check sleep status

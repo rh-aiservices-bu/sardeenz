@@ -293,10 +293,10 @@ When writing or updating components:
 
 ```jsx
 // Enable dark theme
-document.documentElement.classList.add('pf-v6-theme-dark');
+document.documentElement.classList.add('pf-v6-theme-dark')
 
 // Disable dark theme
-document.documentElement.classList.remove('pf-v6-theme-dark');
+document.documentElement.classList.remove('pf-v6-theme-dark')
 ```
 
 ### Hot Pink Temporary Tokens
@@ -485,8 +485,8 @@ If you encounter `--pf-v6-temp--dev--tbd` tokens (displayed as hot pink), these 
 **Do:**
 
 ```jsx
-import ArrowUpIcon from '@patternfly/react-icons/dist/esm/icons/arrow-up-icon';
-<ArrowUpIcon title="Trend up" />;
+import ArrowUpIcon from '@patternfly/react-icons/dist/esm/icons/arrow-up-icon'
+;<ArrowUpIcon title="Trend up" />
 ```
 
 **Don't:**

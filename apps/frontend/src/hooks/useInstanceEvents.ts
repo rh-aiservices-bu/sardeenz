@@ -152,7 +152,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
       const event = JSON.parse(e.data)
       onEventRef.current?.(event)
     })
-  }, [instanceId])  // Only instanceId - all other values accessed via refs
+  }, [instanceId]) // Only instanceId - all other values accessed via refs
 
   // Connect/disconnect on instanceId change only
   // Note: connect is stable (only depends on instanceId) so we don't need it in deps
@@ -177,7 +177,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
         reconnectTimeoutRef.current = null
       }
     }
-  }, [instanceId, connect])  // connect is stable now (only depends on instanceId)
+  }, [instanceId, connect]) // connect is stable now (only depends on instanceId)
 
   const reconnect = useCallback(() => {
     reconnectAttemptRef.current = 0

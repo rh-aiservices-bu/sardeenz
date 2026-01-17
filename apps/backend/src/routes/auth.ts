@@ -171,10 +171,7 @@ async function checkResourceAccess(
  * Resolve user roles via Kubernetes LocalSubjectAccessReview API
  * Uses namespace-scoped Roles in the sardeenz namespace
  */
-async function resolveUserRolesViaRbac(
-  username: string,
-  groups: string[]
-): Promise<string[]> {
+async function resolveUserRolesViaRbac(username: string, groups: string[]): Promise<string[]> {
   const roles: string[] = []
 
   // Check admin role
@@ -410,21 +407,30 @@ export default async function authRoutes(fastify: FastifyInstance) {
       // Check for errors from OAuth provider
       if (request.query.error) {
         const errorMessage = request.query.error_description || request.query.error
-        fastify.log.error({ error: request.query.error, description: request.query.error_description }, 'OAuth provider returned error')
-        return reply.redirect(`${config.frontendUrl}/?auth_error=${encodeURIComponent(errorMessage)}`)
+        fastify.log.error(
+          { error: request.query.error, description: request.query.error_description },
+          'OAuth provider returned error'
+        )
+        return reply.redirect(
+          `${config.frontendUrl}/?auth_error=${encodeURIComponent(errorMessage)}`
+        )
       }
 
       const { code, state } = request.query
 
       if (!code || !state) {
-        return reply.redirect(`${config.frontendUrl}/?auth_error=${encodeURIComponent('Missing authorization code or state')}`)
+        return reply.redirect(
+          `${config.frontendUrl}/?auth_error=${encodeURIComponent('Missing authorization code or state')}`
+        )
       }
 
       // Validate state (CSRF protection)
       const storedState = oauthStateStore.get(state)
       if (!storedState) {
         fastify.log.warn({ state }, 'Invalid or expired OAuth state')
-        return reply.redirect(`${config.frontendUrl}/?auth_error=${encodeURIComponent('Invalid or expired state. Please try logging in again.')}`)
+        return reply.redirect(
+          `${config.frontendUrl}/?auth_error=${encodeURIComponent('Invalid or expired state. Please try logging in again.')}`
+        )
       }
 
       // Remove used state
@@ -494,10 +500,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         )
 
         // Resolve user roles via Kubernetes RBAC (SubjectAccessReview)
-        const roles = await resolveUserRolesViaRbac(
-          userInfo.metadata.name,
-          userInfo.groups || []
-        )
+        const roles = await resolveUserRolesViaRbac(userInfo.metadata.name, userInfo.groups || [])
 
         if (roles.length === 0) {
           fastify.log.warn(

@@ -105,10 +105,7 @@ export function ModelToolbar({
     onFiltersChange({ ...filters, gpuAssignment: newGpus })
   }
 
-  const handleGpuDelete = (
-    _category: string | ToolbarLabelGroup,
-    label: string | ToolbarLabel
-  ) => {
+  const handleGpuDelete = (_category: string | ToolbarLabelGroup, label: string | ToolbarLabel) => {
     const chipText = typeof label === 'string' ? label : String(label)
     onFiltersChange({
       ...filters,

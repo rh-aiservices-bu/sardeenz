@@ -19,12 +19,14 @@ This document provides detailed frontend architecture specifications for the sar
 ## Overview
 
 The sardeenz frontend is a React-based admin dashboard that enables operators to:
+
 - Monitor all loaded LLM instances and their resource consumption
 - Load and unload models dynamically
 - View real-time GPU memory metrics and inference statistics
 - Manage model configurations and operational state
 
 **Design Principles:**
+
 - **PatternFly-first**: Leverage PatternFly 6 components for consistent UX
 - **Type-safe**: TypeScript strict mode throughout
 - **Accessibility**: WCAG 2.1 AA compliance
@@ -33,17 +35,17 @@ The sardeenz frontend is a React-based admin dashboard that enables operators to
 
 ## Technology Stack
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **UI Framework** | React 18.3+ | Component-based UI |
-| **Language** | TypeScript 5.7+ (strict) | Type safety |
-| **Design System** | PatternFly 6.x | Enterprise UI components |
-| **Routing** | React Router 7 | Client-side routing |
-| **Build Tool** | Vite 6.0+ | Fast dev server + bundler |
-| **HTTP Client** | Axios | API communication |
-| **Testing** | Vitest + React Testing Library | Unit/integration tests |
-| **Mocking** | MSW (Mock Service Worker) | API mocking |
-| **State** | React Context API + useState | Local and global state |
+| Layer             | Technology                     | Purpose                   |
+| ----------------- | ------------------------------ | ------------------------- |
+| **UI Framework**  | React 18.3+                    | Component-based UI        |
+| **Language**      | TypeScript 5.7+ (strict)       | Type safety               |
+| **Design System** | PatternFly 6.x                 | Enterprise UI components  |
+| **Routing**       | React Router 7                 | Client-side routing       |
+| **Build Tool**    | Vite 6.0+                      | Fast dev server + bundler |
+| **HTTP Client**   | Axios                          | API communication         |
+| **Testing**       | Vitest + React Testing Library | Unit/integration tests    |
+| **Mocking**       | MSW (Mock Service Worker)      | API mocking               |
+| **State**         | React Context API + useState   | Local and global state    |
 
 ## Component Hierarchy
 
@@ -114,79 +116,84 @@ App (AuthProvider, Router)
 ### State Distribution
 
 #### Local State Examples
+
 ```tsx
 // Component-level loading state
-const [loading, setLoading] = useState(false);
+const [loading, setLoading] = useState(false)
 
 // Form input state
-const [modelConfig, setModelConfig] = useState({ name: '', memory: 0.5 });
+const [modelConfig, setModelConfig] = useState({ name: '', memory: 0.5 })
 
 // UI state
-const [isDialogOpen, setIsDialogOpen] = useState(false);
+const [isDialogOpen, setIsDialogOpen] = useState(false)
 ```
 
 #### Global State (Context)
 
 **AuthContext** (`src/context/AuthContext.tsx`):
+
 ```typescript
 interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
-  role: 'admin' | 'admin-readonly' | null;
-  login: () => void;
-  logout: () => void;
-  refreshToken: () => Promise<void>;
+  user: User | null
+  isAuthenticated: boolean
+  role: 'admin' | 'admin-readonly' | null
+  login: () => void
+  logout: () => void
+  refreshToken: () => Promise<void>
 }
 ```
 
 **Usage:**
+
 ```tsx
-const { user, role, isAuthenticated } = useAuth();
+const { user, role, isAuthenticated } = useAuth()
 
 // Conditional rendering based on role
-{role === 'admin' && <LoadModelButton />}
+{
+  role === 'admin' && <LoadModelButton />
+}
 ```
 
 ### Server State Pattern
 
 ```tsx
 const ModelList: React.FC = () => {
-  const [models, setModels] = useState<Model[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [models, setModels] = useState<Model[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    fetchModels();
-    const interval = setInterval(fetchModels, 5000); // Poll every 5s
-    return () => clearInterval(interval);
-  }, []);
+    fetchModels()
+    const interval = setInterval(fetchModels, 5000) // Poll every 5s
+    return () => clearInterval(interval)
+  }, [])
 
   const fetchModels = async () => {
     try {
-      const response = await modelsApi.list();
-      setModels(response.data);
-      setError(null);
+      const response = await modelsApi.list()
+      setModels(response.data)
+      setError(null)
     } catch (err) {
-      setError(err);
+      setError(err)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  return <ModelTable models={models} loading={loading} error={error} />;
-};
+  return <ModelTable models={models} loading={loading} error={error} />
+}
 ```
 
 ## Routing Architecture
 
 ### Route Structure
 
-| Path | Component | Purpose |
-|------|-----------|---------|
-| `/` | ModelManagement | Model list, load, unload, memory visualization |
-| `/gpu` | GpuInfo | GPU metrics and monitoring |
-| `/benchmark` | ModelBenchmark | Performance testing |
-| `/settings` | Settings | Application configuration |
+| Path         | Component       | Purpose                                        |
+| ------------ | --------------- | ---------------------------------------------- |
+| `/`          | ModelManagement | Model list, load, unload, memory visualization |
+| `/gpu`       | GpuInfo         | GPU metrics and monitoring                     |
+| `/benchmark` | ModelBenchmark  | Performance testing                            |
+| `/settings`  | Settings        | Application configuration                      |
 
 ### Centralized Route Configuration
 
@@ -202,8 +209,8 @@ import Settings from './pages/Settings'
 export interface RouteConfig {
   path: string
   element: JSX.Element
-  label: string        // Navigation display label
-  itemId: string       // NavItem identifier
+  label: string // Navigation display label
+  itemId: string // NavItem identifier
 }
 
 export const routes: RouteConfig[] = [
@@ -333,50 +340,52 @@ function App() {
 ### JWT Handling
 
 **Storage:** In-memory only (NOT localStorage)
+
 ```tsx
 // src/api/client.ts
-let jwtToken: string | null = null;
+let jwtToken: string | null = null
 
 export const setToken = (token: string) => {
-  jwtToken = token;
-};
+  jwtToken = token
+}
 
-export const getToken = () => jwtToken;
+export const getToken = () => jwtToken
 
 export const clearToken = () => {
-  jwtToken = null;
-};
+  jwtToken = null
+}
 ```
 
 **Axios Interceptor:**
+
 ```tsx
-import axios from 'axios';
+import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: '/api/v1',
   timeout: 10000,
-});
+})
 
 // Request interceptor: Add JWT to all requests
-apiClient.interceptors.request.use(config => {
-  const token = getToken();
+apiClient.interceptors.request.use((config) => {
+  const token = getToken()
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${token}`
   }
-  return config;
-});
+  return config
+})
 
 // Response interceptor: Handle 401 (redirect to login)
 apiClient.interceptors.response.use(
-  response => response,
-  error => {
+  (response) => response,
+  (error) => {
     if (error.response?.status === 401) {
-      clearToken();
-      window.location.href = '/login';
+      clearToken()
+      window.location.href = '/login'
     }
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
-);
+)
 ```
 
 ## API Integration
@@ -394,8 +403,9 @@ src/api/
 ### API Modules
 
 **`client.ts`** - Base configuration:
+
 ```tsx
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance } from 'axios'
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
@@ -403,81 +413,78 @@ export const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
+})
 
 // Add interceptors (auth, error handling)
 ```
 
 **`models.ts`** - Model operations:
+
 ```tsx
-import { apiClient } from './client';
-import { ModelInstance, LoadModelRequest, LoadModelResponse } from './types';
+import { apiClient } from './client'
+import { ModelInstance, LoadModelRequest, LoadModelResponse } from './types'
 
 export const modelsApi = {
   list: () => apiClient.get<ModelInstance[]>('/models'),
 
   get: (id: string) => apiClient.get<ModelInstance>(`/models/${id}`),
 
-  load: (request: LoadModelRequest) =>
-    apiClient.post<LoadModelResponse>('/models/load', request),
+  load: (request: LoadModelRequest) => apiClient.post<LoadModelResponse>('/models/load', request),
 
-  unload: (id: string) =>
-    apiClient.post(`/models/${id}/unload`),
+  unload: (id: string) => apiClient.post(`/models/${id}/unload`),
 
-  status: (id: string) =>
-    apiClient.get<ModelInstance>(`/models/${id}/status`),
-};
+  status: (id: string) => apiClient.get<ModelInstance>(`/models/${id}/status`),
+}
 ```
 
 **`metrics.ts`** - Metrics endpoints:
+
 ```tsx
-import { apiClient } from './client';
-import { ResourceMetrics, SystemMetrics } from './types';
+import { apiClient } from './client'
+import { ResourceMetrics, SystemMetrics } from './types'
 
 export const metricsApi = {
-  getModelMetrics: (id: string) =>
-    apiClient.get<ResourceMetrics>(`/metrics/models/${id}`),
+  getModelMetrics: (id: string) => apiClient.get<ResourceMetrics>(`/metrics/models/${id}`),
 
-  getSystemMetrics: () =>
-    apiClient.get<SystemMetrics>('/metrics/system'),
+  getSystemMetrics: () => apiClient.get<SystemMetrics>('/metrics/system'),
 
-  getAll: () =>
-    apiClient.get<ResourceMetrics[]>('/metrics'),
-};
+  getAll: () => apiClient.get<ResourceMetrics[]>('/metrics'),
+}
 ```
 
 ### Custom Hooks for API Calls
 
 **`src/hooks/useModels.ts`**:
+
 ```tsx
-import { useState, useEffect } from 'react';
-import { modelsApi } from '../api/models';
-import { ModelInstance } from '../api/types';
+import { useState, useEffect } from 'react'
+import { modelsApi } from '../api/models'
+import { ModelInstance } from '../api/types'
 
 export function useModels(refreshInterval = 5000) {
-  const [models, setModels] = useState<ModelInstance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [models, setModels] = useState<ModelInstance[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
   const fetchModels = async () => {
     try {
-      const response = await modelsApi.list();
-      setModels(response.data);
-      setError(null);
+      const response = await modelsApi.list()
+      setModels(response.data)
+      setError(null)
     } catch (err) {
-      setError(err as Error);
+      setError(err as Error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchModels();
-    const interval = setInterval(fetchModels, refreshInterval);
-    return () => clearInterval(interval);
-  }, [refreshInterval]);
+    fetchModels()
+    const interval = setInterval(fetchModels, refreshInterval)
+    return () => clearInterval(interval)
+  }, [refreshInterval])
 
-  return { models, loading, error, refetch: fetchModels };
+  return { models, loading, error, refetch: fetchModels }
 }
 ```
 
@@ -492,77 +499,75 @@ export function useModels(refreshInterval = 5000) {
 ### Polling Hook
 
 **`src/hooks/usePolling.ts`**:
+
 ```tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react'
 
-export function usePolling<T>(
-  fetchFn: () => Promise<T>,
-  interval: number,
-  enabled = true
-) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
-  const isMountedRef = useRef(true);
+export function usePolling<T>(fetchFn: () => Promise<T>, interval: number, enabled = true) {
+  const [data, setData] = useState<T | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+  const [loading, setLoading] = useState(true)
+  const isMountedRef = useRef(true)
 
   useEffect(() => {
-    isMountedRef.current = true;
+    isMountedRef.current = true
     return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return
 
     const poll = async () => {
       try {
-        const result = await fetchFn();
+        const result = await fetchFn()
         if (isMountedRef.current) {
-          setData(result);
-          setError(null);
+          setData(result)
+          setError(null)
         }
       } catch (err) {
         if (isMountedRef.current) {
-          setError(err as Error);
+          setError(err as Error)
         }
       } finally {
         if (isMountedRef.current) {
-          setLoading(false);
+          setLoading(false)
         }
       }
-    };
+    }
 
-    poll(); // Initial fetch
-    const timer = setInterval(poll, interval);
+    poll() // Initial fetch
+    const timer = setInterval(poll, interval)
 
-    return () => clearInterval(timer);
-  }, [fetchFn, interval, enabled]);
+    return () => clearInterval(timer)
+  }, [fetchFn, interval, enabled])
 
-  return { data, error, loading };
+  return { data, error, loading }
 }
 ```
 
 ### Future: WebSocket Integration
 
 **Planned architecture** (post-MVP):
+
 ```tsx
 // src/hooks/useWebSocket.ts
 export function useWebSocket(url: string) {
-  const [data, setData] = useState(null);
-  const [connected, setConnected] = useState(false);
+  const [data, setData] = useState(null)
+  const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url)
 
-    ws.onopen = () => setConnected(true);
-    ws.onmessage = (event) => setData(JSON.parse(event.data));
-    ws.onclose = () => setConnected(false);
+    ws.onopen = () => setConnected(true)
+    ws.onmessage = (event) => setData(JSON.parse(event.data))
+    ws.onclose = () => setConnected(false)
 
-    return () => ws.close();
-  }, [url]);
+    return () => ws.close()
+  }, [url])
 
-  return { data, connected };
+  return { data, connected }
 }
 ```
 
@@ -573,19 +578,21 @@ export function useWebSocket(url: string) {
 **Purpose:** Display a single model instance with status, GPU placement, and actions.
 
 **Props:**
+
 ```tsx
 interface ModelCardProps {
-  model: ModelInstanceDTO;
-  onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void;
-  onSleep?: (instanceId: string) => void;
-  onWake?: (instanceId: string) => void;
-  isUnloading?: boolean;
-  isSleeping?: boolean;
-  isWaking?: boolean;
+  model: ModelInstanceDTO
+  onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
+  onSleep?: (instanceId: string) => void
+  onWake?: (instanceId: string) => void
+  isUnloading?: boolean
+  isSleeping?: boolean
+  isWaking?: boolean
 }
 ```
 
 **PatternFly Components:**
+
 - `Card`, `CardTitle`, `CardBody`, `CardFooter`
 - `DescriptionList` (for model details)
 - `Badge` (via `ModelStatusBadge` for status)
@@ -595,6 +602,7 @@ interface ModelCardProps {
 - `MoonIcon`, `SunIcon` (for sleep/wake actions)
 
 **Layout:**
+
 ```
 ┌─────────────────────────────────────┐
 │ meta-llama/Llama-3.2-1B   [Running] │
@@ -613,6 +621,7 @@ interface ModelCardProps {
 ```
 
 **GPU Display:**
+
 - Single GPU: Shows "GPU 0"
 - Multiple GPUs: Shows "GPU 0, GPU 1 (tensor parallel)"
 - The "(tensor parallel)" suffix indicates model is split across GPUs
@@ -622,23 +631,25 @@ interface ModelCardProps {
 **Purpose:** Modal form for loading a new model instance.
 
 **Props:**
+
 ```tsx
 interface LoadModelDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onLoad: (config: LoadModelConfig) => Promise<void>;
+  isOpen: boolean
+  onClose: () => void
+  onLoad: (config: LoadModelConfig) => Promise<void>
 }
 
 interface LoadModelConfig {
-  modelPath: string;
-  displayName: string;
-  gpuMemoryLimit: number; // 0.1 - 0.9
-  port?: number; // Optional, auto-assign if not provided
-  enableSleepMode?: boolean; // Enable sleep mode for this model
+  modelPath: string
+  displayName: string
+  gpuMemoryLimit: number // 0.1 - 0.9
+  port?: number // Optional, auto-assign if not provided
+  enableSleepMode?: boolean // Enable sleep mode for this model
 }
 ```
 
 **PatternFly Components:**
+
 - `Modal`
 - `Form`, `FormGroup`
 - `TextInput` (model path, display name)
@@ -648,6 +659,7 @@ interface LoadModelConfig {
 - `Button` (Load, Cancel)
 
 **Validation:**
+
 - Model path: Required, must exist
 - Display name: Required, max 50 chars
 - GPU memory: 0.1-0.9 (10%-90%)
@@ -659,21 +671,23 @@ interface LoadModelConfig {
 **Purpose:** Real-time visualization of GPU memory allocation.
 
 **Props:**
+
 ```tsx
 interface MemoryUsageChartProps {
-  totalMemory: number; // Total GPU memory in GB
+  totalMemory: number // Total GPU memory in GB
   models: Array<{
-    id: string;
-    name: string;
-    memoryUsed: number;
-    color: string;
-  }>;
+    id: string
+    name: string
+    memoryUsed: number
+    color: string
+  }>
 }
 ```
 
 **Chart Type:** Stacked bar chart or donut chart
 
 **PatternFly Components:**
+
 - `Card`, `CardBody`
 - PatternFly Charts (Victory-based)
 
@@ -684,18 +698,21 @@ interface MemoryUsageChartProps {
 **Purpose:** Visual status indicator for models.
 
 **Props:**
+
 ```tsx
 interface ModelStatusBadgeProps {
-  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed';
+  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed'
 }
 ```
 
 **PatternFly Components:**
+
 - `Badge`
 - `Spinner` (for 'starting', 'stopping' status)
 - `MoonIcon` (for 'sleeping' status)
 
 **Color Mapping:**
+
 - `starting` → Blue badge with spinner
 - `active` → Green badge
 - `sleeping` → Purple badge with moon icon
@@ -715,11 +732,11 @@ interface ModelStatusBadgeProps {
 ### Error Display Pattern
 
 ```tsx
-import { Alert, AlertActionCloseButton } from '@patternfly/react-core';
+import { Alert, AlertActionCloseButton } from '@patternfly/react-core'
 
 const ErrorAlert: React.FC<{ error: Error; onClose: () => void }> = ({ error, onClose }) => {
-  const variant = error.response?.status === 401 ? 'danger' : 'warning';
-  const title = error.response?.status === 401 ? 'Authentication Required' : 'Error';
+  const variant = error.response?.status === 401 ? 'danger' : 'warning'
+  const title = error.response?.status === 401 ? 'Authentication Required' : 'Error'
 
   return (
     <Alert
@@ -730,8 +747,8 @@ const ErrorAlert: React.FC<{ error: Error; onClose: () => void }> = ({ error, on
     >
       {error.message}
     </Alert>
-  );
-};
+  )
+}
 ```
 
 ### Global Error Boundary (Future)
@@ -740,15 +757,15 @@ const ErrorAlert: React.FC<{ error: Error; onClose: () => void }> = ({ error, on
 // src/components/ErrorBoundary.tsx
 class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error boundary caught:', error, errorInfo);
+    console.error('Error boundary caught:', error, errorInfo)
     // Log to monitoring service
   }
 
   render() {
     if (this.state.hasError) {
-      return <ErrorPage />;
+      return <ErrorPage />
     }
-    return this.props.children;
+    return this.props.children
   }
 }
 ```
@@ -762,51 +779,58 @@ class ErrorBoundary extends React.Component<Props, State> {
 - **PatternFly imports**: Import specific components, not entire library
 
 **Example:**
+
 ```tsx
 // ✅ Good - Tree-shakeable
-import { Button, Card } from '@patternfly/react-core';
+import { Button, Card } from '@patternfly/react-core'
 
 // ❌ Bad - Imports entire library
-import * as PF from '@patternfly/react-core';
+import * as PF from '@patternfly/react-core'
 ```
 
 ### Rendering Optimization
 
 **Memoization for expensive components:**
-```tsx
-import { memo } from 'react';
 
-const ModelCard = memo<ModelCardProps>(({ model, onUnload }) => {
-  // Component logic
-}, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if model data changed
-  return prevProps.model.id === nextProps.model.id &&
-         prevProps.model.status === nextProps.model.status;
-});
+```tsx
+import { memo } from 'react'
+
+const ModelCard = memo<ModelCardProps>(
+  ({ model, onUnload }) => {
+    // Component logic
+  },
+  (prevProps, nextProps) => {
+    // Custom comparison: only re-render if model data changed
+    return (
+      prevProps.model.id === nextProps.model.id && prevProps.model.status === nextProps.model.status
+    )
+  }
+)
 ```
 
 **Debouncing for search/filter:**
+
 ```tsx
-import { useState, useCallback } from 'react';
-import { debounce } from 'lodash-es';
+import { useState, useCallback } from 'react'
+import { debounce } from 'lodash-es'
 
 const ModelSearch: React.FC = () => {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState('')
 
   const debouncedSearch = useCallback(
     debounce((value: string) => {
       // Perform search API call
     }, 300),
     []
-  );
+  )
 
   const handleChange = (value: string) => {
-    setSearch(value);
-    debouncedSearch(value);
-  };
+    setSearch(value)
+    debouncedSearch(value)
+  }
 
-  return <TextInput value={search} onChange={handleChange} />;
-};
+  return <TextInput value={search} onChange={handleChange} />
+}
 ```
 
 ### Polling Optimization
@@ -816,28 +840,28 @@ const ModelSearch: React.FC = () => {
 - **Conditional polling**: Only poll on relevant pages
 
 ```tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 function useVisibilityChange() {
-  const [isVisible, setIsVisible] = useState(!document.hidden);
+  const [isVisible, setIsVisible] = useState(!document.hidden)
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      setIsVisible(!document.hidden);
-    };
+      setIsVisible(!document.hidden)
+    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
-  return isVisible;
+  return isVisible
 }
 
 // Usage in polling hook
-const isVisible = useVisibilityChange();
-const { data } = usePolling(fetchFn, 5000, isVisible);
+const isVisible = useVisibilityChange()
+const { data } = usePolling(fetchFn, 5000, isVisible)
 ```
 
 ## Testing Strategy
@@ -848,9 +872,9 @@ Test individual components in isolation with mocked dependencies.
 
 ```tsx
 // ModelCard.test.tsx
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { ModelCard } from './ModelCard';
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { ModelCard } from './ModelCard'
 
 describe('ModelCard', () => {
   const mockModel = {
@@ -860,33 +884,33 @@ describe('ModelCard', () => {
     port: 5001,
     gpuMemoryLimit: 6.0,
     // ... other fields
-  };
+  }
 
   it('renders model information correctly', () => {
-    render(<ModelCard model={mockModel} onUnload={vi.fn()} userRole="admin" />);
+    render(<ModelCard model={mockModel} onUnload={vi.fn()} userRole="admin" />)
 
-    expect(screen.getByText('llama-2-7b')).toBeInTheDocument();
-    expect(screen.getByText('Port: 5001')).toBeInTheDocument();
-  });
+    expect(screen.getByText('llama-2-7b')).toBeInTheDocument()
+    expect(screen.getByText('Port: 5001')).toBeInTheDocument()
+  })
 
   it('calls onUnload when unload button clicked (admin only)', async () => {
-    const user = userEvent.setup();
-    const onUnload = vi.fn();
+    const user = userEvent.setup()
+    const onUnload = vi.fn()
 
-    render(<ModelCard model={mockModel} onUnload={onUnload} userRole="admin" />);
+    render(<ModelCard model={mockModel} onUnload={onUnload} userRole="admin" />)
 
-    const unloadButton = screen.getByRole('button', { name: /unload/i });
-    await user.click(unloadButton);
+    const unloadButton = screen.getByRole('button', { name: /unload/i })
+    await user.click(unloadButton)
 
-    expect(onUnload).toHaveBeenCalledWith('model-1');
-  });
+    expect(onUnload).toHaveBeenCalledWith('model-1')
+  })
 
   it('hides unload button for read-only users', () => {
-    render(<ModelCard model={mockModel} onUnload={vi.fn()} userRole="admin-readonly" />);
+    render(<ModelCard model={mockModel} onUnload={vi.fn()} userRole="admin-readonly" />)
 
-    expect(screen.queryByRole('button', { name: /unload/i })).not.toBeInTheDocument();
-  });
-});
+    expect(screen.queryByRole('button', { name: /unload/i })).not.toBeInTheDocument()
+  })
+})
 ```
 
 ### Integration Tests
@@ -895,31 +919,31 @@ Test API integration with MSW (Mock Service Worker).
 
 ```tsx
 // ModelManagement.test.tsx
-import { render, screen, waitFor } from '@testing-library/react';
-import { rest } from 'msw';
-import { setupServer } from 'msw/node';
-import { ModelManagement } from './ModelManagement';
+import { render, screen, waitFor } from '@testing-library/react'
+import { rest } from 'msw'
+import { setupServer } from 'msw/node'
+import { ModelManagement } from './ModelManagement'
 
 const server = setupServer(
   rest.get('/api/v1/models', (req, res, ctx) => {
-    return res(ctx.json([mockModel1, mockModel2]));
+    return res(ctx.json([mockModel1, mockModel2]))
   })
-);
+)
 
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+beforeAll(() => server.listen())
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
 test('loads and displays models', async () => {
-  render(<ModelManagement />);
+  render(<ModelManagement />)
 
-  expect(screen.getByText(/loading/i)).toBeInTheDocument();
+  expect(screen.getByText(/loading/i)).toBeInTheDocument()
 
   await waitFor(() => {
-    expect(screen.getByText('llama-2-7b')).toBeInTheDocument();
-    expect(screen.getByText('mistral-7b')).toBeInTheDocument();
-  });
-});
+    expect(screen.getByText('llama-2-7b')).toBeInTheDocument()
+    expect(screen.getByText('mistral-7b')).toBeInTheDocument()
+  })
+})
 ```
 
 ## Accessibility Guidelines

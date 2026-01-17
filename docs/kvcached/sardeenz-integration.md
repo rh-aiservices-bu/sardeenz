@@ -19,17 +19,20 @@ This document describes how the sardeenz project will integrate with kvcached fo
 **Decision:** sardeenz will **NOT** use the kvcached Controller for model management. Instead, the backend will directly manage individual vLLM instances with kvcached enabled.
 
 **Why:**
+
 - The Controller requires a full restart to add/remove models
 - Restarting kills all running instances, causing downtime
 - sardeenz needs true dynamic model management
 
 **How:**
+
 - Backend launches vLLM instances directly with `ENABLE_KVCACHED=true`
 - Each model runs independently but shares GPU memory via kvcached
 - Backend implements its own routing, monitoring, and lifecycle management
 - Use kvcached CLI tools (`kvctl`, `kvtop`) for memory monitoring
 
 **Benefits:**
+
 - ✅ Add models without affecting running instances
 - ✅ Remove models individually with no downtime
 - ✅ Full control over model lifecycle
@@ -45,17 +48,19 @@ The kvcached Controller is designed for **static, long-running deployments** whe
 #### Problem 1: No Dynamic Model Addition
 
 **Controller behavior:**
+
 ```yaml
 # config.yaml - Must define all models upfront
 instances:
-  - name: "llama-3.2-1b"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
   # Cannot add models without restarting
 ```
 
 **Missing features:**
+
 - ❌ No API to add models at runtime
 - ❌ No hot-reload of configuration
 - ❌ No dynamic instance registration
@@ -83,6 +88,7 @@ Step 4: Both models ready (after significant downtime)
 ```
 
 **Impact:**
+
 - **Downtime**: All models unavailable during restart
 - **Slow**: Must reload all model weights from disk/network
 - **Disruptive**: In-flight requests are lost
@@ -91,11 +97,13 @@ Step 4: Both models ready (after significant downtime)
 #### Problem 3: Poor Fit for User-Driven Model Selection
 
 sardeenz's use case:
+
 - Users select which models to load from a UI
 - Users can add/remove models on demand
 - Need instant response to user actions
 
 Controller's design:
+
 - System administrator defines models in YAML
 - Configuration changes require restart
 - Long restart times (minutes for large models)
@@ -184,17 +192,20 @@ For completeness, here's what the Controller provides that we're giving up:
 #### 1. Model Lifecycle Manager
 
 **Responsibilities:**
+
 - Launch vLLM instances on demand
 - Track running models and their endpoints
 - Stop individual models cleanly
 - Health monitoring
 
 **Does NOT use:**
+
 - kvcached Controller
 - tmux sessions (Controller feature)
 - YAML configuration for model list
 
 **Uses:**
+
 - Direct subprocess management
 - kvcached environment variables
 - Individual model processes
@@ -202,39 +213,46 @@ For completeness, here's what the Controller provides that we're giving up:
 #### 2. Request Router
 
 **Responsibilities:**
+
 - Accept requests from frontend/API clients
 - Route to appropriate model endpoint
 - Handle errors and retries
 
 **Simple approach:**
+
 - Forward requests to `http://localhost:{model_port}/v1/...`
 - Return responses to client
 
 #### 3. Memory Monitor
 
 **Responsibilities:**
+
 - Track GPU memory usage
 - Report statistics to frontend
 - Alert on high usage
 
 **Uses:**
+
 - `kvctl list --json` for programmatic access
 - `kvtop` for debugging/development
 
 ### How kvcached Fits In
 
 **kvcached's role:**
+
 - Enable GPU memory sharing between vLLM instances
 - Manage KV cache allocation dynamically
 - Allow multiple models to coexist on same GPU
 
 **What we use:**
+
 - ✅ kvcached's memory management layer (core feature)
 - ✅ kvcached CLI tools for monitoring
 - ✅ Environment variables for enabling kvcached
 - ❌ kvcached Controller (too inflexible)
 
 **How it works:**
+
 1. Backend sets `ENABLE_KVCACHED=true` for each vLLM launch
 2. Each vLLM instance automatically uses kvcached for memory
 3. GPU memory is shared transparently via IPC segments
@@ -247,11 +265,13 @@ For completeness, here's what the Controller provides that we're giving up:
 **Step-by-step:**
 
 1. **User selects model in UI**
+
    ```
    User clicks "Load meta-llama/Llama-3.2-1B"
    ```
 
 2. **Backend receives request**
+
    ```
    POST /api/models/load
    {
@@ -261,6 +281,7 @@ For completeness, here's what the Controller provides that we're giving up:
    ```
 
 3. **Backend launches vLLM instance**
+
    ```python
    # Set environment variables
    env = os.environ.copy()
@@ -279,6 +300,7 @@ For completeness, here's what the Controller provides that we're giving up:
    ```
 
 4. **Backend waits for model ready**
+
    ```python
    # Poll health endpoint
    for i in range(60):  # 2 minutes max
@@ -292,6 +314,7 @@ For completeness, here's what the Controller provides that we're giving up:
    ```
 
 5. **Backend registers model**
+
    ```python
    # Track in memory
    self.running_models["meta-llama/Llama-3.2-1B"] = {
@@ -317,11 +340,13 @@ For completeness, here's what the Controller provides that we're giving up:
 **Step-by-step:**
 
 1. **User requests unload**
+
    ```
    DELETE /api/models/meta-llama%2FLlama-3.2-1B
    ```
 
 2. **Backend kills all vLLM processes with SIGKILL**
+
    ```python
    model_info = self.running_models["meta-llama/Llama-3.2-1B"]
    process = model_info["process"]
@@ -351,6 +376,7 @@ For completeness, here's what the Controller provides that we're giving up:
    > before killing the parent to ensure GPU memory is freed.
 
 3. **Do NOT delete IPC segment**
+
    ```python
    # DO NOT call kvctl delete here!
    # Models on the same GPU share the IPC segment (e.g., kvcached_vllm_GPU0)
@@ -358,6 +384,7 @@ For completeness, here's what the Controller provides that we're giving up:
    ```
 
 4. **Backend removes from registry**
+
    ```python
    del self.running_models["meta-llama/Llama-3.2-1B"]
    ```
@@ -379,11 +406,11 @@ The IPC segments are only deleted when the server shuts down and all models are 
 
 Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
 
-| GPU Configuration | IPC Segment Name |
-|-------------------|------------------|
-| Single GPU (GPU 0) | `kvcached_vllm_GPU0` |
-| Single GPU (GPU 1) | `kvcached_vllm_GPU1` |
-| Tensor-parallel (GPU 0+1) | `kvcached_vllm_GPU0_GPU1` |
+| GPU Configuration         | IPC Segment Name                    |
+| ------------------------- | ----------------------------------- |
+| Single GPU (GPU 0)        | `kvcached_vllm_GPU0`                |
+| Single GPU (GPU 1)        | `kvcached_vllm_GPU1`                |
+| Tensor-parallel (GPU 0+1) | `kvcached_vllm_GPU0_GPU1`           |
 | Tensor-parallel (GPU 0-3) | `kvcached_vllm_GPU0_GPU1_GPU2_GPU3` |
 
 This is configured automatically via the `KVCACHED_IPC_NAME` environment variable set by the backend based on the model's GPU assignment.
@@ -739,6 +766,7 @@ POST   /v1/chat/completions         # Forward to vLLM (OpenAI-compatible)
 ### Example API Payloads
 
 **Load Model:**
+
 ```json
 POST /api/models/load
 {
@@ -757,6 +785,7 @@ Response:
 ```
 
 **List Models:**
+
 ```json
 GET /api/models
 
@@ -783,6 +812,7 @@ Response:
 ```
 
 **Memory Usage:**
+
 ```json
 GET /api/memory/usage
 
@@ -830,6 +860,7 @@ This provides accurate KVCache metrics per GPU, as opposed to reading a stale `t
 ### Setting Memory Limits
 
 **Why set limits:**
+
 - Prevent one model from consuming all GPU memory
 - Ensure fair sharing between models
 - Avoid OOM errors
@@ -904,6 +935,7 @@ allocator.update_limits(models)  # Each gets ~7.2GB
 ### Health Checks
 
 **Per-model health:**
+
 ```python
 def check_model_health(model_path: str) -> dict:
     """Check if model is responding."""
@@ -929,6 +961,7 @@ def check_model_health(model_path: str) -> dict:
 ```
 
 **Overall system health:**
+
 ```python
 def check_system_health() -> dict:
     """Check health of all models and system."""
@@ -951,6 +984,7 @@ def check_system_health() -> dict:
 ### Usage Metrics
 
 **Track per-model usage:**
+
 ```python
 class UsageTracker:
     """Track model usage statistics."""
@@ -1011,11 +1045,13 @@ async def completions(request: Request):
 ### Phase 1: Basic Model Management (Week 1-2)
 
 **Goals:**
+
 - Launch and stop individual vLLM instances
 - Basic health checks
 - Simple request routing
 
 **Tasks:**
+
 1. Implement `ModelManager` class
    - `launch_model()`
    - `unload_model()`
@@ -1040,11 +1076,13 @@ async def completions(request: Request):
 ### Phase 2: Memory Management (Week 3)
 
 **Goals:**
+
 - Monitor GPU memory usage
 - Set memory limits per model
 - Prevent OOM errors
 
 **Tasks:**
+
 1. Integrate kvctl for memory monitoring
    - Parse `kvctl list --json` output
    - Expose via API
@@ -1066,11 +1104,13 @@ async def completions(request: Request):
 ### Phase 3: Monitoring & Observability (Week 4)
 
 **Goals:**
+
 - Track usage metrics
 - Health monitoring
 - Error handling
 
 **Tasks:**
+
 1. Implement usage tracking
    - Per-model request counts
    - Success/failure rates
@@ -1114,21 +1154,25 @@ async def completions(request: Request):
 ### What We Gain
 
 ✅ **True dynamic model management**
+
 - Add/remove models without downtime
 - No impact on running models
 - Instant response to user actions
 
 ✅ **Full control**
+
 - Custom routing logic
 - Flexible health checks
 - Tailored monitoring
 
 ✅ **Simpler architecture**
+
 - No Controller dependency
 - Fewer moving parts
 - Easier debugging
 
 ✅ **Same kvcached benefits**
+
 - GPU memory sharing still works
 - Multiple models coexist
 - Memory management via kvctl
@@ -1136,18 +1180,22 @@ async def completions(request: Request):
 ### What We Lose
 
 ❌ **Unified router**
+
 - Need to implement our own
 - More code to maintain
 
 ❌ **Automatic sleep/wake**
+
 - Would need to implement ourselves
 - Or just let models run (simpler)
 
 ❌ **Integrated traffic monitoring**
+
 - Need to track our own metrics
 - But gives us more control
 
 ❌ **Declarative configuration**
+
 - No single YAML file
 - But configuration is more dynamic
 
@@ -1156,11 +1204,13 @@ async def completions(request: Request):
 The trade-offs heavily favor direct management for sardeenz:
 
 **Critical for us:**
+
 - ✅ No downtime when adding models
 - ✅ Dynamic, user-driven model selection
 - ✅ Fast response to user actions
 
 **Nice to have (Controller features):**
+
 - ⚠️ Unified router - Easy to implement ourselves
 - ⚠️ Auto sleep - Optional, can add later if needed
 - ⚠️ Traffic monitoring - We need custom metrics anyway
@@ -1258,12 +1308,14 @@ If you encounter issues during implementation:
    - `docs/kvcached/cli-tools.md` - Memory management
 
 2. **Verify environment variables:**
+
    ```bash
    echo $ENABLE_KVCACHED        # Should be "true"
    echo $KVCACHED_AUTOPATCH     # Should be "1"
    ```
 
 3. **Check vLLM is using kvcached:**
+
    ```bash
    kvctl list  # Should show IPC segments
    ```
@@ -1277,6 +1329,7 @@ If you encounter issues during implementation:
 **Integration approach:** Direct vLLM instance management with kvcached enabled
 
 **Key decisions:**
+
 - ❌ Don't use kvcached Controller (too inflexible)
 - ✅ Launch vLLM instances directly
 - ✅ Backend implements routing and lifecycle management
@@ -1284,6 +1337,7 @@ If you encounter issues during implementation:
 - ✅ kvcached provides GPU memory sharing automatically
 
 **Implementation roadmap:**
+
 1. Basic model management
 2. Memory management
 3. Monitoring & observability

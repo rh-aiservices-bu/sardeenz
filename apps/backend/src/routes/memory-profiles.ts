@@ -233,7 +233,10 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
             liveGpuMemoryGib = modelMemory.gpu_memory_gb
           }
         } catch (err) {
-          fastify.log.warn({ err, instanceId: body.instance_id }, 'Failed to get live GPU memory for profile')
+          fastify.log.warn(
+            { err, instanceId: body.instance_id },
+            'Failed to get live GPU memory for profile'
+          )
         }
 
         // Use live GPU memory if available, otherwise fall back to memoryMetrics
@@ -241,10 +244,16 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
 
         // Recalculate overhead based on live total
         const overheadMemoryGib = liveGpuMemoryGib
-          ? Math.max(0, liveGpuMemoryGib - instance.memoryMetrics.weightsMemoryGiB - instance.memoryMetrics.cudaGraphMemoryGiB)
+          ? Math.max(
+              0,
+              liveGpuMemoryGib -
+                instance.memoryMetrics.weightsMemoryGiB -
+                instance.memoryMetrics.cudaGraphMemoryGiB
+            )
           : instance.memoryMetrics.overheadMemoryGiB
 
-        const profileName = body.profile_name || `${instance.modelPath} @ ${instance.maxTokens} tokens`
+        const profileName =
+          body.profile_name || `${instance.modelPath} @ ${instance.maxTokens} tokens`
 
         const profile = store.upsertProfile({
           profileName,
@@ -284,7 +293,8 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
 
       // Calculate overhead if not provided
       const overheadMemoryGib =
-        body.overhead_memory_gib ?? Math.max(0, body.total_gpu_memory_gib - body.weights_memory_gib - body.cuda_graphs_gib)
+        body.overhead_memory_gib ??
+        Math.max(0, body.total_gpu_memory_gib - body.weights_memory_gib - body.cuda_graphs_gib)
 
       const profileName = body.profile_name || `${body.model_path} @ ${body.max_tokens} tokens`
 

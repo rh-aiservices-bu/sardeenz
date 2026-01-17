@@ -259,7 +259,14 @@ class BenchmarkStore {
       VALUES (?, ?, 'pending', ?, ?, ?, ?)
     `)
 
-    stmt.run(id, config.name ?? null, config.mode, kvcachedEnabled ? 1 : 0, now, JSON.stringify(config))
+    stmt.run(
+      id,
+      config.name ?? null,
+      config.mode,
+      kvcachedEnabled ? 1 : 0,
+      now,
+      JSON.stringify(config)
+    )
 
     return {
       id,
@@ -627,7 +634,10 @@ class BenchmarkStore {
    * Get all results for a run (across all scenarios)
    * Used for export functionality
    */
-  getRunResults(runId: string, excludeWarmup = true): Array<BenchmarkResult & { modelPath: string; modelName: string }> {
+  getRunResults(
+    runId: string,
+    excludeWarmup = true
+  ): Array<BenchmarkResult & { modelPath: string; modelName: string }> {
     let sql = `
       SELECT r.*, s.model_path, s.model_name
       FROM benchmark_results r
@@ -640,7 +650,9 @@ class BenchmarkStore {
     sql += ' ORDER BY s.id, r.request_sequence'
 
     const stmt = this.db.prepare(sql)
-    const rows = stmt.all(runId) as Array<BenchmarkResultRow & { model_path: string; model_name: string }>
+    const rows = stmt.all(runId) as Array<
+      BenchmarkResultRow & { model_path: string; model_name: string }
+    >
     return rows.map((row) => ({
       ...rowToResult(row),
       modelPath: row.model_path,

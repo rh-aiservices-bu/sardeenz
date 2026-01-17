@@ -137,10 +137,7 @@ export function calculateGpuMemoryUsed(memoryInfo: VllmMemoryInfo): number {
  * @param gpuTotalGB - Total GPU memory in GiB
  * @returns GPU memory utilization as a decimal (0.0 to 1.0)
  */
-export function calculateGpuUtilization(
-  memoryInfo: VllmMemoryInfo,
-  gpuTotalGB: number
-): number {
+export function calculateGpuUtilization(memoryInfo: VllmMemoryInfo, gpuTotalGB: number): number {
   const usedGB = calculateGpuMemoryUsed(memoryInfo)
 
   if (gpuTotalGB <= 0) {

@@ -40,6 +40,7 @@ kvctl
 ```
 
 You'll see a prompt like:
+
 ```
 kvctl>
 ```
@@ -51,14 +52,17 @@ kvctl>
 List all IPC memory segments and their usage.
 
 **Syntax**:
+
 ```bash
 list [ipc_names...]
 ```
 
 **Options**:
+
 - `--json`: Output in JSON format
 
 **Examples**:
+
 ```bash
 # List all IPC segments
 kvctl> list
@@ -71,6 +75,7 @@ kvctl> list --json
 ```
 
 **Sample Output**:
+
 ```
 IPC Name         Total      Used       Free       Limit      Usage
 ─────────────────────────────────────────────────────────────────
@@ -80,6 +85,7 @@ VLLM_MODEL_3     4.0 GB     0.0 GB     4.0 GB     None       0%
 ```
 
 **JSON Output**:
+
 ```json
 {
   "VLLM_MODEL_1": {
@@ -104,16 +110,19 @@ VLLM_MODEL_3     4.0 GB     0.0 GB     4.0 GB     None       0%
 Set an absolute memory limit for an IPC segment.
 
 **Syntax**:
+
 ```bash
 limit <ipc_name> <size>
 ```
 
 **Size Format**:
+
 - Supports human-readable sizes: `512M`, `2G`, `1.5G`, `4096M`
 - Suffixes: `K` (KB), `M` (MB), `G` (GB), `T` (TB)
 - Case-insensitive
 
 **Examples**:
+
 ```bash
 # Set 4GB limit
 kvctl> limit VLLM_MODEL_1 4G
@@ -126,11 +135,13 @@ kvctl> limit VLLM_MODEL_3 1.5G
 ```
 
 **Sample Output**:
+
 ```
 Memory limit for VLLM_MODEL_1 set to 4.0 GB
 ```
 
 **Notes**:
+
 - Limit is enforced immediately
 - If current usage exceeds new limit, allocation will fail for new requests
 - Does not forcibly evict existing allocations
@@ -140,15 +151,18 @@ Memory limit for VLLM_MODEL_1 set to 4.0 GB
 Set a memory limit as a percentage of total GPU RAM.
 
 **Syntax**:
+
 ```bash
 limit-percent <ipc_name> <percentage>
 ```
 
 **Percentage**:
+
 - Integer value (0-100)
 - Based on total GPU memory available
 
 **Examples**:
+
 ```bash
 # Set to 30% of total GPU memory
 kvctl> limit-percent VLLM_MODEL_1 30
@@ -158,11 +172,13 @@ kvctl> limit-percent VLLM_MODEL_2 50
 ```
 
 **Sample Output**:
+
 ```
 Memory limit for VLLM_MODEL_1 set to 30% (7.2 GB of 24 GB total)
 ```
 
 **Use Cases**:
+
 - Ensure fair sharing among models
 - Reserve GPU memory for non-kvcached workloads
 - Dynamic allocation based on available GPU memory
@@ -172,14 +188,17 @@ Memory limit for VLLM_MODEL_1 set to 30% (7.2 GB of 24 GB total)
 Continuously display memory usage table with auto-refresh.
 
 **Syntax**:
+
 ```bash
 watch [ipc_names...] [-n INTERVAL] [--interval INTERVAL]
 ```
 
 **Options**:
+
 - `-n INTERVAL` or `--interval INTERVAL`: Refresh interval in seconds (default: 1)
 
 **Examples**:
+
 ```bash
 # Watch all IPC segments (1 second refresh)
 kvctl> watch
@@ -195,6 +214,7 @@ kvctl> watch --interval 0.5
 ```
 
 **Sample Output** (refreshes every second):
+
 ```
 IPC Name         Total      Used       Free       Limit      Usage
 ─────────────────────────────────────────────────────────────────
@@ -211,16 +231,19 @@ Refreshing every 1.0 seconds... (Press Ctrl+C to stop)
 Delete an IPC segment and remove its memory limit entry.
 
 **Syntax**:
+
 ```bash
 delete <ipc_name>
 ```
 
 **Examples**:
+
 ```bash
 kvctl> delete VLLM_MODEL_1
 ```
 
 **Sample Output**:
+
 ```
 IPC segment 'VLLM_MODEL_1' deleted successfully
 Memory limit entry removed
@@ -233,17 +256,20 @@ Memory limit entry removed
 Enter interactive shell mode with enhanced features.
 
 **Syntax**:
+
 ```bash
 shell
 ```
 
 **Features**:
+
 - Tab completion for commands and IPC names
 - Command history (use Up/Down arrows)
 - Multi-line editing
 - Shell command execution with `!` prefix
 
 **Examples**:
+
 ```bash
 kvctl> shell
 
@@ -338,17 +364,21 @@ kvtop
 ### Command-Line Options
 
 **Syntax**:
+
 ```bash
 kvtop [ipc_names...] [-r REFRESH] [--refresh REFRESH]
 ```
 
 **Arguments**:
+
 - `ipc_names` (optional): Specific IPC segments to monitor
 
 **Options**:
+
 - `-r REFRESH` or `--refresh REFRESH`: Refresh interval in seconds (default: 1)
 
 **Examples**:
+
 ```bash
 # Monitor all IPC segments
 kvtop
@@ -709,6 +739,7 @@ manager.cleanup_model("llama-3.2-1b")
 **Issue**: Model is running but not shown in `kvctl list`
 
 **Solutions**:
+
 - Verify `ENABLE_KVCACHED=true` environment variable is set
 - Verify `KVCACHED_AUTOPATCH=1` is set
 - Check model logs for kvcached initialization errors
@@ -719,6 +750,7 @@ manager.cleanup_model("llama-3.2-1b")
 **Issue**: Model exceeds set memory limit
 
 **Solutions**:
+
 - Limits apply to new allocations, not existing ones
 - Restart model after setting limit
 - Verify limit with `kvctl list`
@@ -729,6 +761,7 @@ manager.cleanup_model("llama-3.2-1b")
 **Issue**: kvtop UI is garbled or not rendering correctly
 
 **Solutions**:
+
 - Ensure terminal supports curses (most modern terminals do)
 - Resize terminal window
 - Try different terminal emulator
@@ -738,21 +771,21 @@ manager.cleanup_model("llama-3.2-1b")
 
 ### kvctl Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `list` | List IPC segments | `list` |
-| `limit` | Set absolute memory limit | `limit VLLM_MODEL_1 4G` |
+| Command         | Description                | Example                         |
+| --------------- | -------------------------- | ------------------------------- |
+| `list`          | List IPC segments          | `list`                          |
+| `limit`         | Set absolute memory limit  | `limit VLLM_MODEL_1 4G`         |
 | `limit-percent` | Set percentage-based limit | `limit-percent VLLM_MODEL_1 30` |
-| `watch` | Continuously display usage | `watch -n 2` |
-| `delete` | Delete IPC segment | `delete VLLM_MODEL_1` |
-| `shell` | Enter interactive shell | `shell` |
+| `watch`         | Continuously display usage | `watch -n 2`                    |
+| `delete`        | Delete IPC segment         | `delete VLLM_MODEL_1`           |
+| `shell`         | Enter interactive shell    | `shell`                         |
 
 ### kvtop Options
 
-| Option | Description | Example |
-|--------|-------------|---------|
-| `ipc_names` | Specific segments to monitor | `kvtop VLLM_MODEL_1` |
-| `-r`, `--refresh` | Refresh interval in seconds | `kvtop -r 2` |
+| Option            | Description                  | Example              |
+| ----------------- | ---------------------------- | -------------------- |
+| `ipc_names`       | Specific segments to monitor | `kvtop VLLM_MODEL_1` |
+| `-r`, `--refresh` | Refresh interval in seconds  | `kvtop -r 2`         |
 
 ## Related Documentation
 

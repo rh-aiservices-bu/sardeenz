@@ -21,7 +21,11 @@ import {
 } from '@patternfly/react-core'
 import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon, TrashIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
-import type { ModelInstanceDTO, LoadModelRequest } from '@sardeenz/types'
+import type {
+  ModelInstanceDTO,
+  LoadModelRequest,
+  MultiGpuMemoryUsageResponse,
+} from '@sardeenz/types'
 import {
   LoadModelDialog,
   GpuMemoryPanel,
@@ -57,6 +61,12 @@ function ModelManagement() {
   const [isUnloadAllModalOpen, setIsUnloadAllModalOpen] = useState(false)
   const [isUnloadingAll, setIsUnloadingAll] = useState(false)
   const [gpuRefreshTrigger, setGpuRefreshTrigger] = useState(0)
+  // KV cache total per GPU (gpu index -> total_gb), updated from GpuMemoryPanel
+  const [kvCacheTotalByGpu, setKvCacheTotalByGpu] = useState<Record<number, number>>({})
+  // GPU memory utilization per instance (instance_id -> percentage 0-1), from GpuMemoryPanel
+  const [memoryUtilizationByInstance, setMemoryUtilizationByInstance] = useState<
+    Record<string, number>
+  >({})
 
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('card')
@@ -81,6 +91,27 @@ function ModelManagement() {
   // Trigger GPU memory panel refresh
   const triggerGpuRefresh = useCallback(() => {
     setGpuRefreshTrigger((prev) => prev + 1)
+  }, [])
+
+  // Handle memory data updates from GpuMemoryPanel
+  const handleMemoryDataChange = useCallback((data: MultiGpuMemoryUsageResponse) => {
+    const kvCacheMap: Record<number, number> = {}
+    const memoryMap: Record<string, number> = {}
+
+    for (const gpu of data.gpus) {
+      // Use per-GPU kvcache if available, otherwise fall back to global
+      const kvcacheTotal = gpu.kvcache?.total_gb ?? data.kvcache.total_gb
+      kvCacheMap[gpu.gpu_index] = kvcacheTotal
+
+      // Memory utilization per model instance (for live updates after sleep/wake)
+      for (const model of gpu.models) {
+        const utilization = gpu.total_gb > 0 ? model.gpu_memory_gb / gpu.total_gb : 0
+        memoryMap[model.instance_id] = utilization
+      }
+    }
+
+    setKvCacheTotalByGpu(kvCacheMap)
+    setMemoryUtilizationByInstance(memoryMap)
   }, [])
 
   // Count running models for configuration save
@@ -500,7 +531,11 @@ function ModelManagement() {
 
         {/* GPU Memory Overview Panel */}
         <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
-          <GpuMemoryPanel onModelClick={handleMemoryBarClick} refreshTrigger={gpuRefreshTrigger} />
+          <GpuMemoryPanel
+            onModelClick={handleMemoryBarClick}
+            refreshTrigger={gpuRefreshTrigger}
+            onMemoryDataChange={handleMemoryDataChange}
+          />
         </div>
 
         {models.length === 0 ? (
@@ -545,9 +580,7 @@ function ModelManagement() {
                 <Card>
                   <CardBody>
                     <EmptyState titleText="No models match filters" icon={CubesIcon}>
-                      <EmptyStateBody>
-                        Try adjusting your filters or search term.
-                      </EmptyStateBody>
+                      <EmptyStateBody>Try adjusting your filters or search term.</EmptyStateBody>
                       <EmptyStateFooter>
                         <EmptyStateActions>
                           <Button variant="link" onClick={handleClearAllFilters}>
@@ -577,6 +610,8 @@ function ModelManagement() {
                       wakingInstanceId={wakingInstanceId}
                       expandedCards={expandedCards}
                       onCardToggle={handleCardToggle}
+                      kvCacheTotalByGpu={kvCacheTotalByGpu}
+                      memoryUtilizationByInstance={memoryUtilizationByInstance}
                     />
                   ))}
                 </>

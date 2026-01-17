@@ -15,7 +15,7 @@
 - Q: How should the platform handle inference request logging and history? → A: In-memory ring buffer for recent requests (lost on restart, aligns with stateless PoC design)
 - Q: How should the controller handle resource availability when launching models? → A: Pre-launch validation - Check available memory against model requirements before launch, reject if insufficient
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Model Lifecycle Management via Controller API (Priority: P1)
 
@@ -98,7 +98,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 - **Admin UI loses connection to controller**: UI displays connection error and provides retry mechanism
 - **Graceful shutdown during active requests**: Platform handles shutdown with hybrid approach to manage running processes and ongoing requests
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -154,7 +154,7 @@ Platform administrators need to deploy the entire multi-model management platfor
 - **Resource Metrics**: Represents current resource usage for a model instance, including memory consumption, CPU usage (if available), request count, response times, and access to in-memory ring buffer of recent requests for debugging
 - **Controller Operation**: Represents an administrative action (launch, stop, status query) with operation type, target model, timestamp, and result status
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

@@ -88,6 +88,7 @@ This replaces the old global `kvcached_mem_info` segment with per-GPU segments f
 ### Setting Environment Variables
 
 **Option 1: Shell Export**
+
 ```bash
 export ENABLE_KVCACHED=true
 export KVCACHED_AUTOPATCH=1
@@ -95,11 +96,13 @@ vllm serve meta-llama/Llama-3.2-1B --no-enable-prefix-caching
 ```
 
 **Option 2: Inline**
+
 ```bash
 ENABLE_KVCACHED=true KVCACHED_AUTOPATCH=1 vllm serve meta-llama/Llama-3.2-1B --no-enable-prefix-caching
 ```
 
 **Option 3: .env File**
+
 ```bash
 # .env
 ENABLE_KVCACHED=true
@@ -108,6 +111,7 @@ KVCACHED_GPU_MEMORY_UTILIZATION=0.9
 ```
 
 Load with:
+
 ```bash
 source .env
 # or
@@ -132,7 +136,7 @@ kvcached:
 # Router/frontend settings
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
 
 # Sleep management settings
@@ -144,9 +148,9 @@ sleep_manager:
 
 # Model instance definitions
 instances:
-  - name: "model-1"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'model-1'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     # ... additional settings
 ```
 
@@ -165,13 +169,14 @@ Each model instance in the `instances` array can have the following settings:
 
 ```yaml
 instances:
-  - name: "llama-3.2-1b"              # Unique identifier
-    model: "meta-llama/Llama-3.2-1B"  # HuggingFace model path or local path
-    engine: "vllm"                     # Engine type (only "vllm" for our use)
-    port: 12346                        # Port for this model's vLLM server
+  - name: 'llama-3.2-1b' # Unique identifier
+    model: 'meta-llama/Llama-3.2-1B' # HuggingFace model path or local path
+    engine: 'vllm' # Engine type (only "vllm" for our use)
+    port: 12346 # Port for this model's vLLM server
 ```
 
 **Fields**:
+
 - `name` (string, required): Unique name for this instance
 - `model` (string, required): Model identifier or path
 - `engine` (string, required): Must be `"vllm"` (SGLang not used)
@@ -193,6 +198,7 @@ instances:
 ```
 
 **Field**:
+
 - `venv` (string, optional): Path to virtual environment to use for this model
 
 ### Environment Variable Overrides
@@ -201,21 +207,22 @@ Override environment variables for specific model instances:
 
 ```yaml
 instances:
-  - name: "llama-3.2-1b"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
 
     # Environment overrides
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      KVCACHED_GPU_MEMORY_UTILIZATION: "0.8"
-      CUDA_VISIBLE_DEVICES: "0"
-      HF_TOKEN: "${HF_TOKEN}"          # Reference shell environment variable
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      KVCACHED_GPU_MEMORY_UTILIZATION: '0.8'
+      CUDA_VISIBLE_DEVICES: '0'
+      HF_TOKEN: '${HF_TOKEN}' # Reference shell environment variable
 ```
 
 **Field**:
+
 - `env` (object, optional): Key-value pairs of environment variables
 - Variables can reference shell environment with `${VAR_NAME}` syntax
 
@@ -225,26 +232,28 @@ Pass arguments directly to the vLLM engine:
 
 ```yaml
 instances:
-  - name: "llama-3.2-1b"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
 
     # vLLM engine arguments
     engine_args:
       disable_log_requests: true
-      enable_prefix_caching: false     # Must be false for kvcached
+      enable_prefix_caching: false # Must be false for kvcached
       tensor_parallel_size: 1
       gpu_memory_utilization: 0.9
       max_model_len: 4096
-      dtype: "auto"
+      dtype: 'auto'
       trust_remote_code: true
 ```
 
 **Field**:
+
 - `engine_args` (object, optional): Arguments passed to `vllm serve`
 
 **Important vLLM Arguments for kvcached**:
+
 - `enable_prefix_caching`: **Must be `false`** (kvcached incompatible)
 - `disable_log_requests`: Recommended for cleaner logs
 - `gpu_memory_utilization`: Memory fraction for model weights (0.0-1.0)
@@ -252,6 +261,7 @@ instances:
 - `max_model_len`: Maximum sequence length
 
 **Common vLLM Arguments**:
+
 - `dtype`: Data type (`"auto"`, `"float16"`, `"bfloat16"`)
 - `trust_remote_code`: Allow custom model code
 - `download_dir`: Directory for model downloads
@@ -261,16 +271,16 @@ instances:
 
 ```yaml
 instances:
-  - name: "llama-3.2-1b-main"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b-main'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
-    venv: "~/vllm-env"
+    venv: '~/vllm-env'
 
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "0"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '0'
 
     engine_args:
       disable_log_requests: true
@@ -278,7 +288,7 @@ instances:
       tensor_parallel_size: 1
       gpu_memory_utilization: 0.9
       max_model_len: 4096
-      dtype: "auto"
+      dtype: 'auto'
 ```
 
 ## Router Configuration
@@ -287,13 +297,14 @@ Configure the HTTP API server (controller frontend):
 
 ```yaml
 router:
-  enabled: true          # Enable/disable router
-  host: "0.0.0.0"        # Listen address (0.0.0.0 = all interfaces)
-  port: 8080             # HTTP port
-  timeout: 300           # Request timeout in seconds
+  enabled: true # Enable/disable router
+  host: '0.0.0.0' # Listen address (0.0.0.0 = all interfaces)
+  port: 8080 # HTTP port
+  timeout: 300 # Request timeout in seconds
 ```
 
 **Fields**:
+
 - `enabled` (boolean, default: `true`): Enable the router
 - `host` (string, default: `"0.0.0.0"`): Bind address
   - `"0.0.0.0"`: Listen on all network interfaces
@@ -305,27 +316,30 @@ router:
 ### Router Configuration Examples
 
 **Development (localhost only)**:
+
 ```yaml
 router:
   enabled: true
-  host: "127.0.0.1"
+  host: '127.0.0.1'
   port: 8080
 ```
 
 **Production (all interfaces)**:
+
 ```yaml
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
-  timeout: 600  # 10 minutes for long requests
+  timeout: 600 # 10 minutes for long requests
 ```
 
 **Custom Port**:
+
 ```yaml
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 9000
 ```
 
@@ -335,14 +349,15 @@ Configure automatic model sleep and wake behavior:
 
 ```yaml
 sleep_manager:
-  enabled: true                      # Enable/disable sleep management
-  idle_threshold_seconds: 300        # Time before model becomes sleep candidate
-  auto_sleep_enabled: true           # Automatically put idle models to sleep
-  min_sleep_duration_seconds: 60     # Minimum time model must sleep before wake
-  check_interval_seconds: 60         # How often to check for idle models
+  enabled: true # Enable/disable sleep management
+  idle_threshold_seconds: 300 # Time before model becomes sleep candidate
+  auto_sleep_enabled: true # Automatically put idle models to sleep
+  min_sleep_duration_seconds: 60 # Minimum time model must sleep before wake
+  check_interval_seconds: 60 # How often to check for idle models
 ```
 
 **Fields**:
+
 - `enabled` (boolean, default: `true`): Enable sleep management
 - `idle_threshold_seconds` (integer, default: `300`): Idle time before sleep eligibility (5 minutes)
 - `auto_sleep_enabled` (boolean, default: `true`): Automatically sleep idle models
@@ -352,18 +367,22 @@ sleep_manager:
 ### Sleep Manager Behavior
 
 **Idle Threshold**:
+
 - Model is considered idle after `idle_threshold_seconds` with no requests
 - Only idle models are candidates for sleep
 
 **Auto Sleep**:
+
 - When `auto_sleep_enabled` is `true`, background task checks for idle models every `check_interval_seconds`
 - Idle models are automatically put to sleep
 
 **Manual Sleep**:
+
 - Even with `auto_sleep_enabled: false`, you can manually sleep models via API
 - Use `/action/sleep/{model_name}` endpoint
 
 **Minimum Sleep Duration**:
+
 - Prevents rapid sleep/wake cycles
 - If model has been asleep < `min_sleep_duration_seconds`, wake requests are rejected
 - Reduces overhead from frequent state changes
@@ -371,37 +390,41 @@ sleep_manager:
 ### Sleep Manager Examples
 
 **Aggressive Sleep (quick resource reclamation)**:
+
 ```yaml
 sleep_manager:
   enabled: true
-  idle_threshold_seconds: 120        # 2 minutes
+  idle_threshold_seconds: 120 # 2 minutes
   auto_sleep_enabled: true
-  min_sleep_duration_seconds: 30     # 30 seconds
-  check_interval_seconds: 30         # Check every 30s
+  min_sleep_duration_seconds: 30 # 30 seconds
+  check_interval_seconds: 30 # Check every 30s
 ```
 
 **Conservative Sleep (keep models warm longer)**:
+
 ```yaml
 sleep_manager:
   enabled: true
-  idle_threshold_seconds: 900        # 15 minutes
+  idle_threshold_seconds: 900 # 15 minutes
   auto_sleep_enabled: true
-  min_sleep_duration_seconds: 120    # 2 minutes
-  check_interval_seconds: 120        # Check every 2 minutes
+  min_sleep_duration_seconds: 120 # 2 minutes
+  check_interval_seconds: 120 # Check every 2 minutes
 ```
 
 **Manual Sleep Only**:
+
 ```yaml
 sleep_manager:
   enabled: true
-  auto_sleep_enabled: false          # No automatic sleep
+  auto_sleep_enabled: false # No automatic sleep
   min_sleep_duration_seconds: 60
 ```
 
 **Sleep Disabled**:
+
 ```yaml
 sleep_manager:
-  enabled: false                     # No sleep management
+  enabled: false # No sleep management
 ```
 
 ## kvcached Global Settings
@@ -410,13 +433,14 @@ Global kvcached runtime settings:
 
 ```yaml
 kvcached:
-  gpu_memory_utilization: 0.9        # GPU memory fraction for KV cache
-  preallocate_pages: false           # Pre-allocate memory pages
-  log_level: "INFO"                  # Logging level
-  ipc_prefix: "VLLM"                 # IPC segment name prefix
+  gpu_memory_utilization: 0.9 # GPU memory fraction for KV cache
+  preallocate_pages: false # Pre-allocate memory pages
+  log_level: 'INFO' # Logging level
+  ipc_prefix: 'VLLM' # IPC segment name prefix
 ```
 
 **Fields**:
+
 - `gpu_memory_utilization` (float, default: `0.9`): Fraction of GPU memory for KV cache (0.0-1.0)
 - `preallocate_pages` (boolean, default: `false`): Pre-allocate memory for faster startup
 - `log_level` (string, default: `"INFO"`): Logging verbosity
@@ -432,16 +456,18 @@ Controls how much GPU memory kvcached can use for KV cache:
 
 ```yaml
 kvcached:
-  gpu_memory_utilization: 0.9  # 90% of GPU memory
+  gpu_memory_utilization: 0.9 # 90% of GPU memory
 ```
 
 **Considerations**:
+
 - Higher values = more memory for KV cache = better performance
 - Lower values = reserve memory for other workloads
 - Typically: 0.8-0.95 is safe
 - Must account for model weights (they use separate memory)
 
 **Example**: 24GB GPU, 2 models (8GB each for weights)
+
 - Model weights: 16GB
 - Remaining: 8GB
 - `gpu_memory_utilization: 0.9` → 7.2GB for KV cache
@@ -454,10 +480,12 @@ kvcached:
 ```
 
 **Benefits**:
+
 - Faster first request (memory already allocated)
 - More predictable latency
 
 **Drawbacks**:
+
 - Slower startup time
 - Memory unavailable to other processes even if unused
 
@@ -467,10 +495,11 @@ kvcached:
 
 ```yaml
 kvcached:
-  log_level: "DEBUG"
+  log_level: 'DEBUG'
 ```
 
 **Use Cases**:
+
 - `DEBUG`: Troubleshooting kvcached issues
 - `INFO`: Normal operation (default)
 - `WARNING`: Production with minimal logging
@@ -487,7 +516,7 @@ kvcached:
 
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
 
 sleep_manager:
@@ -497,26 +526,26 @@ sleep_manager:
   min_sleep_duration_seconds: 60
 
 instances:
-  - name: "llama-3.2-1b"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
       gpu_memory_utilization: 0.9
       max_model_len: 4096
 
-  - name: "qwen-0.6b"
-    model: "Qwen/Qwen3-0.6B"
-    engine: "vllm"
+  - name: 'qwen-0.6b'
+    model: 'Qwen/Qwen3-0.6B'
+    engine: 'vllm'
     port: 12347
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
@@ -534,49 +563,49 @@ kvcached:
 
 router:
   enabled: true
-  host: "127.0.0.1"  # Localhost only
+  host: '127.0.0.1' # Localhost only
   port: 9000
 
 sleep_manager:
   enabled: true
-  auto_sleep_enabled: false  # Manual sleep only
+  auto_sleep_enabled: false # Manual sleep only
   min_sleep_duration_seconds: 120
 
 instances:
-  - name: "llama-7b"
-    model: "meta-llama/Llama-2-7b-hf"
-    engine: "vllm"
+  - name: 'llama-7b'
+    model: 'meta-llama/Llama-2-7b-hf'
+    engine: 'vllm'
     port: 12346
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "0"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '0'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
       tensor_parallel_size: 1
 
-  - name: "mistral-7b"
-    model: "mistralai/Mistral-7B-v0.1"
-    engine: "vllm"
+  - name: 'mistral-7b'
+    model: 'mistralai/Mistral-7B-v0.1'
+    engine: 'vllm'
     port: 12347
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "0"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '0'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
       tensor_parallel_size: 1
 
-  - name: "phi-3-mini"
-    model: "microsoft/Phi-3-mini-4k-instruct"
-    engine: "vllm"
+  - name: 'phi-3-mini'
+    model: 'microsoft/Phi-3-mini-4k-instruct'
+    engine: 'vllm'
     port: 12348
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "0"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '0'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
@@ -593,39 +622,39 @@ kvcached:
 
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
   timeout: 600
 
 sleep_manager:
   enabled: true
-  idle_threshold_seconds: 600  # 10 minutes
+  idle_threshold_seconds: 600 # 10 minutes
   auto_sleep_enabled: true
   min_sleep_duration_seconds: 120
   check_interval_seconds: 120
 
 instances:
-  - name: "llama-70b-gpu0-1"
-    model: "meta-llama/Llama-2-70b-hf"
-    engine: "vllm"
+  - name: 'llama-70b-gpu0-1'
+    model: 'meta-llama/Llama-2-70b-hf'
+    engine: 'vllm'
     port: 12346
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "0,1"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '0,1'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
-      tensor_parallel_size: 2  # Use 2 GPUs
+      tensor_parallel_size: 2 # Use 2 GPUs
 
-  - name: "codellama-34b-gpu2"
-    model: "codellama/CodeLlama-34b-hf"
-    engine: "vllm"
+  - name: 'codellama-34b-gpu2'
+    model: 'codellama/CodeLlama-34b-hf'
+    engine: 'vllm'
     port: 12347
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
-      CUDA_VISIBLE_DEVICES: "2"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
+      CUDA_VISIBLE_DEVICES: '2'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
@@ -758,6 +787,7 @@ instances:
 ### Model Won't Start
 
 **Check**:
+
 - `ENABLE_KVCACHED=true` and `KVCACHED_AUTOPATCH=1` are set
 - `enable_prefix_caching: false` in engine_args
 - Port is not already in use
@@ -767,6 +797,7 @@ instances:
 ### Router Not Accessible
 
 **Check**:
+
 - `router.enabled: true`
 - Correct host/port combination
 - Firewall rules allow access
@@ -775,6 +806,7 @@ instances:
 ### Models Not Sleeping
 
 **Check**:
+
 - `sleep_manager.enabled: true`
 - `sleep_manager.auto_sleep_enabled: true`
 - Models are actually idle (check with `/traffic/stats`)
@@ -783,6 +815,7 @@ instances:
 ### Memory Errors
 
 **Check**:
+
 - Total `gpu_memory_utilization` across instances doesn't exceed GPU capacity
 - Model weights fit in memory
 - KV cache allocation limits (use kvctl)

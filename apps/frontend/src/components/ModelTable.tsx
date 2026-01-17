@@ -144,18 +144,22 @@ export function ModelTable({
                     </FlexItem>
                     <FlexItem>
                       <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-                        Served as: </span> {model.model_name}
-                        <ClipboardCopyButton
-                          id={`copy-model-name-${model.id}`}
-                          aria-label="Copy served model name to clipboard"
-                          onClick={ () => handleCopyModelName(model.model_name)}
-                          exitDelay={copied ? 1500 : 600}
-                          variant="plain"
-                          style={{ verticalAlign: 'middle', marginLeft: 'var(--pf-t--global--spacer--xs)' }}
-                        >
-                          {copied ? 'Copied!' : 'Copy'}
-                        </ClipboardCopyButton>
-                      
+                        Served as:{' '}
+                      </span>{' '}
+                      {model.model_name}
+                      <ClipboardCopyButton
+                        id={`copy-model-name-${model.id}`}
+                        aria-label="Copy served model name to clipboard"
+                        onClick={() => handleCopyModelName(model.model_name)}
+                        exitDelay={copied ? 1500 : 600}
+                        variant="plain"
+                        style={{
+                          verticalAlign: 'middle',
+                          marginLeft: 'var(--pf-t--global--spacer--xs)',
+                        }}
+                      >
+                        {copied ? 'Copied!' : 'Copy'}
+                      </ClipboardCopyButton>
                     </FlexItem>
                   </Flex>
                 </Td>
@@ -202,7 +206,9 @@ export function ModelTable({
                 </Td>
                 <Td dataLabel="Actions">
                   <Flex gap={{ default: 'gapXs' }}>
-                    {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && (
+                    {(model.status === 'running' ||
+                      model.status === 'failed' ||
+                      model.status === 'sleeping') && (
                       <FlexItem>
                         <Tooltip content="View logs">
                           <Button
@@ -216,7 +222,9 @@ export function ModelTable({
                     )}
                     {model.status === 'running' && model.sleep_mode_enabled && onSleep && (
                       <FlexItem>
-                        <Tooltip content={!canWrite ? 'You do not have permission' : 'Put to Sleep'}>
+                        <Tooltip
+                          content={!canWrite ? 'You do not have permission' : 'Put to Sleep'}
+                        >
                           <Button
                             variant="plain"
                             icon={<MoonIcon />}
@@ -243,11 +251,21 @@ export function ModelTable({
                       </FlexItem>
                     )}
                     <FlexItem>
-                      <Tooltip content={!canWrite ? 'You do not have permission to unload models' : isFailed ? 'Remove' : 'Unload'}>
+                      <Tooltip
+                        content={
+                          !canWrite
+                            ? 'You do not have permission to unload models'
+                            : isFailed
+                              ? 'Remove'
+                              : 'Unload'
+                        }
+                      >
                         <Button
                           variant="plain"
                           icon={<TrashIcon />}
-                          aria-label={isFailed ? `Remove ${model.model_path}` : `Unload ${model.model_path}`}
+                          aria-label={
+                            isFailed ? `Remove ${model.model_path}` : `Unload ${model.model_path}`
+                          }
                           onClick={() => handleUnloadClick(model)}
                           isDisabled={model.status === 'stopping' || isUnloading || !canWrite}
                           isLoading={isUnloading}

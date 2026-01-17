@@ -18,10 +18,9 @@ Essential rules for PatternFly data display components including lists, data pre
 
 ```jsx
 // ✅ Required dropdown pattern
-import { Dropdown, DropdownList, DropdownItem, MenuToggle, Divider } from '@patternfly/react-core';
-import { EllipsisVIcon } from '@patternfly/react-icons';
-
-<Dropdown
+import { Dropdown, DropdownList, DropdownItem, MenuToggle, Divider } from '@patternfly/react-core'
+import { EllipsisVIcon } from '@patternfly/react-icons'
+;<Dropdown
   popperProps={{
     position: 'right',
     enableFlip: true,
@@ -38,7 +37,7 @@ import { EllipsisVIcon } from '@patternfly/react-icons';
     <Divider />
     <DropdownItem onClick={() => onDelete(item)}>Delete</DropdownItem>
   </DropdownList>
-</Dropdown>;
+</Dropdown>
 ```
 
 ## Toolbar Rules
@@ -52,9 +51,8 @@ import { EllipsisVIcon } from '@patternfly/react-icons';
 
 ```jsx
 // ✅ Required toolbar pattern
-import { Toolbar, ToolbarContent, ToolbarFilter, ToolbarToggleGroup } from '@patternfly/react-core';
-
-<Toolbar
+import { Toolbar, ToolbarContent, ToolbarFilter, ToolbarToggleGroup } from '@patternfly/react-core'
+;<Toolbar
   clearAllFilters={onClearFilters}
   clearFiltersButtonText="Clear all filters"
   collapseListedFiltersBreakpoint="xl"
@@ -74,7 +72,7 @@ import { Toolbar, ToolbarContent, ToolbarFilter, ToolbarToggleGroup } from '@pat
       </ToolbarFilter>
     </ToolbarToggleGroup>
   </ToolbarContent>
-</Toolbar>;
+</Toolbar>
 ```
 
 ## State Management Rules
@@ -88,23 +86,23 @@ import { Toolbar, ToolbarContent, ToolbarFilter, ToolbarToggleGroup } from '@pat
 
 ```jsx
 // ✅ Required state management
-const [selectedItems, setSelectedItems] = useState(new Set());
-const [isLoading, setIsLoading] = useState(false);
-const [error, setError] = useState(null);
+const [selectedItems, setSelectedItems] = useState(new Set())
+const [isLoading, setIsLoading] = useState(false)
+const [error, setError] = useState(null)
 
-if (isLoading) return <Skeleton />;
+if (isLoading) return <Skeleton />
 if (error)
   return (
     <EmptyState>
       <EmptyStateHeader titleText="Error" />
     </EmptyState>
-  );
+  )
 if (!data?.length)
   return (
     <EmptyState>
       <EmptyStateHeader titleText="No data" />
     </EmptyState>
-  );
+  )
 ```
 
 ## Performance Rules
@@ -117,10 +115,10 @@ if (!data?.length)
 
 ```jsx
 // ✅ Required for large datasets
-import { Pagination } from '@patternfly/react-core';
+import { Pagination } from '@patternfly/react-core'
 
 // For better UX, use pagination
-<Pagination itemCount={data.length} perPage={20} page={page} />;
+;<Pagination itemCount={data.length} perPage={20} page={page} />
 ```
 
 ## Essential Do's and Don'ts
@@ -199,13 +197,13 @@ The `@patternfly/react-data-view` component is a powerful, opinionated tool for 
 
     ```jsx
     // Import required CSS in your application's entrypoint
-    import '@patternfly/react-data-view/dist/css/main.css';
+    import '@patternfly/react-data-view/dist/css/main.css'
     ```
 
 3.  **Component Import**:
     ```jsx
     // Use dynamic imports for better performance
-    import DataView from '@patternfly/react-data-view/dist/dynamic/DataView';
+    import DataView from '@patternfly/react-data-view/dist/dynamic/DataView'
     ```
 
 ### Best Practices

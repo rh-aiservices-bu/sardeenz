@@ -104,9 +104,9 @@ export function InferenceWorkspace() {
   const sidebarPanel = (
     <DrawerPanelContent
       isResizable
-      defaultSize={ '380px' }
-      minSize={ '200px' }
-      maxSize={ '400px' }
+      defaultSize={'380px'}
+      minSize={'200px'}
+      maxSize={'400px'}
       style={{
         borderRight: '1px solid var(--pf-t--global--border--color--default)',
       }}
