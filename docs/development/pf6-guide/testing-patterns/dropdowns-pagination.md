@@ -289,11 +289,11 @@ describe('ProviderBreakdownTable Pagination', () => {
 
 ```typescript
 // ❌ WRONG
-const option50 = screen.getByRole('option', { name: '50' });
+const option50 = screen.getByRole('option', { name: '50' })
 
 // ✅ CORRECT
-const menuItems = screen.getAllByRole('menuitem');
-const option50 = menuItems.find((item) => item.textContent?.includes('50'));
+const menuItems = screen.getAllByRole('menuitem')
+const option50 = menuItems.find((item) => item.textContent?.includes('50'))
 ```
 
 ### Issue: Dropdown doesn't open
@@ -304,11 +304,11 @@ const option50 = menuItems.find((item) => item.textContent?.includes('50'));
 
 ```typescript
 // ✅ CORRECT: Find by text pattern
-const buttons = screen.getAllByRole('button');
+const buttons = screen.getAllByRole('button')
 const perPageToggle = buttons.find((btn) => {
-  const text = btn.textContent || '';
-  return text.match(/\d+\s*-\s*\d+/); // Matches "1 - 25 of 100"
-});
+  const text = btn.textContent || ''
+  return text.match(/\d+\s*-\s*\d+/) // Matches "1 - 25 of 100"
+})
 ```
 
 ### Issue: Test is flaky
@@ -319,12 +319,12 @@ const perPageToggle = buttons.find((btn) => {
 
 ```typescript
 // ✅ CORRECT
-await user.click(perPageToggle);
+await user.click(perPageToggle)
 
 await waitFor(() => {
-  const menuItems = screen.getAllByRole('menuitem');
-  expect(menuItems.length).toBeGreaterThan(0);
-});
+  const menuItems = screen.getAllByRole('menuitem')
+  expect(menuItems.length).toBeGreaterThan(0)
+})
 ```
 
 ## Testing Other Dropdown Components
@@ -384,24 +384,24 @@ it('should handle dropdown menu actions', async () => {
 
 ```typescript
 // ✅ GOOD
-await user.click(toggle);
+await user.click(toggle)
 await waitFor(() => {
-  expect(screen.getByRole('menuitem', { name: 'Option 1' })).toBeInTheDocument();
-});
+  expect(screen.getByRole('menuitem', { name: 'Option 1' })).toBeInTheDocument()
+})
 
 // ❌ BAD - May be flaky
-await user.click(toggle);
-const option = screen.getByRole('menuitem', { name: 'Option 1' });
+await user.click(toggle)
+const option = screen.getByRole('menuitem', { name: 'Option 1' })
 ```
 
 ### 2. Use Flexible Text Matching
 
 ```typescript
 // ✅ GOOD - Handles variations in text
-const option = menuItems.find((item) => item.textContent?.includes('50'));
+const option = menuItems.find((item) => item.textContent?.includes('50'))
 
 // ❌ BAD - Brittle exact match
-const option = screen.getByText('50 per page');
+const option = screen.getByText('50 per page')
 ```
 
 ### 3. Test Callbacks Directly When UI Interaction is Complex
@@ -409,15 +409,15 @@ const option = screen.getByText('50 per page');
 ```typescript
 // If dropdown interaction is too complex or flaky, test logic separately
 it('should handle per-page change logic', () => {
-  const mockSetPerPage = vi.fn();
-  const mockSetPage = vi.fn();
+  const mockSetPerPage = vi.fn()
+  const mockSetPage = vi.fn()
 
   // Test the state update logic directly
-  handlePerPageChange(50, mockSetPerPage, mockSetPage);
+  handlePerPageChange(50, mockSetPerPage, mockSetPage)
 
-  expect(mockSetPerPage).toHaveBeenCalledWith(50);
-  expect(mockSetPage).toHaveBeenCalledWith(1); // Reset to page 1
-});
+  expect(mockSetPerPage).toHaveBeenCalledWith(50)
+  expect(mockSetPage).toHaveBeenCalledWith(1) // Reset to page 1
+})
 ```
 
 ### 4. Document Manual Testing for Edge Cases
@@ -432,8 +432,8 @@ it('should handle keyboard navigation in dropdown', () => {
   // 4. Close with Escape
 
   // Component logic can be unit tested separately
-  expect(true).toBe(true); // Placeholder
-});
+  expect(true).toBe(true) // Placeholder
+})
 ```
 
 ## Performance Considerations
@@ -496,15 +496,15 @@ it('should handle pagination with large dataset', () => {
 
 ```typescript
 // Finding dropdown toggle
-const toggle = buttons.find((btn) => btn.textContent?.match(/\d+\s*-\s*\d+/));
+const toggle = buttons.find((btn) => btn.textContent?.match(/\d+\s*-\s*\d+/))
 
 // Opening dropdown
-await user.click(toggle);
-await waitFor(() => screen.getAllByRole('menuitem').length > 0);
+await user.click(toggle)
+await waitFor(() => screen.getAllByRole('menuitem').length > 0)
 
 // Selecting option
-const option = screen.getAllByRole('menuitem').find((item) => item.textContent?.includes('50'));
-await user.click(option);
+const option = screen.getAllByRole('menuitem').find((item) => item.textContent?.includes('50'))
+await user.click(option)
 ```
 
 ---

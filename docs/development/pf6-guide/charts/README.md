@@ -26,11 +26,11 @@ npm install @patternfly/react-charts echarts
 
 ```jsx
 // ✅ Correct imports
-import { ChartDonut, ChartLine, ChartBar } from '@patternfly/react-charts/victory';
-import { EChart } from '@patternfly/react-charts/echarts';
+import { ChartDonut, ChartLine, ChartBar } from '@patternfly/react-charts/victory'
+import { EChart } from '@patternfly/react-charts/echarts'
 
 // ❌ Wrong imports
-import { ChartDonut } from '@patternfly/react-charts';
+import { ChartDonut } from '@patternfly/react-charts'
 ```
 
 ### Troubleshooting Import Issues
@@ -54,9 +54,9 @@ const chartColors = [
   'var(--pf-v6-chart-color-blue-300)',
   'var(--pf-v6-chart-color-green-300)',
   'var(--pf-v6-chart-color-orange-300)',
-];
+]
 
-<ChartDonut data={data} colorScale={chartColors} />;
+;<ChartDonut data={data} colorScale={chartColors} />
 ```
 
 ### Responsive Rules
@@ -67,19 +67,19 @@ const chartColors = [
 
 ```jsx
 // ✅ Required responsive pattern
-const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
 useEffect(() => {
   const updateDimensions = () => {
     if (containerRef.current) {
-      const { width, height } = containerRef.current.getBoundingClientRect();
-      setDimensions({ width, height });
+      const { width, height } = containerRef.current.getBoundingClientRect()
+      setDimensions({ width, height })
     }
-  };
-  updateDimensions();
-  window.addEventListener('resize', updateDimensions);
-  return () => window.removeEventListener('resize', updateDimensions);
-}, []);
+  }
+  updateDimensions()
+  window.addEventListener('resize', updateDimensions)
+  return () => window.removeEventListener('resize', updateDimensions)
+}, [])
 ```
 
 ### Accessibility Rules
@@ -108,23 +108,23 @@ useEffect(() => {
 
 ```jsx
 // ✅ Required state handling
-if (isLoading) return <Spinner />;
+if (isLoading) return <Spinner />
 if (error)
   return (
     <EmptyState>
       <EmptyStateHeader titleText="Chart error" />
     </EmptyState>
-  );
+  )
 if (!data?.length)
   return (
     <EmptyState>
       <EmptyStateHeader titleText="No data" />
     </EmptyState>
-  );
+  )
 
 const processedData = useMemo(() => {
-  return rawData.map((item) => ({ x: item.date, y: item.value }));
-}, [rawData]);
+  return rawData.map((item) => ({ x: item.date, y: item.value }))
+}, [rawData])
 ```
 
 ### Integration Rules
@@ -135,14 +135,13 @@ const processedData = useMemo(() => {
 
 ```jsx
 // ✅ Required integration pattern
-import { Card, CardTitle, CardBody } from '@patternfly/react-core';
-
-<Card>
+import { Card, CardTitle, CardBody } from '@patternfly/react-core'
+;<Card>
   <CardTitle>Chart Title</CardTitle>
   <CardBody>
     <ChartDonut data={data} />
   </CardBody>
-</Card>;
+</Card>
 ```
 
 ## Performance Rules
@@ -155,11 +154,11 @@ import { Card, CardTitle, CardBody } from '@patternfly/react-core';
 
 ```jsx
 // ✅ Required performance patterns
-const LazyChart = lazy(() => import('./HeavyChart'));
+const LazyChart = lazy(() => import('./HeavyChart'))
 
-<Suspense fallback={<Spinner />}>
+;<Suspense fallback={<Spinner />}>
   <LazyChart />
-</Suspense>;
+</Suspense>
 ```
 
 ## Essential Do's and Don'ts

@@ -17,7 +17,7 @@ Always start with standard PatternFly components and compose them to build compl
 
 ```jsx
 // ✅ Correct: Compose existing PatternFly components
-import { Card, CardTitle, CardBody, Button, Content } from '@patternfly/react-core';
+import { Card, CardTitle, CardBody, Button, Content } from '@patternfly/react-core'
 
 const UserCard = ({ user, onEdit }) => (
   <Card>
@@ -29,7 +29,7 @@ const UserCard = ({ user, onEdit }) => (
       </Button>
     </CardBody>
   </Card>
-);
+)
 ```
 
 ### Component Hierarchy
@@ -75,13 +75,13 @@ Always account for different data states in your components:
 
 ```jsx
 // ✅ Required: Handle all data states
-import { EmptyState, Spinner } from '@patternfly/react-core';
+import { EmptyState, Spinner } from '@patternfly/react-core'
 
-if (isLoading) return <Spinner />;
-if (error) return <EmptyState titleText="Error" icon={ErrorIcon} />;
-if (!data?.length) return <EmptyState titleText="No results found" />;
+if (isLoading) return <Spinner />
+if (error) return <EmptyState titleText="Error" icon={ErrorIcon} />
+if (!data?.length) return <EmptyState titleText="No results found" />
 
-return <MyComponent data={data} />;
+return <MyComponent data={data} />
 ```
 
 ## 5. Performance

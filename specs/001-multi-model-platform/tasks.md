@@ -15,6 +15,7 @@
 ## Path Conventions
 
 This is a monorepo with npm workspaces:
+
 - `apps/backend/` - Fastify backend (Controller + Proxy APIs)
 - `apps/frontend/` - React + PatternFly dashboard
 - `packages/types/` - Shared TypeScript types
@@ -27,13 +28,13 @@ This is a monorepo with npm workspaces:
 
 **Purpose**: Project initialization and basic structure
 
-- [X] T001 Create root workspace structure with apps/ and packages/ directories
-- [X] T002 Initialize root package.json with npm workspaces configuration
-- [X] T003 [P] Create tsconfig.base.json with strict mode and shared compiler options
-- [X] T004 [P] Configure ESLint in .eslintrc.json for TypeScript and React
-- [X] T005 [P] Configure Prettier in .prettierrc.json
-- [X] T006 [P] Create .gitignore with Node.js, TypeScript, and IDE patterns
-- [X] T007 [P] Setup GitHub Actions workflow in .github/workflows/ci.yml for CI/CD
+- [x] T001 Create root workspace structure with apps/ and packages/ directories
+- [x] T002 Initialize root package.json with npm workspaces configuration
+- [x] T003 [P] Create tsconfig.base.json with strict mode and shared compiler options
+- [x] T004 [P] Configure ESLint in .eslintrc.json for TypeScript and React
+- [x] T005 [P] Configure Prettier in .prettierrc.json
+- [x] T006 [P] Create .gitignore with Node.js, TypeScript, and IDE patterns
+- [x] T007 [P] Setup GitHub Actions workflow in .github/workflows/ci.yml for CI/CD
 
 ---
 
@@ -45,39 +46,39 @@ This is a monorepo with npm workspaces:
 
 ### Shared Packages
 
-- [X] T008 [P] Initialize packages/types workspace with package.json and tsconfig.json
-- [X] T009 [P] Initialize packages/utils workspace with package.json and tsconfig.json
-- [X] T010 [P] Initialize packages/contracts workspace with package.json
-- [X] T011 [P] Create TypeScript enums in packages/types/src/models.ts (ModelStatus, RequestStatus, OperationStatus, OperationType)
-- [X] T012 [P] Create ModelConfiguration interface in packages/types/src/models.ts
-- [X] T013 [P] Create ModelInstance interface in packages/types/src/models.ts
-- [X] T014 [P] Create InferenceRequest interface in packages/types/src/models.ts
-- [X] T015 [P] Create ResourceMetrics interface in packages/types/src/models.ts
-- [X] T016 [P] Create ControllerOperation interface in packages/types/src/models.ts
-- [X] T017 [P] Create API request/response types in packages/types/src/api.ts
-- [X] T018 [P] Create TypeBox validation schemas in packages/types/src/validation.ts
-- [X] T019 Create index.ts re-exporting all types in packages/types/src/index.ts
-- [X] T020 Build packages/types workspace (npm run build -w packages/types)
+- [x] T008 [P] Initialize packages/types workspace with package.json and tsconfig.json
+- [x] T009 [P] Initialize packages/utils workspace with package.json and tsconfig.json
+- [x] T010 [P] Initialize packages/contracts workspace with package.json
+- [x] T011 [P] Create TypeScript enums in packages/types/src/models.ts (ModelStatus, RequestStatus, OperationStatus, OperationType)
+- [x] T012 [P] Create ModelConfiguration interface in packages/types/src/models.ts
+- [x] T013 [P] Create ModelInstance interface in packages/types/src/models.ts
+- [x] T014 [P] Create InferenceRequest interface in packages/types/src/models.ts
+- [x] T015 [P] Create ResourceMetrics interface in packages/types/src/models.ts
+- [x] T016 [P] Create ControllerOperation interface in packages/types/src/models.ts
+- [x] T017 [P] Create API request/response types in packages/types/src/api.ts
+- [x] T018 [P] Create TypeBox validation schemas in packages/types/src/validation.ts
+- [x] T019 Create index.ts re-exporting all types in packages/types/src/index.ts
+- [x] T020 Build packages/types workspace (npm run build -w packages/types)
 
 ### Shared Utilities
 
-- [X] T021 [P] Create structured logger utility in packages/utils/src/logger.ts using pino
-- [X] T022 [P] Create validation helpers in packages/utils/src/validation.ts
-- [X] T023 Create index.ts re-exporting utilities in packages/utils/src/index.ts
-- [X] T024 Build packages/utils workspace (npm run build -w packages/utils)
+- [x] T021 [P] Create structured logger utility in packages/utils/src/logger.ts using pino
+- [x] T022 [P] Create validation helpers in packages/utils/src/validation.ts
+- [x] T023 Create index.ts re-exporting utilities in packages/utils/src/index.ts
+- [x] T024 Build packages/utils workspace (npm run build -w packages/utils)
 
 ### Backend Foundation
 
-- [X] T025 Initialize apps/backend workspace with package.json and dependencies (fastify, @fastify/oauth2, @fastify/jwt, @fastify/swagger, fastify-metrics, prom-client, @sinclair/typebox)
-- [X] T026 Create apps/backend/tsconfig.json extending tsconfig.base.json
-- [X] T027 Create environment configuration loader in apps/backend/src/config.ts
-- [X] T028 Create Fastify server initialization in apps/backend/src/server.ts with TypeBox type provider
-- [X] T029 [P] Create OAuth 2.0 authentication plugin in apps/backend/src/plugins/auth.ts
-- [X] T030 [P] Create Swagger/OpenAPI documentation plugin in apps/backend/src/plugins/swagger.ts
-- [X] T031 [P] Create Prometheus metrics plugin in apps/backend/src/plugins/metrics.ts
-- [X] T032 [P] Create error handling utilities in apps/backend/src/utils/errors.ts
-- [X] T033 [P] Create process utilities for subprocess management in apps/backend/src/utils/process.ts
-- [X] T034 [P] Create health check endpoint in apps/backend/src/routes/health.ts
+- [x] T025 Initialize apps/backend workspace with package.json and dependencies (fastify, @fastify/oauth2, @fastify/jwt, @fastify/swagger, fastify-metrics, prom-client, @sinclair/typebox)
+- [x] T026 Create apps/backend/tsconfig.json extending tsconfig.base.json
+- [x] T027 Create environment configuration loader in apps/backend/src/config.ts
+- [x] T028 Create Fastify server initialization in apps/backend/src/server.ts with TypeBox type provider
+- [x] T029 [P] Create OAuth 2.0 authentication plugin in apps/backend/src/plugins/auth.ts
+- [x] T030 [P] Create Swagger/OpenAPI documentation plugin in apps/backend/src/plugins/swagger.ts
+- [x] T031 [P] Create Prometheus metrics plugin in apps/backend/src/plugins/metrics.ts
+- [x] T032 [P] Create error handling utilities in apps/backend/src/utils/errors.ts
+- [x] T033 [P] Create process utilities for subprocess management in apps/backend/src/utils/process.ts
+- [x] T034 [P] Create health check endpoint in apps/backend/src/routes/health.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -106,34 +107,34 @@ This is a monorepo with npm workspaces:
 
 ### Implementation for User Story 1
 
-- [X] T042 [P] [US1] Create in-memory model instance store in apps/backend/src/stores/model-store.ts (Map<string, ModelInstance>)
-- [X] T043 [P] [US1] Create in-memory controller operation store in apps/backend/src/stores/operation-store.ts (circular buffer)
-- [X] T044 [US1] Implement ModelManager service in apps/backend/src/services/model-manager.ts with launchModel() method
-- [X] T045 [US1] Implement vLLM subprocess spawning with kvcached env vars in apps/backend/src/services/model-manager.ts
-- [X] T046 [US1] Implement health check polling logic in apps/backend/src/services/model-manager.ts waitForReady() method
-- [X] T047 [US1] Implement unloadModel() with graceful shutdown (SIGTERM → SIGKILL) in apps/backend/src/services/model-manager.ts
-- [X] T048 [US1] Implement IPC segment cleanup via kvctl in apps/backend/src/services/model-manager.ts
-- [X] T049 [US1] Implement getModelStatus() method in apps/backend/src/services/model-manager.ts
-- [X] T050 [US1] Implement listModels() method in apps/backend/src/services/model-manager.ts
-- [X] T051 [US1] Add port management (next available port allocation) in apps/backend/src/services/model-manager.ts
-- [X] T052 [US1] Add Prometheus metrics tracking for model load/unload duration in apps/backend/src/services/model-manager.ts
-- [X] T053 [P] [US1] Create MemoryMonitor service in apps/backend/src/services/memory-monitor.ts
-- [X] T054 [US1] Implement kvctl list parsing in apps/backend/src/services/memory-monitor.ts getMemoryUsage() method
-- [X] T055 [US1] Implement memory limit setting via kvctl in apps/backend/src/services/memory-monitor.ts setMemoryLimits() method
-- [X] T056 [US1] Implement resource metrics collection in apps/backend/src/services/memory-monitor.ts collectMetrics() method
-- [X] T057 [US1] Create POST /api/models/load endpoint in apps/backend/src/routes/models.ts with admin role enforcement
-- [X] T058 [US1] Create DELETE /api/models/:model_path endpoint in apps/backend/src/routes/models.ts with admin role enforcement
-- [X] T059 [US1] Create GET /api/models endpoint in apps/backend/src/routes/models.ts with admin-readonly role enforcement
-- [X] T060 [US1] Create GET /api/models/:model_path endpoint in apps/backend/src/routes/models.ts with admin-readonly role enforcement
-- [X] T061 [US1] Create GET /api/models/:model_path/health endpoint in apps/backend/src/routes/models.ts
-- [X] T062 [P] [US1] Create GET /api/memory/usage endpoint in apps/backend/src/routes/memory.ts
-- [X] T063 [P] [US1] Create POST /api/memory/limits endpoint in apps/backend/src/routes/memory.ts with admin role enforcement
-- [X] T064 [US1] Add request/response schema validation using TypeBox in apps/backend/src/routes/models.ts
-- [X] T065 [US1] Add error handling for duplicate model loads (409 Conflict) in apps/backend/src/routes/models.ts
-- [X] T066 [US1] Add error handling for model not found (404) in apps/backend/src/routes/models.ts
-- [X] T067 [US1] Add structured logging for all model operations in apps/backend/src/routes/models.ts
-- [X] T068 [US1] Register model routes in apps/backend/src/server.ts
-- [X] T069 [US1] Register memory routes in apps/backend/src/server.ts
+- [x] T042 [P] [US1] Create in-memory model instance store in apps/backend/src/stores/model-store.ts (Map<string, ModelInstance>)
+- [x] T043 [P] [US1] Create in-memory controller operation store in apps/backend/src/stores/operation-store.ts (circular buffer)
+- [x] T044 [US1] Implement ModelManager service in apps/backend/src/services/model-manager.ts with launchModel() method
+- [x] T045 [US1] Implement vLLM subprocess spawning with kvcached env vars in apps/backend/src/services/model-manager.ts
+- [x] T046 [US1] Implement health check polling logic in apps/backend/src/services/model-manager.ts waitForReady() method
+- [x] T047 [US1] Implement unloadModel() with graceful shutdown (SIGTERM → SIGKILL) in apps/backend/src/services/model-manager.ts
+- [x] T048 [US1] Implement IPC segment cleanup via kvctl in apps/backend/src/services/model-manager.ts
+- [x] T049 [US1] Implement getModelStatus() method in apps/backend/src/services/model-manager.ts
+- [x] T050 [US1] Implement listModels() method in apps/backend/src/services/model-manager.ts
+- [x] T051 [US1] Add port management (next available port allocation) in apps/backend/src/services/model-manager.ts
+- [x] T052 [US1] Add Prometheus metrics tracking for model load/unload duration in apps/backend/src/services/model-manager.ts
+- [x] T053 [P] [US1] Create MemoryMonitor service in apps/backend/src/services/memory-monitor.ts
+- [x] T054 [US1] Implement kvctl list parsing in apps/backend/src/services/memory-monitor.ts getMemoryUsage() method
+- [x] T055 [US1] Implement memory limit setting via kvctl in apps/backend/src/services/memory-monitor.ts setMemoryLimits() method
+- [x] T056 [US1] Implement resource metrics collection in apps/backend/src/services/memory-monitor.ts collectMetrics() method
+- [x] T057 [US1] Create POST /api/models/load endpoint in apps/backend/src/routes/models.ts with admin role enforcement
+- [x] T058 [US1] Create DELETE /api/models/:model_path endpoint in apps/backend/src/routes/models.ts with admin role enforcement
+- [x] T059 [US1] Create GET /api/models endpoint in apps/backend/src/routes/models.ts with admin-readonly role enforcement
+- [x] T060 [US1] Create GET /api/models/:model_path endpoint in apps/backend/src/routes/models.ts with admin-readonly role enforcement
+- [x] T061 [US1] Create GET /api/models/:model_path/health endpoint in apps/backend/src/routes/models.ts
+- [x] T062 [P] [US1] Create GET /api/memory/usage endpoint in apps/backend/src/routes/memory.ts
+- [x] T063 [P] [US1] Create POST /api/memory/limits endpoint in apps/backend/src/routes/memory.ts with admin role enforcement
+- [x] T064 [US1] Add request/response schema validation using TypeBox in apps/backend/src/routes/models.ts
+- [x] T065 [US1] Add error handling for duplicate model loads (409 Conflict) in apps/backend/src/routes/models.ts
+- [x] T066 [US1] Add error handling for model not found (404) in apps/backend/src/routes/models.ts
+- [x] T067 [US1] Add structured logging for all model operations in apps/backend/src/routes/models.ts
+- [x] T068 [US1] Register model routes in apps/backend/src/server.ts
+- [x] T069 [US1] Register memory routes in apps/backend/src/server.ts
 - [ ] T070 [US1] Run contract tests and verify they pass (npm run test:contract -w apps/backend)
 - [ ] T071 [US1] Run integration tests and verify they pass (npm run test:integration -w apps/backend)
 
@@ -165,26 +166,26 @@ This is a monorepo with npm workspaces:
 
 ### Implementation for User Story 2
 
-- [X] T080 [P] [US2] Create in-memory inference request store in apps/backend/src/stores/request-store.ts (ring buffer, last 1000 per model)
-- [X] T081 [P] [US2] Create in-memory resource metrics store in apps/backend/src/stores/metrics-store.ts (Map<string, ResourceMetrics>)
-- [X] T082 [US2] Implement ProxyRouter service in apps/backend/src/services/proxy-router.ts
-- [X] T083 [US2] Implement model lookup by model_path in apps/backend/src/services/proxy-router.ts routeRequest() method
-- [X] T084 [US2] Implement HTTP connection pooling to vLLM instances in apps/backend/src/services/proxy-router.ts
-- [X] T085 [US2] Implement non-streaming request forwarding in apps/backend/src/services/proxy-router.ts forwardRequest() method
-- [X] T086 [US2] Implement streaming request forwarding with reply.hijack() in apps/backend/src/services/proxy-router.ts forwardStreamingRequest() method
-- [X] T087 [US2] Implement request logging to inference request store in apps/backend/src/services/proxy-router.ts
-- [X] T088 [US2] Implement Prometheus metrics for routing latency in apps/backend/src/services/proxy-router.ts
-- [X] T089 [US2] Implement Prometheus metrics for active connections per model in apps/backend/src/services/proxy-router.ts
-- [X] T090 [US2] Implement Prometheus counter for inference requests in apps/backend/src/services/proxy-router.ts
-- [X] T091 [US2] Create POST /v1/completions endpoint in apps/backend/src/routes/proxy.ts (NO auth required)
-- [X] T092 [US2] Implement streaming detection (body.stream === true) in apps/backend/src/routes/proxy.ts
-- [X] T093 [US2] Implement model identifier extraction from request body in apps/backend/src/routes/proxy.ts
-- [X] T094 [US2] Create POST /v1/chat/completions endpoint in apps/backend/src/routes/proxy.ts (NO auth required)
-- [X] T095 [US2] Add error handling for model not loaded (404 with available models list) in apps/backend/src/routes/proxy.ts
-- [X] T096 [US2] Add error handling for model unreachable (500) in apps/backend/src/routes/proxy.ts
-- [X] T097 [US2] Add error handling for vLLM bad response (502) in apps/backend/src/routes/proxy.ts
-- [X] T098 [US2] Add request/response schema validation using TypeBox in apps/backend/src/routes/proxy.ts
-- [X] T099 [US2] Register proxy routes in apps/backend/src/server.ts
+- [x] T080 [P] [US2] Create in-memory inference request store in apps/backend/src/stores/request-store.ts (ring buffer, last 1000 per model)
+- [x] T081 [P] [US2] Create in-memory resource metrics store in apps/backend/src/stores/metrics-store.ts (Map<string, ResourceMetrics>)
+- [x] T082 [US2] Implement ProxyRouter service in apps/backend/src/services/proxy-router.ts
+- [x] T083 [US2] Implement model lookup by model_path in apps/backend/src/services/proxy-router.ts routeRequest() method
+- [x] T084 [US2] Implement HTTP connection pooling to vLLM instances in apps/backend/src/services/proxy-router.ts
+- [x] T085 [US2] Implement non-streaming request forwarding in apps/backend/src/services/proxy-router.ts forwardRequest() method
+- [x] T086 [US2] Implement streaming request forwarding with reply.hijack() in apps/backend/src/services/proxy-router.ts forwardStreamingRequest() method
+- [x] T087 [US2] Implement request logging to inference request store in apps/backend/src/services/proxy-router.ts
+- [x] T088 [US2] Implement Prometheus metrics for routing latency in apps/backend/src/services/proxy-router.ts
+- [x] T089 [US2] Implement Prometheus metrics for active connections per model in apps/backend/src/services/proxy-router.ts
+- [x] T090 [US2] Implement Prometheus counter for inference requests in apps/backend/src/services/proxy-router.ts
+- [x] T091 [US2] Create POST /v1/completions endpoint in apps/backend/src/routes/proxy.ts (NO auth required)
+- [x] T092 [US2] Implement streaming detection (body.stream === true) in apps/backend/src/routes/proxy.ts
+- [x] T093 [US2] Implement model identifier extraction from request body in apps/backend/src/routes/proxy.ts
+- [x] T094 [US2] Create POST /v1/chat/completions endpoint in apps/backend/src/routes/proxy.ts (NO auth required)
+- [x] T095 [US2] Add error handling for model not loaded (404 with available models list) in apps/backend/src/routes/proxy.ts
+- [x] T096 [US2] Add error handling for model unreachable (500) in apps/backend/src/routes/proxy.ts
+- [x] T097 [US2] Add error handling for vLLM bad response (502) in apps/backend/src/routes/proxy.ts
+- [x] T098 [US2] Add request/response schema validation using TypeBox in apps/backend/src/routes/proxy.ts
+- [x] T099 [US2] Register proxy routes in apps/backend/src/server.ts
 - [ ] T100 [US2] Run contract tests and verify they pass (npm run test:contract -w apps/backend)
 - [ ] T101 [US2] Run integration tests and verify they pass (npm run test:integration -w apps/backend)
 
@@ -200,48 +201,48 @@ This is a monorepo with npm workspaces:
 
 ### Frontend Setup for User Story 3
 
-- [X] T102 [US3] Initialize apps/frontend workspace with Vite and React TypeScript template
-- [X] T103 [US3] Install PatternFly 6 dependencies in apps/frontend (�@patternfly/react-core, @patternfly/react-table, @patternfly/react-icons)
-- [X] T104 [US3] Install additional dependencies in apps/frontend (react-router-dom, axios)
-- [X] T105 [US3] Create apps/frontend/tsconfig.json extending tsconfig.base.json with DOM libs
-- [X] T106 [US3] Configure Vite in apps/frontend/vite.config.ts with proxy to backend (/api → localhost:3000)
-- [X] T107 [US3] Create environment variables file template in apps/frontend/.env with VITE_API_BASE_URL
-- [X] T108 [US3] Import PatternFly base styles in apps/frontend/src/main.tsx
+- [x] T102 [US3] Initialize apps/frontend workspace with Vite and React TypeScript template
+- [x] T103 [US3] Install PatternFly 6 dependencies in apps/frontend (�@patternfly/react-core, @patternfly/react-table, @patternfly/react-icons)
+- [x] T104 [US3] Install additional dependencies in apps/frontend (react-router-dom, axios)
+- [x] T105 [US3] Create apps/frontend/tsconfig.json extending tsconfig.base.json with DOM libs
+- [x] T106 [US3] Configure Vite in apps/frontend/vite.config.ts with proxy to backend (/api → localhost:3000)
+- [x] T107 [US3] Create environment variables file template in apps/frontend/.env with VITE_API_BASE_URL
+- [x] T108 [US3] Import PatternFly base styles in apps/frontend/src/main.tsx
 
 ### API Client for User Story 3
 
-- [X] T109 [P] [US3] Create API client service in apps/frontend/src/services/api.ts with axios instance
-- [X] T110 [US3] Implement loadModel() method in apps/frontend/src/services/api.ts
-- [X] T111 [US3] Implement unloadModel() method in apps/frontend/src/services/api.ts
-- [X] T112 [US3] Implement listModels() method in apps/frontend/src/services/api.ts
-- [X] T113 [US3] Implement getMemoryUsage() method in apps/frontend/src/services/api.ts
-- [X] T114 [US3] Add error handling and response transformation in apps/frontend/src/services/api.ts
+- [x] T109 [P] [US3] Create API client service in apps/frontend/src/services/api.ts with axios instance
+- [x] T110 [US3] Implement loadModel() method in apps/frontend/src/services/api.ts
+- [x] T111 [US3] Implement unloadModel() method in apps/frontend/src/services/api.ts
+- [x] T112 [US3] Implement listModels() method in apps/frontend/src/services/api.ts
+- [x] T113 [US3] Implement getMemoryUsage() method in apps/frontend/src/services/api.ts
+- [x] T114 [US3] Add error handling and response transformation in apps/frontend/src/services/api.ts
 
 ### Components for User Story 3
 
-- [X] T115 [P] [US3] Create ModelCard component in apps/frontend/src/components/ModelCard.tsx displaying model info and status
-- [X] T116 [P] [US3] Create MemoryChart component in apps/frontend/src/components/MemoryChart.tsx with PatternFly Chart
-- [X] T117 [P] [US3] Create LoadModelDialog component in apps/frontend/src/components/LoadModelDialog.tsx with form validation
-- [X] T118 [P] [US3] Create MetricsTable component in apps/frontend/src/components/MetricsTable.tsx using PatternFly Table
-- [X] T119 [P] [US3] Create StatusBadge component in apps/frontend/src/components/StatusBadge.tsx for model status display
+- [x] T115 [P] [US3] Create ModelCard component in apps/frontend/src/components/ModelCard.tsx displaying model info and status
+- [x] T116 [P] [US3] Create MemoryChart component in apps/frontend/src/components/MemoryChart.tsx with PatternFly Chart
+- [x] T117 [P] [US3] Create LoadModelDialog component in apps/frontend/src/components/LoadModelDialog.tsx with form validation
+- [x] T118 [P] [US3] Create MetricsTable component in apps/frontend/src/components/MetricsTable.tsx using PatternFly Table
+- [x] T119 [P] [US3] Create StatusBadge component in apps/frontend/src/components/StatusBadge.tsx for model status display
 
 ### Pages for User Story 3
 
-- [X] T120 [US3] Create Dashboard page in apps/frontend/src/pages/Dashboard.tsx as main landing page
-- [X] T121 [US3] Implement model list display using ModelCard components in apps/frontend/src/pages/Dashboard.tsx
-- [X] T122 [US3] Implement memory usage chart using MemoryChart component in apps/frontend/src/pages/Dashboard.tsx
-- [X] T123 [US3] Implement "Load Model" button triggering LoadModelDialog in apps/frontend/src/pages/Dashboard.tsx
-- [X] T124 [US3] Implement "Unload Model" button with confirmation dialog in apps/frontend/src/pages/Dashboard.tsx
-- [X] T125 [US3] Implement auto-refresh every 5 seconds using setInterval in apps/frontend/src/pages/Dashboard.tsx
-- [X] T126 [US3] Add error message display using PatternFly Alert in apps/frontend/src/pages/Dashboard.tsx
-- [X] T127 [US3] Add loading indicators using PatternFly Spinner in apps/frontend/src/pages/Dashboard.tsx
+- [x] T120 [US3] Create Dashboard page in apps/frontend/src/pages/Dashboard.tsx as main landing page
+- [x] T121 [US3] Implement model list display using ModelCard components in apps/frontend/src/pages/Dashboard.tsx
+- [x] T122 [US3] Implement memory usage chart using MemoryChart component in apps/frontend/src/pages/Dashboard.tsx
+- [x] T123 [US3] Implement "Load Model" button triggering LoadModelDialog in apps/frontend/src/pages/Dashboard.tsx
+- [x] T124 [US3] Implement "Unload Model" button with confirmation dialog in apps/frontend/src/pages/Dashboard.tsx
+- [x] T125 [US3] Implement auto-refresh every 5 seconds using setInterval in apps/frontend/src/pages/Dashboard.tsx
+- [x] T126 [US3] Add error message display using PatternFly Alert in apps/frontend/src/pages/Dashboard.tsx
+- [x] T127 [US3] Add loading indicators using PatternFly Spinner in apps/frontend/src/pages/Dashboard.tsx
 
 ### App Integration for User Story 3
 
-- [X] T128 [US3] Setup React Router in apps/frontend/src/App.tsx with route for Dashboard
-- [X] T129 [US3] Create PatternFly Page layout in apps/frontend/src/App.tsx with navigation
-- [X] T130 [US3] Configure development proxy server in apps/frontend/vite.config.ts
-- [X] T131 [US3] Build frontend and verify no TypeScript errors (npm run build -w apps/frontend)
+- [x] T128 [US3] Setup React Router in apps/frontend/src/App.tsx with route for Dashboard
+- [x] T129 [US3] Create PatternFly Page layout in apps/frontend/src/App.tsx with navigation
+- [x] T130 [US3] Configure development proxy server in apps/frontend/vite.config.ts
+- [x] T131 [US3] Build frontend and verify no TypeScript errors (npm run build -w apps/frontend)
 
 **Checkpoint**: All user stories (US1, US2, US3) should now be independently functional - operators can manage models via API or UI, users can send inference requests
 
@@ -255,29 +256,29 @@ This is a monorepo with npm workspaces:
 
 ### Container Configuration for User Story 4
 
-- [X] T132 [P] [US4] Create Dockerfile.unified in docker/Dockerfile.unified based on quay.io/vllm/vllm-cuda:0.11.2
-- [X] T133 [US4] Add Node.js 22 installation to Dockerfile.unified using nvm
-- [X] T134 [US4] Copy monorepo structure to container in Dockerfile.unified
-- [X] T135 [US4] Install npm dependencies and build all workspaces in Dockerfile.unified
-- [X] T136 [US4] Build frontend and serve via nginx in Dockerfile.unified
-- [X] T137 [US4] Configure container entrypoint to start backend server in Dockerfile.unified
-- [X] T138 [US4] Add health check for backend and frontend in Dockerfile.unified
-- [X] T139 [US4] Set environment variables for kvcached (ENABLE_KVCACHED, KVCACHED_AUTOPATCH) in Dockerfile.unified
-- [X] T140 [P] [US4] Create docker-compose.yml in docker/docker-compose.yml for local development
-- [X] T141 [US4] Configure service definitions for backend and frontend in docker-compose.yml
-- [X] T142 [US4] Add GPU device configuration in docker-compose.yml
-- [X] T143 [US4] Add volume mounts for model storage in docker-compose.yml
+- [x] T132 [P] [US4] Create Dockerfile.unified in docker/Dockerfile.unified based on quay.io/vllm/vllm-cuda:0.11.2
+- [x] T133 [US4] Add Node.js 22 installation to Dockerfile.unified using nvm
+- [x] T134 [US4] Copy monorepo structure to container in Dockerfile.unified
+- [x] T135 [US4] Install npm dependencies and build all workspaces in Dockerfile.unified
+- [x] T136 [US4] Build frontend and serve via nginx in Dockerfile.unified
+- [x] T137 [US4] Configure container entrypoint to start backend server in Dockerfile.unified
+- [x] T138 [US4] Add health check for backend and frontend in Dockerfile.unified
+- [x] T139 [US4] Set environment variables for kvcached (ENABLE_KVCACHED, KVCACHED_AUTOPATCH) in Dockerfile.unified
+- [x] T140 [P] [US4] Create docker-compose.yml in docker/docker-compose.yml for local development
+- [x] T141 [US4] Configure service definitions for backend and frontend in docker-compose.yml
+- [x] T142 [US4] Add GPU device configuration in docker-compose.yml
+- [x] T143 [US4] Add volume mounts for model storage in docker-compose.yml
 
 ### OpenShift Deployment for User Story 4
 
-- [X] T144 [P] [US4] Create OpenShift Deployment manifest in deployment/deployment.yaml
-- [X] T145 [P] [US4] Create OpenShift Service manifest in deployment/service.yaml
-- [X] T146 [P] [US4] Create OpenShift Route manifest in deployment/route.yaml
-- [X] T147 [US4] Configure GPU node selector in deployment/deployment.yaml
-- [X] T148 [US4] Configure resource requests and limits in deployment/deployment.yaml
-- [X] T149 [US4] Configure liveness and readiness probes in deployment/deployment.yaml
-- [X] T150 [US4] Add ConfigMap for environment variables in deployment/configmap.yaml
-- [X] T151 [US4] Add Secret for OAuth credentials in deployment/secret.yaml (template)
+- [x] T144 [P] [US4] Create OpenShift Deployment manifest in deployment/deployment.yaml
+- [x] T145 [P] [US4] Create OpenShift Service manifest in deployment/service.yaml
+- [x] T146 [P] [US4] Create OpenShift Route manifest in deployment/route.yaml
+- [x] T147 [US4] Configure GPU node selector in deployment/deployment.yaml
+- [x] T148 [US4] Configure resource requests and limits in deployment/deployment.yaml
+- [x] T149 [US4] Configure liveness and readiness probes in deployment/deployment.yaml
+- [x] T150 [US4] Add ConfigMap for environment variables in deployment/configmap.yaml
+- [x] T151 [US4] Add Secret for OAuth credentials in deployment/secret.yaml (template)
 
 ### Container Testing for User Story 4
 
@@ -286,7 +287,7 @@ This is a monorepo with npm workspaces:
 - [ ] T154 [US4] Verify backend API accessible from container
 - [ ] T155 [US4] Verify frontend UI accessible from container
 - [ ] T156 [US4] Test model load/unload within container environment
-- [X] T157 [US4] Create deployment guide in docs/deployment.md
+- [x] T157 [US4] Create deployment guide in docs/deployment.md
 
 **Checkpoint**: All user stories complete - platform can be deployed to OpenShift and fully functional
 
@@ -364,37 +365,45 @@ This is a monorepo with npm workspaces:
 ### Parallel Opportunities
 
 **Setup Phase (Phase 1):**
+
 - Tasks T003-T007 can run in parallel (different config files)
 
 **Foundational Phase (Phase 2):**
+
 - Packages (T008-T020) can all run in parallel
 - Utilities (T021-T024) can run in parallel
 - Backend plugins (T029-T031) can run in parallel
 - Backend utilities (T032-T034) can run in parallel
 
 **User Story 1 (Phase 3):**
+
 - Contract tests (T035-T037) can run in parallel
 - Integration tests (T038-T041) can run in parallel
 - Stores (T042-T043) can run in parallel
 - Routes (T062-T063 memory endpoints) can run in parallel with model routes
 
 **User Story 2 (Phase 4):**
+
 - Contract tests (T072-T074) can run in parallel
 - Integration tests (T075-T079) can run in parallel
 - Stores (T080-T081) can run in parallel
 
 **User Story 3 (Phase 5):**
+
 - Components (T115-T119) can run in parallel
 
 **User Story 4 (Phase 6):**
+
 - OpenShift manifests (T144-T146) can run in parallel
 
 **Polish Phase (Phase 7):**
+
 - Documentation (T158-T162) can run in parallel
 - Unit tests (T163-T167) can run in parallel
 - Performance tasks (T171-T176) can run in parallel
 
 **Cross-Story Parallelism:**
+
 - Once Foundational (Phase 2) completes, US1, US2, US3 can all start in parallel (different team members)
 
 ---

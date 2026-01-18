@@ -197,12 +197,14 @@ export function createMockStreamingResponse(modelId: string): Response {
 /**
  * Create a mock kvctl list response
  */
-export function createMockKvctlListResponse(segments: Array<{
-  name: string
-  size_gb: number
-  limit_gb: number
-  usage_percent: number
-}>): string {
+export function createMockKvctlListResponse(
+  segments: Array<{
+    name: string
+    size_gb: number
+    limit_gb: number
+    usage_percent: number
+  }>
+): string {
   return JSON.stringify(segments)
 }
 
@@ -216,10 +218,12 @@ export function setupSpawnMock(mockProcess: ChildProcess) {
 /**
  * Setup fetch mock for vLLM health and inference endpoints
  */
-export function setupFetchMock(options: {
-  healthyModels?: Set<string>
-  loadedModels?: Map<string, number> // modelPath -> port
-} = {}) {
+export function setupFetchMock(
+  options: {
+    healthyModels?: Set<string>
+    loadedModels?: Map<string, number> // modelPath -> port
+  } = {}
+) {
   const { healthyModels = new Set(), loadedModels = new Map() } = options
 
   return vi.fn(async (url: string, init?: RequestInit) => {

@@ -1,12 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import brandImg from '../../../../assets/sardeenz.svg';
-import {
-  LoginPage,
-  LoginForm,
-  ListItem,
-  ListVariant,
-} from '@patternfly/react-core'
+import brandImg from '../../../../assets/sardeenz.svg'
+import { LoginPage, LoginForm, ListItem, ListVariant } from '@patternfly/react-core'
 import { ExclamationCircleIcon } from '@patternfly/react-icons'
 import { useAuth } from '../contexts/AuthContext'
 

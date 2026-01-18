@@ -64,12 +64,14 @@ kvcached implements an OS-style virtual memory abstraction for managing KV (Key-
 The **Controller Frontend** provides a unified HTTP API interface that is compatible with OpenAI's API specification.
 
 **Responsibilities**:
+
 - Expose REST API endpoints for model interactions
 - Handle streaming and non-streaming requests
 - Provide health checks and server information
 - Serve as the entry point for all client requests
 
 **Key Features**:
+
 - OpenAI-compatible `/v1/completions` and `/v1/chat/completions` endpoints
 - Model listing and health status endpoints
 - Traffic statistics and monitoring endpoints
@@ -80,12 +82,14 @@ The **Controller Frontend** provides a unified HTTP API interface that is compat
 The **LLM Router** manages request distribution across multiple vLLM model instances.
 
 **Responsibilities**:
+
 - Route requests to appropriate model endpoints
 - Check model availability (sleeping vs. active)
 - Trigger model wake-up when needed
 - Handle endpoint health checks
 
 **Key Features**:
+
 - Dynamic model endpoint configuration
 - Integration with Sleep Manager for automatic wake-up
 - Support for both streaming and non-streaming requests
@@ -93,6 +97,7 @@ The **LLM Router** manages request distribution across multiple vLLM model insta
 - Configurable request timeouts
 
 **Configuration Formats**:
+
 ```python
 # Nested format
 {
@@ -120,12 +125,14 @@ The **LLM Router** manages request distribution across multiple vLLM model insta
 The **Sleep Manager** handles the lifecycle of model instances, putting idle models to sleep and waking them on demand.
 
 **Responsibilities**:
+
 - Monitor model idle time based on traffic
 - Automatically put idle models to sleep
 - Wake up sleeping models when requests arrive
 - Enforce minimum sleep duration before wake-up
 
 **Key Features**:
+
 - Configurable idle threshold (default: 5 minutes)
 - Configurable minimum sleep duration
 - Support for both vLLM and SGLang (we use vLLM only)
@@ -133,6 +140,7 @@ The **Sleep Manager** handles the lifecycle of model instances, putting idle mod
 - Background monitoring task for auto-sleep
 
 **Configuration Parameters**:
+
 ```python
 SleepConfig(
     idle_threshold_seconds=300,      # Time before sleep
@@ -142,12 +150,14 @@ SleepConfig(
 ```
 
 **Model Sleep Process**:
+
 1. Traffic Monitor detects model has been idle > threshold
 2. Sleep Manager marks model as candidate for sleep
 3. Model is put to sleep (GPU memory released)
 4. Model state is preserved for quick wake-up
 
 **Model Wake Process**:
+
 1. Request arrives for sleeping model
 2. Router detects model is asleep
 3. Sleep Manager checks minimum sleep duration
@@ -159,12 +169,14 @@ SleepConfig(
 The **Traffic Monitor** tracks request metrics and model activity for operational insights and sleep management decisions.
 
 **Responsibilities**:
+
 - Record request start and completion times
 - Track per-model statistics
 - Identify idle and active models
 - Maintain rolling history of requests
 
 **Metrics Tracked**:
+
 - Total requests per model
 - Successful vs. failed requests
 - Request rate (requests per minute)
@@ -173,12 +185,14 @@ The **Traffic Monitor** tracks request metrics and model activity for operationa
 - Current idle time
 
 **Key Features**:
+
 - Thread-safe statistics tracking
 - Automatic cleanup of historical data (maintains last 10,000 requests)
 - Time-windowed statistics (e.g., last 5 minutes)
 - Async background cleanup tasks
 
 **Data Structure**:
+
 ```python
 ModelActivityStats:
     - total_requests: int
@@ -194,12 +208,14 @@ ModelActivityStats:
 The **KV Cache Manager** implements the core virtual memory abstraction for KV caches.
 
 **Responsibilities**:
+
 - Decouple logical KV cache from physical GPU memory
 - Dynamically allocate and reclaim memory
 - Manage IPC (Inter-Process Communication) segments for memory sharing
 - Coordinate memory between multiple model instances
 
 **Key Concepts**:
+
 - **IPC Segments**: Shared memory regions identified by name (e.g., "VLLM", "MODEL_1")
 - **Virtual Memory**: Logical KV cache addresses mapped to physical GPU memory
 - **Demand Paging**: Allocate memory only when needed, reclaim when idle
@@ -209,6 +225,7 @@ The **KV Cache Manager** implements the core virtual memory abstraction for KV c
 The **Page Allocator** manages fine-grained memory allocation at the page level.
 
 **Responsibilities**:
+
 - Allocate and free memory pages
 - Track page usage across models
 - Implement memory limits and quotas
@@ -219,6 +236,7 @@ The **Page Allocator** manages fine-grained memory allocation at the page level.
 The **Memory Info Tracker** monitors GPU memory usage in real-time.
 
 **Responsibilities**:
+
 - Track total, used, and free GPU memory
 - Monitor per-IPC-segment memory usage
 - Provide data for CLI tools (kvctl, kvtop)
@@ -227,11 +245,13 @@ The **Memory Info Tracker** monitors GPU memory usage in real-time.
 ### 8. CLI Tools (`kvcached/cli/`)
 
 **kvctl** (`kvcached/cli/kvctl.py`):
+
 - Interactive CLI for memory management
 - Commands: list, limit, limit-percent, watch, delete, shell
 - Supports human-readable sizes (e.g., "512M", "2G")
 
 **kvtop** (`kvcached/cli/kvtop.py`):
+
 - Real-time memory usage visualization
 - Curses-based TUI (Text User Interface)
 - Color-coded memory usage bars
@@ -244,13 +264,16 @@ The **Memory Info Tracker** monitors GPU memory usage in real-time.
 kvcached integrates with vLLM through **autopatching** - automatic modification of vLLM's memory management behavior at runtime.
 
 **Integration Method**:
+
 1. Set environment variables:
+
    ```bash
    export ENABLE_KVCACHED=true
    export KVCACHED_AUTOPATCH=1
    ```
 
 2. Launch vLLM normally:
+
    ```bash
    vllm serve meta-llama/Llama-3.2-1B --no-enable-prefix-caching
    ```
@@ -258,12 +281,14 @@ kvcached integrates with vLLM through **autopatching** - automatic modification 
 3. kvcached automatically patches vLLM's KV cache allocation
 
 **Autopatch Mechanism** (`kvcached/autopatch.py`):
+
 - Intercepts vLLM's memory allocation calls
 - Redirects to kvcached's virtual memory system
 - Maintains compatibility with vLLM's API
 - Transparent to vLLM's internal logic
 
 **Key Integration Points**:
+
 - **Memory Allocation**: vLLM requests → kvcached Page Allocator
 - **KV Cache Storage**: vLLM cache → kvcached IPC segments
 - **Memory Release**: vLLM free → kvcached page deallocation
@@ -282,6 +307,7 @@ kvcached integrates with vLLM through **autopatching** - automatic modification 
 ### Standard Request Flow (Active Model)
 
 1. **Client** sends HTTP request to Controller Frontend
+
    ```
    POST /v1/completions
    {
@@ -303,6 +329,7 @@ kvcached integrates with vLLM through **autopatching** - automatic modification 
    - Records timestamp
 
 5. **Router** forwards request to vLLM instance:
+
    ```
    → http://localhost:12346/v1/completions
    ```
@@ -391,17 +418,20 @@ kvcached integrates with vLLM through **autopatching** - automatic modification 
 **IPC (Inter-Process Communication) Segments** are named shared memory regions used to organize KV cache memory.
 
 **Purpose**:
+
 - Isolate memory for different models or applications
 - Apply per-segment memory limits
 - Track usage separately for monitoring
 - Enable memory sharing between processes
 
 **Example IPC Segment Names**:
+
 - `VLLM` - Default vLLM instance
 - `VLLM_MODEL_1` - First model instance
 - `VLLM_MODEL_2` - Second model instance
 
 **Operations on IPC Segments**:
+
 - **List**: View all segments and their usage
 - **Limit**: Set memory cap (absolute or percentage)
 - **Delete**: Remove segment and reclaim memory
@@ -596,6 +626,7 @@ After Model A Goes Idle (Auto-Sleep):
 kvcached provides a sophisticated architecture for managing multiple vLLM instances on shared GPU resources. The key innovation is the **virtual memory abstraction** that decouples logical KV cache from physical GPU memory, combined with **intelligent lifecycle management** through the Sleep Manager.
 
 For sardeenz, the most important integration points are:
+
 - **Controller API** for model management
 - **Sleep/wake endpoints** for resource optimization
 - **Traffic monitoring** for usage insights

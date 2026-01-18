@@ -17,12 +17,14 @@ This guide explains how the frontend integrates with the Controller API for mode
 ## Overview
 
 The frontend communicates with the **Controller API** (`http://localhost:3000/api/v1`) to:
+
 - Load and unload model instances
 - Query model status and configuration
 - Retrieve resource metrics (GPU memory, request counts)
 - Access operation audit trail
 
 **Key Requirements:**
+
 - OAuth 2.0 authentication with JWT bearer tokens
 - Role-based access control (admin, admin-readonly)
 - Automatic token refresh
@@ -47,20 +49,20 @@ src/api/
 **`src/api/client.ts`**:
 
 ```tsx
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios'
 
 // Token storage (in-memory only for security)
-let jwtToken: string | null = null;
+let jwtToken: string | null = null
 
 export const setToken = (token: string) => {
-  jwtToken = token;
-};
+  jwtToken = token
+}
 
-export const getToken = (): string | null => jwtToken;
+export const getToken = (): string | null => jwtToken
 
 export const clearToken = () => {
-  jwtToken = null;
-};
+  jwtToken = null
+}
 
 // Create axios instance
 export const apiClient: AxiosInstance = axios.create({
@@ -69,42 +71,44 @@ export const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
+})
 
 // Request interceptor: Add JWT to all requests
 apiClient.interceptors.request.use(
-  config => {
-    const token = getToken();
+  (config) => {
+    const token = getToken()
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`
     }
-    return config;
+    return config
   },
-  error => Promise.reject(error)
-);
+  (error) => Promise.reject(error)
+)
 
 // Response interceptor: Handle auth errors
 apiClient.interceptors.response.use(
-  response => response,
+  (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       // Token expired or invalid - redirect to login
-      clearToken();
-      window.location.href = '/login';
+      clearToken()
+      window.location.href = '/login'
     }
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
-);
+)
 ```
 
 ### Environment Variables
 
 **`.env`** (development):
+
 ```bash
 VITE_API_BASE_URL=http://localhost:3000/api/v1
 ```
 
 **`.env.production`**:
+
 ```bash
 VITE_API_BASE_URL=/api/v1
 ```
@@ -152,62 +156,62 @@ The frontend delegates OAuth authentication to the backend:
 **`src/context/AuthContext.tsx`**:
 
 ```tsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import { setToken, clearToken } from '../api/client';
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import axios from 'axios'
+import { setToken, clearToken } from '../api/client'
 
 interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'admin-readonly';
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'admin-readonly'
 }
 
 interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
-  loading: boolean;
-  login: () => void;
-  logout: () => void;
+  user: User | null
+  isAuthenticated: boolean
+  loading: boolean
+  login: () => void
+  logout: () => void
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | null>(null)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     // Check if user is already authenticated
-    checkAuth();
-  }, []);
+    checkAuth()
+  }, [])
 
   const checkAuth = async () => {
     try {
-      const response = await axios.get('/auth/me');
-      setUser(response.data.user);
-      setToken(response.data.token);
+      const response = await axios.get('/auth/me')
+      setUser(response.data.user)
+      setToken(response.data.token)
     } catch (error) {
-      setUser(null);
-      clearToken();
+      setUser(null)
+      clearToken()
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const login = () => {
-    window.location.href = '/auth/login';
-  };
+    window.location.href = '/auth/login'
+  }
 
   const logout = async () => {
     try {
-      await axios.post('/auth/logout');
+      await axios.post('/auth/logout')
     } finally {
-      setUser(null);
-      clearToken();
-      window.location.href = '/login';
+      setUser(null)
+      clearToken()
+      window.location.href = '/login'
     }
-  };
+  }
 
   return (
     <AuthContext.Provider
@@ -221,16 +225,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     >
       {children}
     </AuthContext.Provider>
-  );
-};
+  )
+}
 
 export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
+  const context = useContext(AuthContext)
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error('useAuth must be used within AuthProvider')
   }
-  return context;
-};
+  return context
+}
 ```
 
 ## API Modules
@@ -240,29 +244,29 @@ export const useAuth = (): AuthContextType => {
 **`src/api/models.ts`**:
 
 ```tsx
-import { apiClient } from './client';
-import { ModelInstance } from '@sardeenz/types';
+import { apiClient } from './client'
+import { ModelInstance } from '@sardeenz/types'
 
 export interface LoadModelRequest {
-  modelPath: string;
-  displayName: string;
-  gpuMemoryLimit: number; // GB
-  port?: number; // Optional, auto-assign if not provided
+  modelPath: string
+  displayName: string
+  gpuMemoryLimit: number // GB
+  port?: number // Optional, auto-assign if not provided
 }
 
 export interface LoadModelResponse {
-  id: string;
-  modelPath: string;
-  displayName: string;
-  status: 'starting' | 'active' | 'stopping' | 'failed';
-  port: number;
-  gpuMemoryLimit: number;
-  createdAt: string;
+  id: string
+  modelPath: string
+  displayName: string
+  status: 'starting' | 'active' | 'stopping' | 'failed'
+  port: number
+  gpuMemoryLimit: number
+  createdAt: string
 }
 
 export interface ModelListResponse {
-  models: ModelInstance[];
-  total: number;
+  models: ModelInstance[]
+  total: number
 }
 
 export const modelsApi = {
@@ -280,8 +284,7 @@ export const modelsApi = {
    * Load a new model instance
    * Requires 'admin' role
    */
-  load: (request: LoadModelRequest) =>
-    apiClient.post<LoadModelResponse>('/models/load', request),
+  load: (request: LoadModelRequest) => apiClient.post<LoadModelResponse>('/models/load', request),
 
   /**
    * Unload a running model instance
@@ -301,7 +304,7 @@ export const modelsApi = {
     apiClient.get<{ logs: string[] }>(`/models/${id}/logs`, {
       params: { lines },
     }),
-};
+}
 ```
 
 ### Metrics API
@@ -309,37 +312,36 @@ export const modelsApi = {
 **`src/api/metrics.ts`**:
 
 ```tsx
-import { apiClient } from './client';
+import { apiClient } from './client'
 
 export interface ResourceMetrics {
-  modelId: string;
-  timestamp: string;
-  gpuMemoryUsed: number; // GB
-  requestCount: number;
-  activeConnections: number;
-  avgResponseTime: number; // ms
-  p95ResponseTime: number; // ms
+  modelId: string
+  timestamp: string
+  gpuMemoryUsed: number // GB
+  requestCount: number
+  activeConnections: number
+  avgResponseTime: number // ms
+  p95ResponseTime: number // ms
 }
 
 export interface SystemMetrics {
-  timestamp: string;
-  totalGpuMemory: number; // GB
-  usedGpuMemory: number; // GB
-  freeGpuMemory: number; // GB
-  gpuUtilization: number; // 0-100
+  timestamp: string
+  totalGpuMemory: number // GB
+  usedGpuMemory: number // GB
+  freeGpuMemory: number // GB
+  gpuUtilization: number // 0-100
   models: Array<{
-    id: string;
-    name: string;
-    memoryUsed: number;
-  }>;
+    id: string
+    name: string
+    memoryUsed: number
+  }>
 }
 
 export const metricsApi = {
   /**
    * Get metrics for a specific model
    */
-  getModelMetrics: (id: string) =>
-    apiClient.get<ResourceMetrics>(`/metrics/models/${id}`),
+  getModelMetrics: (id: string) => apiClient.get<ResourceMetrics>(`/metrics/models/${id}`),
 
   /**
    * Get system-wide metrics
@@ -361,7 +363,7 @@ export const metricsApi = {
     apiClient.get<ResourceMetrics[]>(`/metrics/models/${id}/timeseries`, {
       params: { duration, interval },
     }),
-};
+}
 ```
 
 ### Index Re-exports
@@ -369,10 +371,10 @@ export const metricsApi = {
 **`src/api/index.ts`**:
 
 ```tsx
-export * from './client';
-export * from './models';
-export * from './metrics';
-export * from './types';
+export * from './client'
+export * from './models'
+export * from './metrics'
+export * from './types'
 ```
 
 ## Custom Hooks
@@ -382,15 +384,15 @@ export * from './types';
 **`src/hooks/useModels.ts`**:
 
 ```tsx
-import { useState, useEffect, useCallback } from 'react';
-import { modelsApi } from '../api/models';
-import { ModelInstance } from '@sardeenz/types';
+import { useState, useEffect, useCallback } from 'react'
+import { modelsApi } from '../api/models'
+import { ModelInstance } from '@sardeenz/types'
 
 interface UseModelsResult {
-  models: ModelInstance[];
-  loading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
+  models: ModelInstance[]
+  loading: boolean
+  error: Error | null
+  refetch: () => Promise<void>
 }
 
 /**
@@ -398,37 +400,34 @@ interface UseModelsResult {
  * @param refreshInterval Polling interval in ms (default: 5000 = 5 seconds)
  * @param enabled Enable/disable automatic polling (default: true)
  */
-export function useModels(
-  refreshInterval = 5000,
-  enabled = true
-): UseModelsResult {
-  const [models, setModels] = useState<ModelInstance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+export function useModels(refreshInterval = 5000, enabled = true): UseModelsResult {
+  const [models, setModels] = useState<ModelInstance[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
   const fetchModels = useCallback(async () => {
     try {
-      const response = await modelsApi.list();
-      setModels(response.data.models);
-      setError(null);
+      const response = await modelsApi.list()
+      setModels(response.data.models)
+      setError(null)
     } catch (err) {
-      console.error('Error fetching models:', err);
-      setError(err as Error);
+      console.error('Error fetching models:', err)
+      setError(err as Error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return
 
-    fetchModels();
-    const interval = setInterval(fetchModels, refreshInterval);
+    fetchModels()
+    const interval = setInterval(fetchModels, refreshInterval)
 
-    return () => clearInterval(interval);
-  }, [fetchModels, refreshInterval, enabled]);
+    return () => clearInterval(interval)
+  }, [fetchModels, refreshInterval, enabled])
 
-  return { models, loading, error, refetch: fetchModels };
+  return { models, loading, error, refetch: fetchModels }
 }
 ```
 
@@ -437,15 +436,15 @@ export function useModels(
 **`src/hooks/useModelDetails.ts`**:
 
 ```tsx
-import { useState, useEffect } from 'react';
-import { modelsApi } from '../api/models';
-import { ModelInstance } from '@sardeenz/types';
+import { useState, useEffect } from 'react'
+import { modelsApi } from '../api/models'
+import { ModelInstance } from '@sardeenz/types'
 
 interface UseModelDetailsResult {
-  model: ModelInstance | null;
-  loading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
+  model: ModelInstance | null
+  loading: boolean
+  error: Error | null
+  refetch: () => Promise<void>
 }
 
 /**
@@ -453,34 +452,31 @@ interface UseModelDetailsResult {
  * @param id Model instance ID
  * @param refreshInterval Polling interval in ms (default: 5000)
  */
-export function useModelDetails(
-  id: string,
-  refreshInterval = 5000
-): UseModelDetailsResult {
-  const [model, setModel] = useState<ModelInstance | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+export function useModelDetails(id: string, refreshInterval = 5000): UseModelDetailsResult {
+  const [model, setModel] = useState<ModelInstance | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
   const fetchModel = async () => {
     try {
-      const response = await modelsApi.get(id);
-      setModel(response.data);
-      setError(null);
+      const response = await modelsApi.get(id)
+      setModel(response.data)
+      setError(null)
     } catch (err) {
-      console.error(`Error fetching model ${id}:`, err);
-      setError(err as Error);
+      console.error(`Error fetching model ${id}:`, err)
+      setError(err as Error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchModel();
-    const interval = setInterval(fetchModel, refreshInterval);
-    return () => clearInterval(interval);
-  }, [id, refreshInterval]);
+    fetchModel()
+    const interval = setInterval(fetchModel, refreshInterval)
+    return () => clearInterval(interval)
+  }, [id, refreshInterval])
 
-  return { model, loading, error, refetch: fetchModel };
+  return { model, loading, error, refetch: fetchModel }
 }
 ```
 
@@ -489,39 +485,39 @@ export function useModelDetails(
 **`src/hooks/useLoadModel.ts`**:
 
 ```tsx
-import { useState } from 'react';
-import { modelsApi, LoadModelRequest } from '../api/models';
+import { useState } from 'react'
+import { modelsApi, LoadModelRequest } from '../api/models'
 
 interface UseLoadModelResult {
-  loadModel: (config: LoadModelRequest) => Promise<void>;
-  loading: boolean;
-  error: Error | null;
+  loadModel: (config: LoadModelRequest) => Promise<void>
+  loading: boolean
+  error: Error | null
 }
 
 /**
  * Hook for loading a new model instance
  */
 export function useLoadModel(): UseLoadModelResult {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
 
   const loadModel = async (config: LoadModelRequest) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
 
     try {
-      await modelsApi.load(config);
+      await modelsApi.load(config)
       // Success - model is now in 'starting' state
     } catch (err) {
-      console.error('Error loading model:', err);
-      setError(err as Error);
-      throw err; // Re-throw for component error handling
+      console.error('Error loading model:', err)
+      setError(err as Error)
+      throw err // Re-throw for component error handling
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  return { loadModel, loading, error };
+  return { loadModel, loading, error }
 }
 ```
 
@@ -530,14 +526,14 @@ export function useLoadModel(): UseLoadModelResult {
 **`src/hooks/useMetrics.ts`**:
 
 ```tsx
-import { useState, useEffect } from 'react';
-import { metricsApi, SystemMetrics } from '../api/metrics';
+import { useState, useEffect } from 'react'
+import { metricsApi, SystemMetrics } from '../api/metrics'
 
 interface UseMetricsResult {
-  metrics: SystemMetrics | null;
-  loading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
+  metrics: SystemMetrics | null
+  loading: boolean
+  error: Error | null
+  refetch: () => Promise<void>
 }
 
 /**
@@ -545,37 +541,34 @@ interface UseMetricsResult {
  * @param refreshInterval Polling interval in ms (default: 2000 = 2 seconds)
  * @param enabled Enable/disable automatic polling
  */
-export function useMetrics(
-  refreshInterval = 2000,
-  enabled = true
-): UseMetricsResult {
-  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+export function useMetrics(refreshInterval = 2000, enabled = true): UseMetricsResult {
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
 
   const fetchMetrics = async () => {
     try {
-      const response = await metricsApi.getSystemMetrics();
-      setMetrics(response.data);
-      setError(null);
+      const response = await metricsApi.getSystemMetrics()
+      setMetrics(response.data)
+      setError(null)
     } catch (err) {
-      console.error('Error fetching metrics:', err);
-      setError(err as Error);
+      console.error('Error fetching metrics:', err)
+      setError(err as Error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return
 
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, refreshInterval);
+    fetchMetrics()
+    const interval = setInterval(fetchMetrics, refreshInterval)
 
-    return () => clearInterval(interval);
-  }, [refreshInterval, enabled]);
+    return () => clearInterval(interval)
+  }, [refreshInterval, enabled])
 
-  return { metrics, loading, error, refetch: fetchMetrics };
+  return { metrics, loading, error, refetch: fetchMetrics }
 }
 ```
 
@@ -586,10 +579,10 @@ export function useMetrics(
 ```tsx
 // src/api/types.ts
 export interface ApiError {
-  message: string;
-  code: string;
-  status: number;
-  details?: Record<string, unknown>;
+  message: string
+  code: string
+  status: number
+  details?: Record<string, unknown>
 }
 
 export class ApiErrorHandler {
@@ -600,27 +593,26 @@ export class ApiErrorHandler {
         code: error.response?.data?.code || 'UNKNOWN_ERROR',
         status: error.response?.status || 500,
         details: error.response?.data?.details,
-      };
+      }
     }
 
     return {
       message: 'An unexpected error occurred',
       code: 'UNEXPECTED_ERROR',
       status: 500,
-    };
+    }
   }
 
   static isAuthError(error: ApiError): boolean {
-    return error.status === 401 || error.status === 403;
+    return error.status === 401 || error.status === 403
   }
 
   static isValidationError(error: ApiError): boolean {
-    return error.status === 400;
+    return error.status === 400
   }
 
   static isResourceError(error: ApiError): boolean {
-    return error.code === 'INSUFFICIENT_GPU_MEMORY' ||
-           error.code === 'MODEL_ALREADY_LOADED';
+    return error.code === 'INSUFFICIENT_GPU_MEMORY' || error.code === 'MODEL_ALREADY_LOADED'
   }
 }
 ```
@@ -629,20 +621,20 @@ export class ApiErrorHandler {
 
 ```tsx
 // src/components/ErrorAlert.tsx
-import React from 'react';
-import { Alert, AlertActionCloseButton } from '@patternfly/react-core';
-import { ApiError, ApiErrorHandler } from '../api/types';
+import React from 'react'
+import { Alert, AlertActionCloseButton } from '@patternfly/react-core'
+import { ApiError, ApiErrorHandler } from '../api/types'
 
 interface ErrorAlertProps {
-  error: Error | ApiError;
-  onClose: () => void;
+  error: Error | ApiError
+  onClose: () => void
 }
 
 export const ErrorAlert: React.FC<ErrorAlertProps> = ({ error, onClose }) => {
-  const apiError = ApiErrorHandler.parse(error);
+  const apiError = ApiErrorHandler.parse(error)
 
-  const variant = apiError.status >= 500 ? 'danger' : 'warning';
-  const title = apiError.status >= 500 ? 'Server Error' : 'Request Failed';
+  const variant = apiError.status >= 500 ? 'danger' : 'warning'
+  const title = apiError.status >= 500 ? 'Server Error' : 'Request Failed'
 
   return (
     <Alert
@@ -653,13 +645,11 @@ export const ErrorAlert: React.FC<ErrorAlertProps> = ({ error, onClose }) => {
     >
       {apiError.message}
       {apiError.details && (
-        <pre style={{ marginTop: '1rem' }}>
-          {JSON.stringify(apiError.details, null, 2)}
-        </pre>
+        <pre style={{ marginTop: '1rem' }}>{JSON.stringify(apiError.details, null, 2)}</pre>
       )}
     </Alert>
-  );
-};
+  )
+}
 ```
 
 ## TypeScript Types
@@ -674,19 +664,19 @@ export type {
   ModelConfiguration,
   ResourceMetrics,
   ControllerOperation,
-} from '@sardeenz/types';
+} from '@sardeenz/types'
 
 // Frontend-specific types
 export interface ModelFormData {
-  modelPath: string;
-  displayName: string;
-  gpuMemoryLimit: number;
-  port?: number;
+  modelPath: string
+  displayName: string
+  gpuMemoryLimit: number
+  port?: number
 }
 
 export interface ModelFilters {
-  status?: Array<'starting' | 'active' | 'stopping' | 'failed'>;
-  search?: string;
+  status?: Array<'starting' | 'active' | 'stopping' | 'failed'>
+  search?: string
 }
 ```
 
@@ -696,29 +686,29 @@ export interface ModelFilters {
 
 ```tsx
 // src/components/LoadModelDialog.tsx
-import React, { useState } from 'react';
-import { Modal, Button, Form, FormGroup, TextInput, Slider } from '@patternfly/react-core';
-import { useLoadModel } from '../hooks/useLoadModel';
+import React, { useState } from 'react'
+import { Modal, Button, Form, FormGroup, TextInput, Slider } from '@patternfly/react-core'
+import { useLoadModel } from '../hooks/useLoadModel'
 
 export const LoadModelDialog: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     modelPath: '',
     displayName: '',
     gpuMemoryLimit: 4.0,
-  });
+  })
 
-  const { loadModel, loading } = useLoadModel();
+  const { loadModel, loading } = useLoadModel()
 
   const handleSubmit = async () => {
     try {
-      await loadModel(formData);
-      onSuccess();
-      onClose();
+      await loadModel(formData)
+      onSuccess()
+      onClose()
     } catch (error) {
       // Error is handled by the hook and stored in error state
       // Display error in UI
     }
-  };
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Load Model">
@@ -726,14 +716,14 @@ export const LoadModelDialog: React.FC<Props> = ({ isOpen, onClose, onSuccess })
         <FormGroup label="Model Path" isRequired>
           <TextInput
             value={formData.modelPath}
-            onChange={value => setFormData({ ...formData, modelPath: value })}
+            onChange={(value) => setFormData({ ...formData, modelPath: value })}
           />
         </FormGroup>
 
         <FormGroup label="Display Name" isRequired>
           <TextInput
             value={formData.displayName}
-            onChange={value => setFormData({ ...formData, displayName: value })}
+            onChange={(value) => setFormData({ ...formData, displayName: value })}
           />
         </FormGroup>
 
@@ -743,7 +733,7 @@ export const LoadModelDialog: React.FC<Props> = ({ isOpen, onClose, onSuccess })
             min={0.5}
             max={24}
             step={0.5}
-            onChange={value => setFormData({ ...formData, gpuMemoryLimit: value })}
+            onChange={(value) => setFormData({ ...formData, gpuMemoryLimit: value })}
           />
         </FormGroup>
 
@@ -752,24 +742,24 @@ export const LoadModelDialog: React.FC<Props> = ({ isOpen, onClose, onSuccess })
         </Button>
       </Form>
     </Modal>
-  );
-};
+  )
+}
 ```
 
 ### Displaying Model List
 
 ```tsx
 // src/pages/ModelManagement.tsx
-import React from 'react';
-import { Page, PageSection, Spinner, Alert } from '@patternfly/react-core';
-import { useModels } from '../hooks/useModels';
-import { ModelTable } from '../components/ModelTable';
+import React from 'react'
+import { Page, PageSection, Spinner, Alert } from '@patternfly/react-core'
+import { useModels } from '../hooks/useModels'
+import { ModelTable } from '../components/ModelTable'
 
 export const ModelManagement: React.FC = () => {
-  const { models, loading, error } = useModels(5000); // Poll every 5 seconds
+  const { models, loading, error } = useModels(5000) // Poll every 5 seconds
 
   if (loading && models.length === 0) {
-    return <Spinner />;
+    return <Spinner />
   }
 
   if (error) {
@@ -777,7 +767,7 @@ export const ModelManagement: React.FC = () => {
       <Alert variant="danger" title="Error loading models">
         {error.message}
       </Alert>
-    );
+    )
   }
 
   return (
@@ -786,8 +776,8 @@ export const ModelManagement: React.FC = () => {
         <ModelTable models={models} />
       </PageSection>
     </Page>
-  );
-};
+  )
+}
 ```
 
 ## Testing with MSW
@@ -797,7 +787,7 @@ export const ModelManagement: React.FC = () => {
 **`src/test/mocks/handlers.ts`**:
 
 ```tsx
-import { rest } from 'msw';
+import { rest } from 'msw'
 
 export const handlers = [
   // List models
@@ -817,12 +807,12 @@ export const handlers = [
         ],
         total: 1,
       })
-    );
+    )
   }),
 
   // Load model
   rest.post('/api/v1/models/load', async (req, res, ctx) => {
-    const body = await req.json();
+    const body = await req.json()
     return res(
       ctx.status(202),
       ctx.json({
@@ -831,7 +821,7 @@ export const handlers = [
         status: 'starting',
         createdAt: new Date().toISOString(),
       })
-    );
+    )
   }),
 
   // Get metrics
@@ -844,13 +834,11 @@ export const handlers = [
         usedGpuMemory: 12.5,
         freeGpuMemory: 11.5,
         gpuUtilization: 52,
-        models: [
-          { id: 'model-1', name: 'Llama 2 7B', memoryUsed: 6.2 },
-        ],
+        models: [{ id: 'model-1', name: 'Llama 2 7B', memoryUsed: 6.2 }],
       })
-    );
+    )
   }),
-];
+]
 ```
 
 ### Test Setup
@@ -858,31 +846,31 @@ export const handlers = [
 **`src/test/setup.ts`**:
 
 ```tsx
-import { setupServer } from 'msw/node';
-import { handlers } from './mocks/handlers';
+import { setupServer } from 'msw/node'
+import { handlers } from './mocks/handlers'
 
-export const server = setupServer(...handlers);
+export const server = setupServer(...handlers)
 
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+beforeAll(() => server.listen())
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 ```
 
 ### Test Example
 
 ```tsx
-import { render, screen, waitFor } from '@testing-library/react';
-import { ModelManagement } from './ModelManagement';
+import { render, screen, waitFor } from '@testing-library/react'
+import { ModelManagement } from './ModelManagement'
 
 test('displays model list', async () => {
-  render(<ModelManagement />);
+  render(<ModelManagement />)
 
-  expect(screen.getByText(/loading/i)).toBeInTheDocument();
+  expect(screen.getByText(/loading/i)).toBeInTheDocument()
 
   await waitFor(() => {
-    expect(screen.getByText('Llama 2 7B')).toBeInTheDocument();
-  });
-});
+    expect(screen.getByText('Llama 2 7B')).toBeInTheDocument()
+  })
+})
 ```
 
 ## Related Documentation

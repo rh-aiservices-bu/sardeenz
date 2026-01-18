@@ -42,11 +42,13 @@ kvcached provides:
 ### Core kvcached Features (Used by sardeenz)
 
 #### 1. GPU Memory Sharing
+
 - **Virtual Memory Abstraction**: Multiple vLLM instances share GPU memory efficiently
 - **Elastic Memory Allocation**: Dynamically allocate and reclaim memory based on demand
 - **Transparent Integration**: Enable with environment variables, no code changes needed
 
 #### 2. Memory Control Tools
+
 - **kvctl**: Interactive CLI for memory management
 - **kvtop**: Real-time memory usage visualization
 - Set absolute or percentage-based memory limits per model
@@ -85,12 +87,14 @@ docker pull ghcr.io/ovg-project/kvcached-vllm:latest
 **sardeenz uses direct vLLM instance management** (not the Controller):
 
 1. **Enable kvcached** (set environment variables):
+
 ```bash
 export ENABLE_KVCACHED=true
 export KVCACHED_AUTOPATCH=1
 ```
 
 2. **Launch vLLM models individually**:
+
 ```bash
 # Model 1
 vllm serve meta-llama/Llama-3.2-1B \
@@ -106,10 +110,12 @@ vllm serve Qwen/Qwen3-0.6B \
 ```
 
 **Important**:
+
 - kvcached does NOT support prefix caching. Always use `--no-enable-prefix-caching`.
 - Each model runs independently but shares GPU memory automatically via kvcached.
 
 3. **Monitor memory usage**:
+
 ```bash
 # List all models and their memory usage
 kvctl list
@@ -119,6 +125,7 @@ kvtop
 ```
 
 4. **Set memory limits** (optional but recommended):
+
 ```bash
 kvctl limit VLLM_MODEL_1 8G
 kvctl limit VLLM_MODEL_2 6G
@@ -181,6 +188,7 @@ This documentation is organized into the following sections:
 The sardeenz backend integrates with kvcached through:
 
 1. **Environment Variables**: Enable kvcached for each vLLM instance
+
    ```python
    env["ENABLE_KVCACHED"] = "true"
    env["KVCACHED_AUTOPATCH"] = "1"
@@ -204,12 +212,14 @@ The sardeenz backend integrates with kvcached through:
 ### Why This Approach?
 
 **The kvcached Controller requires a full restart to add/remove models**, which:
+
 - ❌ Kills all running model instances
 - ❌ Causes downtime for all models
 - ❌ Requires reloading model weights from disk (slow)
 - ❌ Doesn't fit our need for dynamic, user-driven model selection
 
 **Direct management gives us**:
+
 - ✅ Add models without affecting running instances
 - ✅ Remove models individually with no downtime
 - ✅ Full control over model lifecycle
@@ -219,6 +229,7 @@ The sardeenz backend integrates with kvcached through:
 ### Implementation Guide
 
 See **[sardeenz-integration.md](./sardeenz-integration.md)** for:
+
 - Complete architecture diagrams
 - Production-ready code examples
 - Backend API design

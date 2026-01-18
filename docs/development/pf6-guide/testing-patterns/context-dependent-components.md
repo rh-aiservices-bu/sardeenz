@@ -30,7 +30,7 @@ Context-dependent components rely on React Context provided by their parent comp
 
 ```typescript
 // Inside AlertActionCloseButton component:
-const { title, variantLabel } = useContext(AlertContext);
+const { title, variantLabel } = useContext(AlertContext)
 // ↑ Expects Alert parent to provide this context
 ```
 
@@ -328,7 +328,6 @@ describe('MyContextConsumer', () => {
    ```
 
 2. **Check Component Source**:
-
    - Look for `useContext()` calls
    - Identify which context is needed
    - Find the providing parent component
@@ -476,7 +475,7 @@ vi.mock('../contexts/MyContext', () => ({
   MyContext: {
     Provider: ({ children }) => children,
   },
-}));
+}))
 ```
 
 ## Common Issues and Solutions
@@ -505,8 +504,8 @@ vi.mock('../contexts/MyContext', () => ({
 
 ```typescript
 // If testing a modal with an alert inside it
-const alert = screen.getByRole('alert'); // or other container
-const alertCloseButton = within(alert).getByRole('button', { name: /close/i });
+const alert = screen.getByRole('alert') // or other container
+const alertCloseButton = within(alert).getByRole('button', { name: /close/i })
 ```
 
 ### Issue: Close button has unexpected aria-label
@@ -521,10 +520,10 @@ const alertCloseButton = within(alert).getByRole('button', { name: /close/i });
 
 ```typescript
 // ✅ FLEXIBLE
-const closeButton = screen.getByRole('button', { name: /close/i });
+const closeButton = screen.getByRole('button', { name: /close/i })
 
 // ❌ TOO SPECIFIC
-const closeButton = screen.getByRole('button', { name: 'Close' });
+const closeButton = screen.getByRole('button', { name: 'Close' })
 ```
 
 ## Best Practices
@@ -550,15 +549,15 @@ render(<AlertActionCloseButton ... />);
 describe('ErrorAlert', () => {
   it('should close when close button clicked', async () => {
     // Test ErrorAlert, not AlertActionCloseButton directly
-  });
-});
+  })
+})
 
 // ❌ BAD - Testing implementation details
 describe('AlertActionCloseButton', () => {
   it('should access alert context', () => {
     // This is testing PatternFly internals
-  });
-});
+  })
+})
 ```
 
 ### 3. Document Context Requirements

@@ -280,13 +280,13 @@ When authenticated with the `admin-readonly` role, the frontend displays visual 
 
 **Request Fields:**
 
-| Field                  | Type     | Required | Description                                                                      |
-| ---------------------- | -------- | -------- | -------------------------------------------------------------------------------- |
-| `model_path`           | string   | Yes      | Model identifier (HuggingFace path or local path)                                |
-| `max_tokens`           | number   | No       | Maximum context length (default: model's max)                                    |
-| `gpu_ids`              | number[] | No       | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory        |
-| `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). kvcached is disabled when >1 |
-| `extra_args`           | string[] | No       | Additional vLLM CLI arguments                                                    |
+| Field                  | Type     | Required | Description                                                                                                                                                                              |
+| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model_path`           | string   | Yes      | Model identifier (HuggingFace path or local path)                                                                                                                                        |
+| `max_tokens`           | number   | No       | Maximum context length (default: model's max)                                                                                                                                            |
+| `gpu_ids`              | number[] | No       | GPU indices to use. If omitted, auto-selects GPU(s) with most free memory                                                                                                                |
+| `tensor_parallel_size` | number   | No       | Number of GPUs for tensor parallelism (default: 1). kvcached is disabled when >1                                                                                                         |
+| `extra_args`           | string[] | No       | Additional vLLM CLI arguments                                                                                                                                                            |
 | `enable_sleep_mode`    | boolean  | No       | Enable sleep mode for this model. When enabled, the model can be put to sleep to free GPU memory (~90%) while remaining loaded for quick wake-up. See [Sleep Mode API](#sleep-mode-api). |
 
 **Response (202 Accepted):**
@@ -438,11 +438,12 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 **Memory Baseline Field:**
 
-| Field                    | Type                      | Description                                                        |
-| ------------------------ | ------------------------- | ------------------------------------------------------------------ |
-| `memory_baseline_by_gpu` | `Record<number, number>`  | Memory footprint per GPU in GB, captured when model becomes ready. Used for KVCache total calculation. |
+| Field                    | Type                     | Description                                                                                            |
+| ------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `memory_baseline_by_gpu` | `Record<number, number>` | Memory footprint per GPU in GB, captured when model becomes ready. Used for KVCache total calculation. |
 
 For tensor-parallel models, baselines are captured on each GPU:
+
 ```json
 "memory_baseline_by_gpu": {
   "0": 8.5,
@@ -680,6 +681,17 @@ Returns GPU and KVCache memory usage with per-model breakdown for visualization 
 | `models[].gpu_memory_gb`  | Model's GPU footprint (weights + CUDA graphs)                                                              |
 | `models[].color`          | Hex color for visualization (unique per instance, based on instance_id hash)                               |
 
+**KVCache Calculation Formulas:**
+
+| Formula                                          | Description                                 |
+| ------------------------------------------------ | ------------------------------------------- |
+| `KVCache Total = GPU Free + Prealloc + Used`     | Total memory available to KVCache pool      |
+| `KVCache Free = max(0, Total - Used - Prealloc)` | Available memory for new allocations        |
+
+**Note:** Prealloc memory appears as "used" in nvidia-smi but is actually available to the KVCache pool.
+
+**Conditional Display:** The `kvcache` field is omitted from responses when no models are loaded, preventing stale preallocation values from being displayed.
+
 **Example (curl):**
 
 ```bash
@@ -763,13 +775,13 @@ Returns per-GPU memory breakdown for multi-GPU systems.
 
 Each GPU with loaded models includes a `kvcache` object with per-GPU KVCache metrics:
 
-| Field                    | Description                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| `gpus[].kvcache`         | Per-GPU KVCache metrics (undefined if no models loaded on this GPU)                        |
-| `gpus[].kvcache.total_gb` | KVCache pool size = GPU Total - Model Baselines - Other Processes                         |
-| `gpus[].kvcache.used_gb` | Currently active KVCache memory (from IPC segment)                                         |
-| `gpus[].kvcache.prealloc_gb` | Pre-allocated but not active memory (from IPC segment)                                 |
-| `gpus[].kvcache.free_gb` | Available KVCache memory for new allocations                                               |
+| Field                        | Description                                                         |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `gpus[].kvcache`             | Per-GPU KVCache metrics (undefined if no models loaded on this GPU) |
+| `gpus[].kvcache.total_gb`    | KVCache pool size = GPU Total - Model Baselines - Other Processes   |
+| `gpus[].kvcache.used_gb`     | Currently active KVCache memory (from IPC segment)                  |
+| `gpus[].kvcache.prealloc_gb` | Pre-allocated but not active memory (from IPC segment)              |
+| `gpus[].kvcache.free_gb`     | Available KVCache memory for new allocations                        |
 
 The KVCache total is calculated dynamically as: `GPU Total - Model Baselines - Other Processes`. This replaces the old approach of reading a stale `total_size` from the IPC segment.
 
@@ -785,10 +797,10 @@ Sleep mode allows models to be put to sleep to free GPU memory (~90%) while rema
 
 vLLM's sleep mode offloads model weights from GPU to CPU RAM:
 
-| Level | Action | Memory Freed | Use Case |
-| ----- | ------ | ------------ | -------- |
-| 1 | Offload weights to CPU RAM, discard KV cache | ~90% | Quick sleep/wake cycles |
-| 2 | Discard weights and KV cache entirely | ~95% | Model switching, RLHF |
+| Level | Action                                       | Memory Freed | Use Case                |
+| ----- | -------------------------------------------- | ------------ | ----------------------- |
+| 1     | Offload weights to CPU RAM, discard KV cache | ~90%         | Quick sleep/wake cycles |
+| 2     | Discard weights and KV cache entirely        | ~95%         | Model switching, RLHF   |
 
 Wake-up reloads the weights from CPU back to GPU, which is faster than loading from disk.
 
@@ -800,9 +812,9 @@ Puts a running model to sleep to free GPU memory.
 
 **Query Parameters:**
 
-| Parameter | Type   | Default | Description                                      |
-| --------- | ------ | ------- | ------------------------------------------------ |
-| `level`   | number | 1       | Sleep level: 1 (offload to CPU) or 2 (discard)   |
+| Parameter | Type   | Default | Description                                    |
+| --------- | ------ | ------- | ---------------------------------------------- |
+| `level`   | number | 1       | Sleep level: 1 (offload to CPU) or 2 (discard) |
 
 **Response (200 OK):**
 
@@ -818,11 +830,11 @@ Puts a running model to sleep to free GPU memory.
 
 **Error Responses:**
 
-| Status | Condition | Message |
-| ------ | --------- | ------- |
-| 400 | Sleep mode not enabled | Model was not loaded with sleep mode enabled |
-| 404 | Instance not found | Model instance {id} not found |
-| 409 | Model not running | Cannot sleep model: current status is {status} |
+| Status | Condition              | Message                                        |
+| ------ | ---------------------- | ---------------------------------------------- |
+| 400    | Sleep mode not enabled | Model was not loaded with sleep mode enabled   |
+| 404    | Instance not found     | Model instance {id} not found                  |
+| 409    | Model not running      | Cannot sleep model: current status is {status} |
 
 **Example (curl):**
 
@@ -854,8 +866,8 @@ Wakes a sleeping model, restoring it to running state.
 
 **Request Fields:**
 
-| Field  | Type   | Required | Description                                                              |
-| ------ | ------ | -------- | ------------------------------------------------------------------------ |
+| Field  | Type   | Required | Description                                                             |
+| ------ | ------ | -------- | ----------------------------------------------------------------------- |
 | `tags` | string | No       | What to reload: `weights` (model weights) or `kv_cache` (KV cache data) |
 
 **Response (200 OK):**
@@ -871,10 +883,10 @@ Wakes a sleeping model, restoring it to running state.
 
 **Error Responses:**
 
-| Status | Condition | Message |
-| ------ | --------- | ------- |
-| 404 | Instance not found | Model instance {id} not found |
-| 409 | Model not sleeping | Model is not sleeping |
+| Status | Condition          | Message                       |
+| ------ | ------------------ | ----------------------------- |
+| 404    | Instance not found | Model instance {id} not found |
+| 409    | Model not sleeping | Model is not sleeping         |
 
 **Example (curl):**
 
@@ -1529,6 +1541,27 @@ The Benchmark API allows you to run performance tests on loaded models, measurin
 | `scenarios[].totalRequests`  | number | Yes      | Measured requests                                                                |
 | `scenarios[].slaThresholdMs` | number | No       | SLA threshold for goodput calculation                                            |
 
+**Per-Model Benchmark Parameters:**
+
+Each scenario can have independent test configuration, allowing you to:
+
+- Test different concurrency levels per model
+- Use different token configurations based on model context length
+- Set custom SLA thresholds for goodput calculation
+
+**Token Validation:**
+
+The combined `inputTokens + outputTokens` must not exceed the model's `max_tokens` limit. The API validates this and returns 400 if exceeded:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Combined tokens (8192) exceeds model max_tokens (4096)"
+  }
+}
+```
+
 **Response (201 Created):**
 
 ```json
@@ -1693,7 +1726,9 @@ data: {"scenario_id":"uuid","metrics":{"ttft_avg":45.2,"tps_avg":156.8,...}}
 ```javascript
 // Note: EventSource cannot send Authorization headers, so pass JWT as query parameter
 const token = getAuthToken() // Retrieve your JWT token
-const eventSource = new EventSource(`/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events?token=${token}`)
+const eventSource = new EventSource(
+  `/api/benchmarks/550e8400-e29b-41d4-a716-446655440000/events?token=${token}`
+)
 
 eventSource.addEventListener('scenario:progress', (event) => {
   const data = JSON.parse(event.data)

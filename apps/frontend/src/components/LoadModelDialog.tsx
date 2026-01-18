@@ -25,7 +25,13 @@ import {
   Breadcrumb,
   BreadcrumbItem,
 } from '@patternfly/react-core'
-import type { LoadModelRequest, ModelStatus, GpuAvailabilityResponse, LocalModelInfo, ModelSourceType } from '@sardeenz/types'
+import type {
+  LoadModelRequest,
+  ModelStatus,
+  GpuAvailabilityResponse,
+  LocalModelInfo,
+  ModelSourceType,
+} from '@sardeenz/types'
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
 import { apiClient, type MemoryCheckResponse } from '../services/api'
@@ -55,12 +61,7 @@ interface LoadModelDialogProps {
  * - success: Model loaded successfully, auto-closes after 2s
  * - failed: Model failed to load, shows error and logs
  */
-export function LoadModelDialog({
-  isOpen,
-  onClose,
-  onLoad,
-  onSuccess,
-}: LoadModelDialogProps) {
+export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadModelDialogProps) {
   // Role-based access control
   const { canWrite } = useAuth()
 
@@ -73,7 +74,9 @@ export function LoadModelDialog({
   // Source type and served model name state
   const [sourceType, setSourceType] = useState<ModelSourceType>('huggingface')
   const [servedModelName, setServedModelName] = useState('')
-  const [servedModelNameValidated, setServedModelNameValidated] = useState<'default' | 'error'>('default')
+  const [servedModelNameValidated, setServedModelNameValidated] = useState<'default' | 'error'>(
+    'default'
+  )
 
   // Local models state
   const [localModelsEnabled, setLocalModelsEnabled] = useState(false)
@@ -352,11 +355,7 @@ export function LoadModelDialog({
   }
 
   return (
-    <Modal
-      variant={ModalVariant.medium}
-      isOpen={isOpen}
-      onClose={handleClose}
-    >
+    <Modal variant={ModalVariant.medium} isOpen={isOpen} onClose={handleClose}>
       <ModalHeader title={getTitle()} />
       <ModalBody>
         {phase === 'form' && (
@@ -430,32 +429,37 @@ export function LoadModelDialog({
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      {localModelsBasePath ? localModelsBasePath.split('/').pop() || 'models' : 'Loading...'}
+                      {localModelsBasePath
+                        ? localModelsBasePath.split('/').pop() || 'models'
+                        : 'Loading...'}
                     </BreadcrumbItem>
-                    {currentSubpath.split('/').filter(Boolean).map((segment, index, segments) => {
-                      const pathUpToSegment = segments.slice(0, index + 1).join('/')
-                      const isLast = index === segments.length - 1
-                      return (
-                        <BreadcrumbItem
-                          key={pathUpToSegment}
-                          isActive={isLast && !selectedLocalModel}
-                          onClick={() => {
-                            if (!isLast || selectedLocalModel) {
-                              setCurrentSubpath(pathUpToSegment)
-                              setSelectedLocalModel(null)
-                              setModelPath('')
-                            }
-                          }}
-                          style={{ cursor: isLast && !selectedLocalModel ? 'default' : 'pointer' }}
-                        >
-                          {segment}
-                        </BreadcrumbItem>
-                      )
-                    })}
+                    {currentSubpath
+                      .split('/')
+                      .filter(Boolean)
+                      .map((segment, index, segments) => {
+                        const pathUpToSegment = segments.slice(0, index + 1).join('/')
+                        const isLast = index === segments.length - 1
+                        return (
+                          <BreadcrumbItem
+                            key={pathUpToSegment}
+                            isActive={isLast && !selectedLocalModel}
+                            onClick={() => {
+                              if (!isLast || selectedLocalModel) {
+                                setCurrentSubpath(pathUpToSegment)
+                                setSelectedLocalModel(null)
+                                setModelPath('')
+                              }
+                            }}
+                            style={{
+                              cursor: isLast && !selectedLocalModel ? 'default' : 'pointer',
+                            }}
+                          >
+                            {segment}
+                          </BreadcrumbItem>
+                        )
+                      })}
                     {selectedLocalModel && (
-                      <BreadcrumbItem isActive>
-                        {selectedLocalModel.name}
-                      </BreadcrumbItem>
+                      <BreadcrumbItem isActive>{selectedLocalModel.name}</BreadcrumbItem>
                     )}
                   </Breadcrumb>
 
@@ -511,7 +515,8 @@ export function LoadModelDialog({
                             <FlexItem grow={{ default: 'grow' }}>
                               <span
                                 style={{
-                                  fontWeight: selectedLocalModel?.path === model.path ? 'bold' : 'normal',
+                                  fontWeight:
+                                    selectedLocalModel?.path === model.path ? 'bold' : 'normal',
                                 }}
                               >
                                 {model.name}
@@ -578,7 +583,9 @@ export function LoadModelDialog({
                 />
                 <FormHelperText>
                   <HelperText>
-                    <HelperTextItem variant={servedModelNameValidated === 'error' ? 'error' : undefined}>
+                    <HelperTextItem
+                      variant={servedModelNameValidated === 'error' ? 'error' : undefined}
+                    >
                       {servedModelNameValidated === 'error'
                         ? 'Served model name is required'
                         : `This name is used for inference requests (--served-model-name).${sourceType === 'huggingface' ? ' Auto-filled from HuggingFace ID.' : ''}`}
@@ -652,7 +659,12 @@ export function LoadModelDialog({
                     </Flex>
 
                     {gpuSelectionMode === 'manual' && (
-                      <div style={{ marginTop: 'var(--pf-t--global--spacer--sm)', marginLeft: 'var(--pf-t--global--spacer--lg)' }}>
+                      <div
+                        style={{
+                          marginTop: 'var(--pf-t--global--spacer--sm)',
+                          marginLeft: 'var(--pf-t--global--spacer--lg)',
+                        }}
+                      >
                         <Flex direction={{ default: 'column' }} gap={{ default: 'gapXs' }}>
                           {gpuAvailability.gpus.map((gpu) => (
                             <FlexItem key={gpu.index}>
@@ -661,11 +673,23 @@ export function LoadModelDialog({
                                 label={
                                   <span>
                                     GPU {gpu.index}: {gpu.name}
-                                    <span style={{ color: 'var(--pf-t--global--text--color--subtle)', marginLeft: 'var(--pf-t--global--spacer--sm)' }}>
-                                      ({(gpu.memory_free_mb / 1024).toFixed(1)} GB free of {(gpu.memory_total_mb / 1024).toFixed(0)} GB)
+                                    <span
+                                      style={{
+                                        color: 'var(--pf-t--global--text--color--subtle)',
+                                        marginLeft: 'var(--pf-t--global--spacer--sm)',
+                                      }}
+                                    >
+                                      ({(gpu.memory_free_mb / 1024).toFixed(1)} GB free of{' '}
+                                      {(gpu.memory_total_mb / 1024).toFixed(0)} GB)
                                     </span>
                                     {gpu.recommended && (
-                                      <span style={{ color: 'var(--pf-t--global--color--status--success--default)', marginLeft: 'var(--pf-t--global--spacer--sm)' }}>
+                                      <span
+                                        style={{
+                                          color:
+                                            'var(--pf-t--global--color--status--success--default)',
+                                          marginLeft: 'var(--pf-t--global--spacer--sm)',
+                                        }}
+                                      >
                                         (recommended)
                                       </span>
                                     )}
@@ -683,11 +707,21 @@ export function LoadModelDialog({
                             <FormGroup label="Tensor Parallel Size" fieldId="tensor-parallel-size">
                               <NumberInput
                                 value={tensorParallelSize}
-                                onMinus={() => setTensorParallelSize(Math.max(1, tensorParallelSize - 1))}
-                                onPlus={() => setTensorParallelSize(Math.min(selectedGpuIds.length, tensorParallelSize + 1))}
+                                onMinus={() =>
+                                  setTensorParallelSize(Math.max(1, tensorParallelSize - 1))
+                                }
+                                onPlus={() =>
+                                  setTensorParallelSize(
+                                    Math.min(selectedGpuIds.length, tensorParallelSize + 1)
+                                  )
+                                }
                                 onChange={(event) => {
                                   const value = Number((event.target as HTMLInputElement).value)
-                                  if (!isNaN(value) && value >= 1 && value <= selectedGpuIds.length) {
+                                  if (
+                                    !isNaN(value) &&
+                                    value >= 1 &&
+                                    value <= selectedGpuIds.length
+                                  ) {
                                     setTensorParallelSize(value)
                                   }
                                 }}
@@ -699,7 +733,8 @@ export function LoadModelDialog({
                               <FormHelperText>
                                 <HelperText>
                                   <HelperTextItem>
-                                    Number of GPUs to split the model across. Usually equals the number of selected GPUs.
+                                    Number of GPUs to split the model across. Usually equals the
+                                    number of selected GPUs.
                                   </HelperTextItem>
                                 </HelperText>
                               </FormHelperText>
@@ -711,7 +746,8 @@ export function LoadModelDialog({
                               title="Tensor Parallelism"
                               style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
                             >
-                              Tensor parallelism with kvcached is a recent feature. Results may vary.
+                              Tensor parallelism with kvcached is a recent feature. Results may
+                              vary.
                             </Alert>
                           </div>
                         )}
@@ -722,7 +758,9 @@ export function LoadModelDialog({
                   <FormHelperText>
                     <HelperText>
                       <HelperTextItem>
-                        Single GPU detected: {gpuAvailability.gpus[0]?.name} ({((gpuAvailability.gpus[0]?.memory_free_mb ?? 0) / 1024).toFixed(1)} GB free)
+                        Single GPU detected: {gpuAvailability.gpus[0]?.name} (
+                        {((gpuAvailability.gpus[0]?.memory_free_mb ?? 0) / 1024).toFixed(1)} GB
+                        free)
                       </HelperTextItem>
                     </HelperText>
                   </FormHelperText>

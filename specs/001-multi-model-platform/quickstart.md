@@ -164,22 +164,26 @@ sardeenz/
 ### Key Directories
 
 **`apps/backend/`**: Fastify backend server
+
 - Handles Controller API (model lifecycle)
 - Handles Proxy API (inference routing)
 - Manages vLLM subprocesses
 - Integrates with kvcached for memory management
 
 **`apps/frontend/`**: React + PatternFly dashboard
+
 - Model management UI
 - Memory usage visualization
 - Real-time metrics display
 
 **`packages/types/`**: Shared TypeScript types
+
 - Single source of truth for data structures
 - Imported by both backend and frontend
 - Ensures type consistency across monorepo
 
 **`packages/contracts/`**: OpenAPI specifications
+
 - API contract definitions
 - Used for validation and documentation
 - Source for client SDK generation
@@ -500,6 +504,7 @@ tail -f apps/backend/logs/app.log
 **Symptom**: Model status stays "starting" or transitions to "failed"
 
 **Possible Causes**:
+
 1. Insufficient GPU memory
 2. Model path incorrect or inaccessible
 3. kvcached not enabled

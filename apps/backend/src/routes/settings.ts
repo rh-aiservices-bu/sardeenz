@@ -109,11 +109,17 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
           const errorText = await response.text()
           return {
             valid: false,
-            error: response.status === 401 ? 'Invalid or expired token' : `HuggingFace API error: ${errorText}`,
+            error:
+              response.status === 401
+                ? 'Invalid or expired token'
+                : `HuggingFace API error: ${errorText}`,
           }
         }
 
-        const data = (await response.json()) as { accessToken?: { displayName?: string }; name?: string }
+        const data = (await response.json()) as {
+          accessToken?: { displayName?: string }
+          name?: string
+        }
 
         return {
           valid: true,
@@ -125,7 +131,9 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
         return {
           valid: false,
-          error: message.includes('timeout') ? 'Connection timed out' : `Failed to connect: ${message}`,
+          error: message.includes('timeout')
+            ? 'Connection timed out'
+            : `Failed to connect: ${message}`,
         }
       }
     }

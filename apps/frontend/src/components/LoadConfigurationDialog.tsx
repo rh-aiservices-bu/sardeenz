@@ -236,7 +236,11 @@ export function LoadConfigurationDialog({
                           onClick={(e) => handleDeleteConfig(config.id, e)}
                           isLoading={isDeleting === config.id}
                           isDisabled={isDeleting !== null || !canWrite}
-                          title={!canWrite ? 'You do not have permission to delete configurations' : undefined}
+                          title={
+                            !canWrite
+                              ? 'You do not have permission to delete configurations'
+                              : undefined
+                          }
                         >
                           <TrashIcon />
                         </Button>

@@ -249,7 +249,8 @@ function App() {
             {'App by '}
             <a href="http://red.ht/cai-team" target="_blank" rel="noreferrer">
               red.ht/cai team
-            </a><br />
+            </a>
+            <br />
             {version && <FlexItem style={{ marginTop: '0.5rem' }}>Version {version}</FlexItem>}
             <Flex direction={{ default: 'column' }} style={{ width: '100%', alignItems: 'center' }}>
               <FlexItem style={{ marginBottom: '0rem' }}>

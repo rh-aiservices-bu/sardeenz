@@ -29,7 +29,15 @@ import {
   Tooltip,
   ClipboardCopyButton,
 } from '@patternfly/react-core'
-import { EllipsisVIcon, FileIcon, TrashIcon, OutlinedClockIcon, MoonIcon, SunIcon } from '@patternfly/react-icons'
+import {
+  EllipsisVIcon,
+  ExclamationTriangleIcon,
+  FileIcon,
+  TrashIcon,
+  OutlinedClockIcon,
+  MoonIcon,
+  SunIcon,
+} from '@patternfly/react-icons'
 import type { ModelInstanceDTO, ModelStatus } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
 import { ViewLogsDialog } from './ViewLogsDialog'
@@ -48,6 +56,10 @@ interface ModelCardCompactProps {
   isExpanded: boolean
   onToggle: () => void
   id?: string
+  /** KV cache total in GiB for this model's GPU (for max concurrent requests calculation) */
+  kvCacheTotalGb?: number
+  /** Live GPU memory utilization from memory monitor (takes precedence over model.gpu_memory_utilization) */
+  memoryUtilization?: number
 }
 
 // Status to border color mapping using PF6 design tokens
@@ -75,6 +87,8 @@ export function ModelCardCompact({
   isExpanded,
   onToggle,
   id,
+  kvCacheTotalGb,
+  memoryUtilization,
 }: ModelCardCompactProps) {
   const { addNotification } = useNotifications()
   const { canWrite } = useAuth()
@@ -87,8 +101,19 @@ export function ModelCardCompact({
 
   const isFailed = model.status === 'failed'
 
+  // Use live memory data if available, fallback to model DTO value
+  const currentMemoryUtilization = memoryUtilization ?? model.gpu_memory_utilization
+
   // Extract just the model name from the path for display
   const modelDisplayName = model.model_path.split('/').pop() || model.model_path
+
+  // Check if KVCache is insufficient for max-length requests (will cause OOM)
+  const isKvCacheInsufficient =
+    model.status === 'running' &&
+    kvCacheTotalGb !== undefined &&
+    model.memory_metrics?.kv_cache_per_request_mib !== undefined &&
+    model.memory_metrics.kv_cache_per_request_mib > 0 &&
+    model.memory_metrics.kv_cache_per_request_mib > kvCacheTotalGb * 1024
 
   // Push model errors to notification system when they first appear
   useEffect(() => {
@@ -127,7 +152,8 @@ export function ModelCardCompact({
     return model.gpu_ids.map((id) => `GPU ${id}`).join(', ')
   }
 
-  const borderColor = STATUS_BORDER_COLORS[model.status] || 'var(--pf-t--global--border--color--default)'
+  const borderColor =
+    STATUS_BORDER_COLORS[model.status] || 'var(--pf-t--global--border--color--default)'
 
   // Format relative time for display
   const formatRelativeTime = (dateString?: string) => {
@@ -180,29 +206,31 @@ export function ModelCardCompact({
         actions={{
           hasNoOffset: true,
           actions: (
-              <Dropdown
-                isOpen={isActionsOpen}
-                onSelect={handleActionsSelect}
-                onOpenChange={setIsActionsOpen}
-                popperProps={{
-                  position: 'right',
-                  enableFlip: true,
-                  appendTo: () => document.body,
-                }}
-                toggle={(toggleRef) => (
-                  <MenuToggle
-                    ref={toggleRef}
-                    variant="plain"
-                    onClick={handleActionsToggle}
-                    isExpanded={isActionsOpen}
-                    aria-label={`Actions for ${modelDisplayName}`}
-                  >
-                    <EllipsisVIcon />
-                  </MenuToggle>
-                )}
-              >
+            <Dropdown
+              isOpen={isActionsOpen}
+              onSelect={handleActionsSelect}
+              onOpenChange={setIsActionsOpen}
+              popperProps={{
+                position: 'right',
+                enableFlip: true,
+                appendTo: () => document.body,
+              }}
+              toggle={(toggleRef) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  variant="plain"
+                  onClick={handleActionsToggle}
+                  isExpanded={isActionsOpen}
+                  aria-label={`Actions for ${modelDisplayName}`}
+                >
+                  <EllipsisVIcon />
+                </MenuToggle>
+              )}
+            >
               <DropdownList>
-                {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && (
+                {(model.status === 'running' ||
+                  model.status === 'failed' ||
+                  model.status === 'sleeping') && (
                   <DropdownItem
                     key="logs"
                     icon={<FileIcon />}
@@ -212,10 +240,7 @@ export function ModelCardCompact({
                   </DropdownItem>
                 )}
                 {model.status === 'running' && (
-                  <DropdownItem
-                    key="memory"
-                    onClick={() => setMemoryModalOpen(true)}
-                  >
+                  <DropdownItem key="memory" onClick={() => setMemoryModalOpen(true)}>
                     Memory details
                   </DropdownItem>
                 )}
@@ -239,7 +264,9 @@ export function ModelCardCompact({
                     {isWaking ? 'Waking...' : 'Wake Up'}
                   </DropdownItem>
                 )}
-                {(model.status === 'running' || model.status === 'failed' || model.status === 'sleeping') && <Divider key="divider" />}
+                {(model.status === 'running' ||
+                  model.status === 'failed' ||
+                  model.status === 'sleeping') && <Divider key="divider" />}
                 <DropdownItem
                   key="unload"
                   icon={<TrashIcon />}
@@ -247,10 +274,16 @@ export function ModelCardCompact({
                   isDisabled={model.status === 'stopping' || isUnloading || !canWrite}
                   isDanger
                 >
-                  {isUnloading ? (isFailed ? 'Removing...' : 'Unloading...') : isFailed ? 'Remove' : 'Unload'}
+                  {isUnloading
+                    ? isFailed
+                      ? 'Removing...'
+                      : 'Unloading...'
+                    : isFailed
+                      ? 'Remove'
+                      : 'Unload'}
                 </DropdownItem>
               </DropdownList>
-              </Dropdown>
+            </Dropdown>
           ),
         }}
       >
@@ -304,11 +337,20 @@ export function ModelCardCompact({
               </FlexItem>
               <FlexItem>
                 <Label isCompact color="blue">
-                  {formatMemoryUtilization(model.gpu_memory_utilization)}
+                  {formatMemoryUtilization(currentMemoryUtilization)}
                 </Label>
               </FlexItem>
               <FlexItem>
-                <ModelStatusBadge status={model.status} isCompact />
+                <Flex gap={{ default: 'gapXs' }} alignItems={{ default: 'alignItemsCenter' }}>
+                  <ModelStatusBadge status={model.status} isCompact />
+                  {isKvCacheInsufficient && (
+                    <Tooltip content="Insufficient KVCache for max-length requests. OOM errors expected.">
+                      <ExclamationTriangleIcon
+                        color="var(--pf-t--global--icon--color--status--warning--default)"
+                      />
+                    </Tooltip>
+                  )}
+                </Flex>
               </FlexItem>
               {model.loaded_at && (
                 <FlexItem>
@@ -348,11 +390,51 @@ export function ModelCardCompact({
               <DescriptionListTerm>Max Tokens</DescriptionListTerm>
               <DescriptionListDescription>{model.max_tokens}</DescriptionListDescription>
             </DescriptionListGroup>
+            {model.status === 'running' &&
+              model.memory_metrics &&
+              model.memory_metrics.kv_cache_per_request_mib > 0 && (
+                <>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>KV Cache / Request</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      {model.memory_metrics.kv_cache_per_request_mib.toFixed(2)} MiB
+                      <span
+                        style={{
+                          marginLeft: 'var(--pf-t--global--spacer--sm)',
+                          color: 'var(--pf-t--global--text--color--subtle)',
+                        }}
+                      >
+                        (at {model.memory_metrics.max_model_len.toLocaleString()} tokens)
+                      </span>
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                  {kvCacheTotalGb !== undefined && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Max Concurrent Requests</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        {isKvCacheInsufficient ? (
+                          <Tooltip
+                            content={`KVCache per request (${model.memory_metrics.kv_cache_per_request_mib.toFixed(0)} MiB) exceeds available KVCache (${(kvCacheTotalGb * 1024).toFixed(0)} MiB). Max-length requests will cause OOM errors.`}
+                          >
+                            <Label color="orange" icon={<ExclamationTriangleIcon />} isCompact>
+                              Insufficient KVCache
+                            </Label>
+                          </Tooltip>
+                        ) : (
+                          Math.floor(
+                            (kvCacheTotalGb * 1024) / model.memory_metrics.kv_cache_per_request_mib
+                          )
+                        )}
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
+                </>
+              )}
             <DescriptionListGroup>
               <DescriptionListTerm>GPU Memory</DescriptionListTerm>
               <DescriptionListDescription>
                 <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
-                  <FlexItem>{formatMemoryUtilization(model.gpu_memory_utilization)}</FlexItem>
+                  <FlexItem>{formatMemoryUtilization(currentMemoryUtilization)}</FlexItem>
                   {model.status === 'running' && (
                     <FlexItem>
                       <Button variant="link" isInline onClick={() => setMemoryModalOpen(true)}>
@@ -386,7 +468,9 @@ export function ModelCardCompact({
             {model.ready_at && (
               <DescriptionListGroup>
                 <DescriptionListTerm>Ready at</DescriptionListTerm>
-                <DescriptionListDescription>{formatDate(model.ready_at)}</DescriptionListDescription>
+                <DescriptionListDescription>
+                  {formatDate(model.ready_at)}
+                </DescriptionListDescription>
               </DescriptionListGroup>
             )}
             {model.error_message && (

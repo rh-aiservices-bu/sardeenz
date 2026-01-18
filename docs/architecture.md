@@ -16,6 +16,7 @@ This document provides a detailed overview of the Sardeenz architecture, design 
 ## System Overview
 
 Sardeenz is a multi-model management platform designed to:
+
 1. **Dynamically load/unload** multiple LLM instances without downtime
 2. **Route inference requests** to the appropriate model via a unified proxy
 3. **Share GPU memory** efficiently across multiple models using kvcached
@@ -69,36 +70,36 @@ Sardeenz is a multi-model management platform designed to:
 
 ### Backend
 
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Runtime** | Node.js | 22.x | Server-side JavaScript execution |
-| **Language** | TypeScript | 5.7+ | Type-safe development (strict mode) |
-| **Framework** | Fastify | 5.1+ | High-performance HTTP server |
-| **Database** | SQLite | 3.x | Benchmark/profile persistence (better-sqlite3) |
-| **Auth** | @fastify/jwt | Latest | JWT-based OAuth 2.0 integration |
-| **Metrics** | fastify-metrics | Latest | Prometheus-format metrics |
-| **API Docs** | @fastify/swagger | Latest | OpenAPI 3.1 specification |
-| **Process Mgmt** | child_process | Built-in | vLLM subprocess management |
+| Component        | Technology       | Version  | Purpose                                        |
+| ---------------- | ---------------- | -------- | ---------------------------------------------- |
+| **Runtime**      | Node.js          | 22.x     | Server-side JavaScript execution               |
+| **Language**     | TypeScript       | 5.7+     | Type-safe development (strict mode)            |
+| **Framework**    | Fastify          | 5.1+     | High-performance HTTP server                   |
+| **Database**     | SQLite           | 3.x      | Benchmark/profile persistence (better-sqlite3) |
+| **Auth**         | @fastify/jwt     | Latest   | JWT-based OAuth 2.0 integration                |
+| **Metrics**      | fastify-metrics  | Latest   | Prometheus-format metrics                      |
+| **API Docs**     | @fastify/swagger | Latest   | OpenAPI 3.1 specification                      |
+| **Process Mgmt** | child_process    | Built-in | vLLM subprocess management                     |
 
 ### Frontend
 
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Framework** | React | 18.3+ | UI component library |
-| **Language** | TypeScript | 5.7+ | Type-safe development |
-| **UI Library** | PatternFly | 6.x | Red Hat design system |
-| **Build Tool** | Vite | 6.0+ | Fast dev server + bundler |
-| **Router** | React Router | 6.28+ | Client-side routing |
+| Component      | Technology   | Version | Purpose                   |
+| -------------- | ------------ | ------- | ------------------------- |
+| **Framework**  | React        | 18.3+   | UI component library      |
+| **Language**   | TypeScript   | 5.7+    | Type-safe development     |
+| **UI Library** | PatternFly   | 6.x     | Red Hat design system     |
+| **Build Tool** | Vite         | 6.0+    | Fast dev server + bundler |
+| **Router**     | React Router | 6.28+   | Client-side routing       |
 
 ### Infrastructure
 
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Inference Engine** | vLLM | 0.11.0 | OpenAI-compatible LLM serving |
-| **Memory Sharing** | kvcached | Latest | GPU memory IPC for multi-model |
-| **Container Base** | CUDA | 12.x | NVIDIA GPU support |
-| **Python Runtime** | Python | 3.12 | vLLM dependencies |
-| **Orchestration** | OpenShift/K8s | 4.x+ | Container deployment platform |
+| Component            | Technology    | Version | Purpose                        |
+| -------------------- | ------------- | ------- | ------------------------------ |
+| **Inference Engine** | vLLM          | 0.11.0  | OpenAI-compatible LLM serving  |
+| **Memory Sharing**   | kvcached      | Latest  | GPU memory IPC for multi-model |
+| **Container Base**   | CUDA          | 12.x    | NVIDIA GPU support             |
+| **Python Runtime**   | Python        | 3.12    | vLLM dependencies              |
+| **Orchestration**    | OpenShift/K8s | 4.x+    | Container deployment platform  |
 
 ### Monorepo Structure
 
@@ -165,10 +166,12 @@ sardeenz/
 - `DELETE /api/memory/profiles/{id}` - Delete a profile
 
 **Authentication:** OAuth 2.0 with RBAC
+
 - `admin` role: Full control (load/unload)
 - `admin-readonly` role: Read-only access
 
 **Implementation Details:**
+
 - Built with Fastify for high performance
 - Uses `child_process.spawn()` for vLLM process management
 - In-memory state management (Map data structures)
@@ -181,6 +184,7 @@ For detailed component documentation (ProcessLogBuffer, EventBus, Error Parser, 
 **Responsibility:** Route inference requests to correct model instances.
 
 **Key Features:**
+
 - OpenAI-compatible API (`/v1/completions`, `/v1/chat/completions`)
 - Model identification via `model` field in request body
 - Streaming support using Server-Sent Events (SSE)
@@ -191,6 +195,7 @@ For detailed component documentation (ProcessLogBuffer, EventBus, Error Parser, 
 **Performance Target:** <50ms routing overhead (p95)
 
 **Routing Logic:**
+
 1. Parse incoming request to extract model identifier
 2. Lookup model instance in registry (Map lookup: O(1))
 3. For multiple instances: round-robin load balancing
@@ -205,12 +210,14 @@ For testing and debugging, the `/api/direct/:port/*` endpoint bypasses model rou
 **Responsibility:** Provide web UI for model management and monitoring.
 
 **Key Pages:**
+
 - **Dashboard**: Overview of all models, GPU usage, request metrics
 - **Model Management**: Load/unload models with configuration
 - **Metrics**: Real-time charts (GPU memory, request latency, throughput)
 - **Logs**: Request logs and operation audit trail
 
 **UI Components:**
+
 - PatternFly 6 components (Cards, Tables, Charts, Forms)
 - React Query for server state management
 - WebSocket connection for real-time updates
@@ -222,6 +229,7 @@ For detailed frontend architecture, see [Frontend Architecture](./architecture/f
 **Responsibility:** Execute LLM inference requests.
 
 **Process Configuration:**
+
 ```bash
 python -m vllm.entrypoints.openai.api_server \
   --model /path/to/model \
@@ -232,11 +240,13 @@ python -m vllm.entrypoints.openai.api_server \
 ```
 
 **Environment Variables:**
+
 - `ENABLE_KVCACHED=true` - Enable kvcached memory sharing
 - `KVCACHED_AUTOPATCH=1` - Auto-patch vLLM for kvcached
 - `CUDA_VISIBLE_DEVICES=0` - GPU device assignment
 
 **Lifecycle States:**
+
 - `starting` → Process spawning, waiting for API readiness
 - `active` → Serving requests
 - `sleeping` → Sleep mode active (GPU memory freed, model weights in CPU RAM)
@@ -250,6 +260,7 @@ Models loaded with `enable_sleep_mode=true` can be put to sleep to free GPU memo
 **Background Monitoring:**
 
 Model loading is asynchronous. After `launchModel()` returns:
+
 1. Background task polls `http://localhost:{port}/health` every 2 seconds
 2. Timeout after 3 minutes if health check never succeeds
 3. On success: status transitions to `active`, SSE status event emitted
@@ -258,6 +269,7 @@ Model loading is asynchronous. After `launchModel()` returns:
 **SSE Event Streaming:**
 
 Clients can subscribe to real-time events via `/api/v1/models/instances/{id}/events`:
+
 - `log` events: vLLM stdout/stderr in real-time
 - `status` events: State transitions with error details on failure
 - Buffered logs replayed on connection (optional)
@@ -272,35 +284,35 @@ See [`specs/001-multi-model-platform/data-model.md`](../specs/001-multi-model-pl
 
 ```typescript
 interface ModelInstance {
-  id: string;                      // Unique instance ID
-  modelPath: string;               // Path to model files
-  displayName: string;             // Human-readable name
-  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed';
-  port: number;                    // vLLM API port
-  processId: number;               // API Server PID (from spawn)
-  engineCorePid?: number;          // EngineCore PID (allocates GPU VRAM)
-  gpuMemoryLimit: number;          // GB allocated
-  gpuIds: number[];                // GPU indices this model runs on
-  tensorParallelSize: number;      // 1 = single GPU, >1 = spanning multiple GPUs
-  kvcachedEnabled: boolean;        // False for tensor parallel models
-  createdAt: Date;
-  startedAt?: Date;
-  stoppedAt?: Date;
-  errorMessage?: string;
-  memoryMetrics?: ModelMemoryMetrics; // Parsed from vLLM logs after loading
+  id: string // Unique instance ID
+  modelPath: string // Path to model files
+  displayName: string // Human-readable name
+  status: 'starting' | 'active' | 'sleeping' | 'stopping' | 'failed'
+  port: number // vLLM API port
+  processId: number // API Server PID (from spawn)
+  engineCorePid?: number // EngineCore PID (allocates GPU VRAM)
+  gpuMemoryLimit: number // GB allocated
+  gpuIds: number[] // GPU indices this model runs on
+  tensorParallelSize: number // 1 = single GPU, >1 = spanning multiple GPUs
+  kvcachedEnabled: boolean // False for tensor parallel models
+  createdAt: Date
+  startedAt?: Date
+  stoppedAt?: Date
+  errorMessage?: string
+  memoryMetrics?: ModelMemoryMetrics // Parsed from vLLM logs after loading
 
   // Sleep mode (requires --enable-sleep-mode flag at load)
-  sleepModeEnabled: boolean;       // Whether sleep mode is enabled for this instance
-  sleepLevel?: 1 | 2;              // Current sleep level (1=CPU offload, 2=discard)
-  sleptAt?: Date;                  // When the model went to sleep
+  sleepModeEnabled: boolean // Whether sleep mode is enabled for this instance
+  sleepLevel?: 1 | 2 // Current sleep level (1=CPU offload, 2=discard)
+  sleptAt?: Date // When the model went to sleep
 }
 
 interface ModelMemoryMetrics {
-  weightsMemoryGiB: number;        // Model weights memory
-  cudaGraphMemoryGiB: number;      // CUDA graph capture memory
-  kvCacheAvailableGiB: number;     // Available KV cache memory
-  kvCachePerRequestMiB: number;    // KV cache per max-size request
-  maxModelLen: number;             // Max context length
+  weightsMemoryGiB: number // Model weights memory
+  cudaGraphMemoryGiB: number // CUDA graph capture memory
+  kvCacheAvailableGiB: number // Available KV cache memory
+  kvCachePerRequestMiB: number // KV cache per max-size request
+  maxModelLen: number // Max context length
 }
 ```
 
@@ -308,13 +320,13 @@ interface ModelMemoryMetrics {
 
 ```typescript
 interface ResourceMetrics {
-  modelId: string;
-  timestamp: Date;
-  gpuMemoryUsed: number;           // GB (from kvctl)
-  requestCount: number;            // Total requests
-  activeConnections: number;       // Current connections
-  avgResponseTime: number;         // ms (p50)
-  p95ResponseTime: number;         // ms (p95)
+  modelId: string
+  timestamp: Date
+  gpuMemoryUsed: number // GB (from kvctl)
+  requestCount: number // Total requests
+  activeConnections: number // Current connections
+  avgResponseTime: number // ms (p50)
+  p95ResponseTime: number // ms (p95)
 }
 ```
 
@@ -322,55 +334,70 @@ interface ResourceMetrics {
 
 ```typescript
 interface BenchmarkRun {
-  id: string;                      // UUID
-  name?: string;                   // Optional run name
-  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
-  mode: 'isolated' | 'contention'; // Execution mode
-  kvcachedEnabled: boolean;        // System kvcached status
-  createdAt: string;               // ISO timestamp
-  startedAt?: string;
-  completedAt?: string;
-  errorMessage?: string;
-  totalRequests: number;           // Sum across scenarios
-  successfulRequests: number;
-  failedRequests: number;
-  durationSeconds?: number;
-  scenarios: BenchmarkScenario[];  // Child scenarios
+  id: string // UUID
+  name?: string // Optional run name
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed'
+  mode: 'isolated' | 'contention' // Execution mode
+  kvcachedEnabled: boolean // System kvcached status
+  createdAt: string // ISO timestamp
+  startedAt?: string
+  completedAt?: string
+  errorMessage?: string
+  totalRequests: number // Sum across scenarios
+  successfulRequests: number
+  failedRequests: number
+  durationSeconds?: number
+  scenarios: BenchmarkScenario[] // Child scenarios
 }
 
 interface BenchmarkScenario {
-  id: string;
-  runId: string;
-  instanceId: string;              // Model instance being tested
-  routingMode: 'direct' | 'proxy'; // Route to vLLM or through proxy
-  modelPath: string;
-  modelName: string;
-  inputTokens: number;             // Target input token count
-  outputTokens: number;            // Target max_tokens
-  concurrency: number;             // Parallel requests
-  warmupRequests: number;          // Unmeasured warmup
-  totalRequests: number;           // Measured requests
-  slaThresholdMs?: number;         // For goodput calculation
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  id: string
+  runId: string
+  instanceId: string // Model instance being tested
+  routingMode: 'direct' | 'proxy' // Route to vLLM or through proxy
+  modelPath: string
+  modelName: string
+  inputTokens: number // Target input token count
+  outputTokens: number // Target max_tokens
+  concurrency: number // Parallel requests
+  warmupRequests: number // Unmeasured warmup
+  totalRequests: number // Measured requests
+  slaThresholdMs?: number // For goodput calculation
+  status: 'pending' | 'running' | 'completed' | 'failed'
 }
 
 interface BenchmarkMetrics {
-  scenarioId: string;
+  scenarioId: string
   // TTFT (Time To First Token) in ms
-  ttftMin: number; ttftMax: number; ttftAvg: number;
-  ttftP50: number; ttftP90: number; ttftP95: number; ttftP99: number;
+  ttftMin: number
+  ttftMax: number
+  ttftAvg: number
+  ttftP50: number
+  ttftP90: number
+  ttftP95: number
+  ttftP99: number
   // TPS (Tokens Per Second)
-  tpsMin: number; tpsMax: number; tpsAvg: number;
-  tpsP50: number; tpsP90: number; tpsP95: number; tpsP99: number;
+  tpsMin: number
+  tpsMax: number
+  tpsAvg: number
+  tpsP50: number
+  tpsP90: number
+  tpsP95: number
+  tpsP99: number
   // E2E Latency in ms
-  e2eMin: number; e2eMax: number; e2eAvg: number;
-  e2eP50: number; e2eP90: number; e2eP95: number; e2eP99: number;
+  e2eMin: number
+  e2eMax: number
+  e2eAvg: number
+  e2eP50: number
+  e2eP90: number
+  e2eP95: number
+  e2eP99: number
   // Goodput
-  goodputCount: number;            // Requests under SLA
-  goodputPercent: number;
+  goodputCount: number // Requests under SLA
+  goodputPercent: number
   // Throughput
-  requestsPerSecond: number;
-  tokensPerSecondTotal: number;
+  requestsPerSecond: number
+  tokensPerSecondTotal: number
 }
 ```
 
@@ -378,28 +405,28 @@ interface BenchmarkMetrics {
 
 ```typescript
 interface MemoryProfile {
-  id: string;                      // UUID
-  profileName: string;             // Human-readable name
-  modelPath: string;               // Model identifier
-  maxTokens: number;               // Context length when profiled
+  id: string // UUID
+  profileName: string // Human-readable name
+  modelPath: string // Model identifier
+  maxTokens: number // Context length when profiled
 
   // Memory breakdown (GiB)
-  totalGpuMemoryGib: number;       // Total GPU memory consumed
-  weightsMemoryGib: number;        // Model weights
-  cudaGraphsGib: number;           // CUDA graph capture
-  overheadMemoryGib: number;       // Other overhead
-  kvCacheAvailableGib: number;     // Available KV cache (deprecated with kvcached)
-  kvCachePerRequestMib?: number;   // Estimated per-request KV cache
+  totalGpuMemoryGib: number // Total GPU memory consumed
+  weightsMemoryGib: number // Model weights
+  cudaGraphsGib: number // CUDA graph capture
+  overheadMemoryGib: number // Other overhead
+  kvCacheAvailableGib: number // Available KV cache (deprecated with kvcached)
+  kvCachePerRequestMib?: number // Estimated per-request KV cache
 
   // GPU context
-  gpuName?: string;                // GPU where profiled
-  gpuTotalMemoryGib?: number;      // Total GPU memory
+  gpuName?: string // GPU where profiled
+  gpuTotalMemoryGib?: number // Total GPU memory
 
   // Metadata
-  comments?: string;
-  createdBy?: string;
-  createdAt: string;
-  updatedAt?: string;
+  comments?: string
+  createdBy?: string
+  createdAt: string
+  updatedAt?: string
 }
 ```
 
@@ -412,6 +439,7 @@ interface MemoryProfile {
 **Solution:** Node.js backend manages individual vLLM processes directly.
 
 **Benefits:**
+
 - Zero-downtime model loading/unloading
 - Fine-grained control over each model instance
 - Independent scaling of models
@@ -420,34 +448,43 @@ interface MemoryProfile {
 ### Implementation
 
 ```typescript
-import { spawn } from 'child_process';
+import { spawn } from 'child_process'
 
-const vllmProcess = spawn('python', [
-  '-m', 'vllm.entrypoints.openai.api_server',
-  '--model', modelPath,
-  '--port', port.toString(),
-  '--gpu-memory-utilization', gpuMemoryLimit.toString(),
-  '--no-enable-prefix-caching',
-], {
-  env: {
-    ...process.env,
-    ENABLE_KVCACHED: 'true',
-    KVCACHED_AUTOPATCH: '1',
+const vllmProcess = spawn(
+  'python',
+  [
+    '-m',
+    'vllm.entrypoints.openai.api_server',
+    '--model',
+    modelPath,
+    '--port',
+    port.toString(),
+    '--gpu-memory-utilization',
+    gpuMemoryLimit.toString(),
+    '--no-enable-prefix-caching',
+  ],
+  {
+    env: {
+      ...process.env,
+      ENABLE_KVCACHED: 'true',
+      KVCACHED_AUTOPATCH: '1',
+    },
   }
-});
+)
 
 vllmProcess.stdout.on('data', (data) => {
   // Parse logs for readiness signals
-});
+})
 
 vllmProcess.on('exit', (code) => {
   // Update instance status
-});
+})
 ```
 
 ### Health Checks
 
 Periodic health checks to vLLM instances:
+
 ```bash
 GET http://localhost:{port}/health
 ```
@@ -463,6 +500,7 @@ If health check fails 3 consecutive times, mark instance as `failed`.
 **Memory Segment Naming:**
 
 Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
+
 ```
 kvcached_vllm_GPU0           # Single GPU model on GPU 0
 kvcached_vllm_GPU1           # Single GPU model on GPU 1
@@ -474,6 +512,7 @@ The segment name is set automatically via the `KVCACHED_IPC_NAME` environment va
 **Memory Baseline Tracking:**
 
 When a model transitions to 'running' status, the backend captures its memory baseline:
+
 - `memoryBaselineByGpu: Record<number, number>` - Memory footprint per GPU in GB
 - Represents idle memory consumption before any inference requests
 - Used for accurate KVCache total calculation:
@@ -482,6 +521,7 @@ When a model transitions to 'running' status, the backend captures its memory ba
   ```
 
 **Memory Monitoring:**
+
 ```bash
 kvctl status  # Shows all segments and usage
 ```
@@ -489,6 +529,7 @@ kvctl status  # Shows all segments and usage
 **Memory Cleanup (Server Shutdown Only):**
 
 IPC segments are only deleted when the server shuts down:
+
 ```bash
 kvctl delete kvcached_vllm_GPU0
 kvctl delete kvcached_vllm_GPU0_GPU1  # For tensor-parallel segments
@@ -502,6 +543,7 @@ kvctl delete kvcached_vllm_GPU0_GPU1  # For tensor-parallel segments
 4. **Set per-model limits** via `--gpu-memory-utilization`
 
 Example (24GB GPU):
+
 - Total: 24GB
 - Reserved: 2GB (CUDA)
 - Available: 22GB
@@ -517,18 +559,20 @@ For detailed kvcached documentation, see [`kvcached/README.md`](./kvcached/READM
 ### Authentication
 
 **Controller API:** OAuth 2.0 with JWT tokens
+
 - OpenShift OAuth compatible
 - RBAC roles encoded in JWT claims
 
 **Proxy API:** Assumes gateway-level authentication
+
 - Designed to run behind API gateway (e.g., OpenShift Router)
 - Optional API key validation (future enhancement)
 
 ### Authorization (RBAC)
 
-| Role | Permissions |
-|------|-------------|
-| `admin` | Load models, unload models, view all data |
+| Role             | Permissions                                  |
+| ---------------- | -------------------------------------------- |
+| `admin`          | Load models, unload models, view all data    |
 | `admin-readonly` | View models, view metrics (no modifications) |
 
 ### Security Best Practices
@@ -574,6 +618,7 @@ For detailed kvcached documentation, see [`kvcached/README.md`](./kvcached/READM
 ### Monitoring Metrics
 
 Expose Prometheus metrics for:
+
 - Request latency histograms (proxy, per-model)
 - Request count (success/failure, per-model)
 - GPU memory usage (per-model, total)
@@ -603,6 +648,7 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 ---
 
 **See Also:**
+
 - [Backend Architecture](./architecture/backend-architecture.md) - Detailed backend component documentation
 - [Frontend Architecture](./architecture/frontend-architecture.md) - Detailed frontend component documentation
 - [API Guide](./api-guide.md) - API usage examples

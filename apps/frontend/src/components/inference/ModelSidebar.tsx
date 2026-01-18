@@ -106,7 +106,8 @@ export function ModelSidebar({
       // Check if keys are the same to avoid creating new Set
       const currentKeys = Array.from(expandedGroupsRef.current)
       const keysMatch =
-        currentKeys.length === gpuKeys.length && gpuKeys.every((k) => expandedGroupsRef.current.has(k))
+        currentKeys.length === gpuKeys.length &&
+        gpuKeys.every((k) => expandedGroupsRef.current.has(k))
       if (!keysMatch) {
         expandedGroupsRef.current = new Set(gpuKeys)
       }
@@ -121,17 +122,15 @@ export function ModelSidebar({
     // Default to all expanded (but keep stable reference)
     const currentKeys = Array.from(expandedGroupsRef.current)
     const keysMatch =
-      currentKeys.length === gpuKeys.length && gpuKeys.every((k) => expandedGroupsRef.current.has(k))
+      currentKeys.length === gpuKeys.length &&
+      gpuKeys.every((k) => expandedGroupsRef.current.has(k))
     if (!keysMatch) {
       expandedGroupsRef.current = new Set(gpuKeys)
     }
     return expandedGroupsRef.current
   }, [searchTerm, modelsByGpu, expandedGpuGroups])
 
-  const handleSearchChange = (
-    _event: React.FormEvent<HTMLInputElement>,
-    value: string
-  ) => {
+  const handleSearchChange = (_event: React.FormEvent<HTMLInputElement>, value: string) => {
     onSearchChange(value)
   }
 

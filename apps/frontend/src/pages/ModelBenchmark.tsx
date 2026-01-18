@@ -97,39 +97,42 @@ function ModelBenchmark() {
     }
   }, [])
 
-  const handleSubmitBenchmark = useCallback(async (config: BenchmarkFormConfig) => {
-    setIsSubmitting(true)
-    try {
-      // Build scenarios array from selected models - parameters are now per-model
-      const scenarios = config.selectedModels.map((model) => ({
-        instanceId: model.instanceId,
-        routingMode: model.routingMode,
-        inputTokens: model.inputTokens,
-        outputTokens: model.outputTokens,
-        concurrency: model.concurrency,
-        totalRequests: model.totalRequests,
-        warmupRequests: model.warmupRequests,
-        slaThresholdMs: model.slaThresholdMs,
-      }))
+  const handleSubmitBenchmark = useCallback(
+    async (config: BenchmarkFormConfig) => {
+      setIsSubmitting(true)
+      try {
+        // Build scenarios array from selected models - parameters are now per-model
+        const scenarios = config.selectedModels.map((model) => ({
+          instanceId: model.instanceId,
+          routingMode: model.routingMode,
+          inputTokens: model.inputTokens,
+          outputTokens: model.outputTokens,
+          concurrency: model.concurrency,
+          totalRequests: model.totalRequests,
+          warmupRequests: model.warmupRequests,
+          slaThresholdMs: model.slaThresholdMs,
+        }))
 
-      const response = await apiClient.createBenchmark({
-        name: config.name,
-        mode: config.mode,
-        scenarios,
-      })
-      setCurrentBenchmarkId(response.benchmark.id)
-      setPerformanceView('running')
-    } catch (err) {
-      console.error('Failed to start benchmark:', err)
-      addNotification({
-        title: 'Failed to start benchmark',
-        description: extractErrorMessage(err),
-        variant: 'danger',
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [addNotification])
+        const response = await apiClient.createBenchmark({
+          name: config.name,
+          mode: config.mode,
+          scenarios,
+        })
+        setCurrentBenchmarkId(response.benchmark.id)
+        setPerformanceView('running')
+      } catch (err) {
+        console.error('Failed to start benchmark:', err)
+        addNotification({
+          title: 'Failed to start benchmark',
+          description: extractErrorMessage(err),
+          variant: 'danger',
+        })
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [addNotification]
+  )
 
   const handleBenchmarkComplete = () => {
     setPerformanceView('results')
@@ -237,8 +240,14 @@ function ModelBenchmark() {
       </Content>
 
       <Tabs activeKey={activeTabKey} onSelect={handleTabClick} aria-label="Benchmark tabs">
-        <Tab eventKey={0} title={<TabTitleText>Performance</TabTitleText>} aria-label="Performance benchmarking">
-          <div style={{ paddingTop: 'var(--pf-t--global--spacer--md)' }}>{renderPerformanceTab()}</div>
+        <Tab
+          eventKey={0}
+          title={<TabTitleText>Performance</TabTitleText>}
+          aria-label="Performance benchmarking"
+        >
+          <div style={{ paddingTop: 'var(--pf-t--global--spacer--md)' }}>
+            {renderPerformanceTab()}
+          </div>
         </Tab>
         <Tab
           eventKey={1}

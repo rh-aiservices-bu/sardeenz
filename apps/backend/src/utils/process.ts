@@ -172,8 +172,11 @@ export async function waitFor(
     timeoutMessage?: string
   } = {}
 ): Promise<void> {
-  const { timeout = 30000, interval = 1000, timeoutMessage = 'Timeout waiting for condition' } =
-    options
+  const {
+    timeout = 30000,
+    interval = 1000,
+    timeoutMessage = 'Timeout waiting for condition',
+  } = options
 
   const start = Date.now()
 
@@ -288,7 +291,10 @@ export async function findVllmProcessesByPort(port: number): Promise<number[]> {
  * This is useful for finding child processes that may have re-parented to init
  * but still carry the inherited environment variable.
  */
-export async function findProcessesByEnvMarker(envName: string, envValue: string): Promise<number[]> {
+export async function findProcessesByEnvMarker(
+  envName: string,
+  envValue: string
+): Promise<number[]> {
   const pids: number[] = []
   const marker = `${envName}=${envValue}`
 

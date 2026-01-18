@@ -66,7 +66,7 @@ export class ProcessLogBuffer {
     const listeners = this.logListeners.get(instanceId)
 
     // Split content by newlines and add each line separately
-    const lines = content.split('\n').filter(line => line.trim())
+    const lines = content.split('\n').filter((line) => line.trim())
     for (const line of lines) {
       const entry: LogEntry = {
         timestamp: new Date(),
@@ -106,7 +106,7 @@ export class ProcessLogBuffer {
   getLastLines(instanceId: string, n: number = 50): string {
     const buffer = this.getBuffer(instanceId)
     const lastN = buffer.slice(-n)
-    return lastN.map(entry => `[${entry.stream}] ${entry.content}`).join('\n')
+    return lastN.map((entry) => `[${entry.stream}] ${entry.content}`).join('\n')
   }
 
   /**
@@ -114,8 +114,8 @@ export class ProcessLogBuffer {
    */
   getLastStderrLines(instanceId: string, n: number = 20): string {
     const buffer = this.getBuffer(instanceId)
-    const stderrLines = buffer.filter(entry => entry.stream === 'stderr').slice(-n)
-    return stderrLines.map(entry => entry.content).join('\n')
+    const stderrLines = buffer.filter((entry) => entry.stream === 'stderr').slice(-n)
+    return stderrLines.map((entry) => entry.content).join('\n')
   }
 
   /**

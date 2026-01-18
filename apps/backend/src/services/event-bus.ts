@@ -1,12 +1,6 @@
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
-import type {
-  SSEEvent,
-  SSEEventType,
-  LogEvent,
-  StatusEvent,
-  ModelStatus,
-} from '@sardeenz/types'
+import type { SSEEvent, SSEEventType, LogEvent, StatusEvent, ModelStatus } from '@sardeenz/types'
 import type { LogEntry } from './process-log-buffer.js'
 
 /**

@@ -61,7 +61,7 @@ export function useChatSession(model: ModelInstanceDTO) {
       // If model doesn't have chat template, include manual template
       if (model.has_chat_template === false) {
         request.chat_template =
-          "{% for m in messages %}{{ m.role|upper }}: {{ m.content }}\n{% endfor %}ASSISTANT:"
+          '{% for m in messages %}{{ m.role|upper }}: {{ m.content }}\n{% endfor %}ASSISTANT:'
       }
 
       const onChunk = (chunk: string) => {

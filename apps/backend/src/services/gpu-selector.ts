@@ -36,7 +36,7 @@ export class GpuSelector {
     if (tensorParallelSize === 1) {
       // Single GPU: select one with most free memory
       const sorted = [...gpus].sort(
-        (a, b) => (b.memoryTotalMB - b.memoryUsedMB) - (a.memoryTotalMB - a.memoryUsedMB)
+        (a, b) => b.memoryTotalMB - b.memoryUsedMB - (a.memoryTotalMB - a.memoryUsedMB)
       )
       const best = sorted[0]
       const freeGb = (best.memoryTotalMB - best.memoryUsedMB) / 1024

@@ -15,7 +15,7 @@ During Phase 2 of test coverage improvement, we discovered that tests using `get
 
 ```typescript
 // ❌ WRONG - This will fail
-const switches = screen.getAllByRole('checkbox');
+const switches = screen.getAllByRole('checkbox')
 // Error: Unable to find an accessible element with the role "checkbox"
 ```
 
@@ -23,7 +23,7 @@ const switches = screen.getAllByRole('checkbox');
 
 ```typescript
 // ✅ CORRECT - Use role="switch"
-const switches = screen.getAllByRole('switch');
+const switches = screen.getAllByRole('switch')
 ```
 
 ## Testing Switch Components
@@ -236,21 +236,21 @@ PatternFly Switch components include:
 
 ```typescript
 // This will fail with PatternFly 6 Switch
-const switchElement = screen.getByRole('checkbox');
+const switchElement = screen.getByRole('checkbox')
 ```
 
 ### ❌ Querying by Input Element
 
 ```typescript
 // Switch is not an input element, it's a button with role="switch"
-const switchElement = screen.getByRole('input');
+const switchElement = screen.getByRole('input')
 ```
 
 ### ❌ Using Label Text Without Proper Query
 
 ```typescript
 // May not work as expected - use aria-label or role query
-const switchElement = screen.getByLabelText('Enable Feature');
+const switchElement = screen.getByLabelText('Enable Feature')
 ```
 
 ## Best Practices
@@ -258,27 +258,27 @@ const switchElement = screen.getByLabelText('Enable Feature');
 ### ✅ Always Use `role="switch"`
 
 ```typescript
-const switches = screen.getAllByRole('switch');
+const switches = screen.getAllByRole('switch')
 ```
 
 ### ✅ Test Both Checked States
 
 ```typescript
-expect(switchElement).toBeChecked();
-expect(switchElement).not.toBeChecked();
+expect(switchElement).toBeChecked()
+expect(switchElement).not.toBeChecked()
 ```
 
 ### ✅ Test Disabled State
 
 ```typescript
-expect(switchElement).toBeDisabled();
+expect(switchElement).toBeDisabled()
 ```
 
 ### ✅ Verify onChange Behavior
 
 ```typescript
-await user.click(switchElement);
-expect(handleChange).toHaveBeenCalledWith(expectedValue);
+await user.click(switchElement)
+expect(handleChange).toHaveBeenCalledWith(expectedValue)
 ```
 
 ## Read-Only Mode Testing

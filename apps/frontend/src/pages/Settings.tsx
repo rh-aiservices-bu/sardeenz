@@ -23,7 +23,12 @@ import {
   InputGroup,
   InputGroupItem,
 } from '@patternfly/react-core'
-import { EyeIcon, EyeSlashIcon, CheckCircleIcon, ExclamationCircleIcon } from '@patternfly/react-icons'
+import {
+  EyeIcon,
+  EyeSlashIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+} from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -43,7 +48,11 @@ function Settings() {
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ valid: boolean; username?: string; error?: string } | null>(null)
+  const [testResult, setTestResult] = useState<{
+    valid: boolean
+    username?: string
+    error?: string
+  } | null>(null)
 
   // Active tab
   const [activeTabKey, setActiveTabKey] = useState(0)
@@ -173,7 +182,10 @@ function Settings() {
     }
   }
 
-  const handleTabSelect = (_event: React.MouseEvent<HTMLElement, MouseEvent>, tabIndex: string | number) => {
+  const handleTabSelect = (
+    _event: React.MouseEvent<HTMLElement, MouseEvent>,
+    tabIndex: string | number
+  ) => {
     setActiveTabKey(tabIndex as number)
   }
 
@@ -204,13 +216,22 @@ function Settings() {
 
       <PageSection>
         {error && (
-          <Alert variant={AlertVariant.danger} title="Error loading settings" isInline style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+          <Alert
+            variant={AlertVariant.danger}
+            title="Error loading settings"
+            isInline
+            style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+          >
             {error}
           </Alert>
         )}
 
         <Tabs activeKey={activeTabKey} onSelect={handleTabSelect} aria-label="Settings tabs">
-          <Tab eventKey={0} title={<TabTitleText>HuggingFace</TabTitleText>} aria-label="HuggingFace settings">
+          <Tab
+            eventKey={0}
+            title={<TabTitleText>HuggingFace</TabTitleText>}
+            aria-label="HuggingFace settings"
+          >
             <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
               <Card>
                 <CardTitle>HuggingFace Token</CardTitle>
@@ -221,26 +242,29 @@ function Settings() {
                     title="Runtime setting"
                     style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
                   >
-                    Changes to this setting are stored in memory and will be lost when the server restarts.
-                    For production deployments, set the <code>HF_TOKEN</code> environment variable.
+                    Changes to this setting are stored in memory and will be lost when the server
+                    restarts. For production deployments, set the <code>HF_TOKEN</code> environment
+                    variable.
                   </Alert>
 
                   {settings?.hf_token && (
                     <Alert
-                      variant={settings.hf_token_source === 'env' ? AlertVariant.success : AlertVariant.info}
+                      variant={
+                        settings.hf_token_source === 'env'
+                          ? AlertVariant.success
+                          : AlertVariant.info
+                      }
                       isInline
                       title={`Current token: ${settings.hf_token}`}
                       style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
                     >
-                      Source: {settings.hf_token_source === 'env' ? 'Environment variable' : 'Set via API'}
+                      Source:{' '}
+                      {settings.hf_token_source === 'env' ? 'Environment variable' : 'Set via API'}
                     </Alert>
                   )}
 
                   <Form>
-                    <FormGroup
-                      label="HuggingFace Token"
-                      fieldId="hf-token"
-                    >
+                    <FormGroup label="HuggingFace Token" fieldId="hf-token">
                       <InputGroup>
                         <InputGroupItem isFill>
                           <TextInput
@@ -267,7 +291,9 @@ function Settings() {
                       </InputGroup>
                       <FormHelperText>
                         <HelperText>
-                          <HelperTextItem>Your HuggingFace access token for downloading gated models</HelperTextItem>
+                          <HelperTextItem>
+                            Your HuggingFace access token for downloading gated models
+                          </HelperTextItem>
                         </HelperText>
                       </FormHelperText>
                     </FormGroup>
@@ -278,7 +304,9 @@ function Settings() {
                           variant={testResult.valid ? AlertVariant.success : AlertVariant.danger}
                           isInline
                           title={testResult.valid ? 'Token is valid' : 'Token is invalid'}
-                          customIcon={testResult.valid ? <CheckCircleIcon /> : <ExclamationCircleIcon />}
+                          customIcon={
+                            testResult.valid ? <CheckCircleIcon /> : <ExclamationCircleIcon />
+                          }
                         >
                           {testResult.valid
                             ? `Connected as: ${testResult.username}`
@@ -293,8 +321,15 @@ function Settings() {
                           variant="secondary"
                           onClick={handleTestToken}
                           isLoading={testing}
-                          isDisabled={testing || saving || (!hfToken.trim() && !settings?.hf_token) || !canWrite}
-                          title={!canWrite ? 'You do not have permission to test tokens' : undefined}
+                          isDisabled={
+                            testing ||
+                            saving ||
+                            (!hfToken.trim() && !settings?.hf_token) ||
+                            !canWrite
+                          }
+                          title={
+                            !canWrite ? 'You do not have permission to test tokens' : undefined
+                          }
                         >
                           Test Connection
                         </Button>
@@ -305,7 +340,9 @@ function Settings() {
                           onClick={handleSaveToken}
                           isLoading={saving}
                           isDisabled={saving || testing || !hfToken.trim() || !canWrite}
-                          title={!canWrite ? 'You do not have permission to modify settings' : undefined}
+                          title={
+                            !canWrite ? 'You do not have permission to modify settings' : undefined
+                          }
                         >
                           Save Token
                         </Button>
@@ -317,7 +354,11 @@ function Settings() {
                             isDanger
                             onClick={handleClearToken}
                             isDisabled={saving || testing || !canWrite}
-                            title={!canWrite ? 'You do not have permission to modify settings' : undefined}
+                            title={
+                              !canWrite
+                                ? 'You do not have permission to modify settings'
+                                : undefined
+                            }
                           >
                             Clear Token
                           </Button>

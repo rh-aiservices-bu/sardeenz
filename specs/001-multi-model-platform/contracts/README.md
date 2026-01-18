@@ -13,6 +13,7 @@ This directory contains OpenAPI 3.1 specifications for the Sardeenz platform.
 **Authentication**: OAuth 2.0 required
 
 **Endpoints**:
+
 - `POST /models/load` - Load a new model (requires `admin` role)
 - `DELETE /models/{model_path}` - Unload a model (requires `admin` role)
 - `GET /models` - List all loaded models (requires `admin-readonly` role)
@@ -22,6 +23,7 @@ This directory contains OpenAPI 3.1 specifications for the Sardeenz platform.
 - `POST /memory/limits` - Set memory limits (requires `admin` role)
 
 **Use Cases**:
+
 - Platform operators managing model lifecycle via API
 - Admin UI calling controller endpoints
 - Automated scripts for model deployment
@@ -37,15 +39,18 @@ This directory contains OpenAPI 3.1 specifications for the Sardeenz platform.
 **Authentication**: NOT required (assumes trusted network or gateway-level auth)
 
 **Endpoints**:
+
 - `POST /v1/completions` - Text completion (OpenAI-compatible)
 - `POST /v1/chat/completions` - Chat completion (OpenAI-compatible)
 
 **Use Cases**:
+
 - Application developers sending inference requests
 - End users interacting with models via unified endpoint
 - Streaming and non-streaming completions
 
 **Performance Requirements**:
+
 - Routing overhead MUST be <50ms (per constitution)
 - Streaming requests use direct TCP passthrough
 
@@ -132,6 +137,7 @@ swagger-cli validate proxy-api.yaml
 Contract tests ensure the backend implementation matches these OpenAPI specifications.
 
 **Recommended Tools**:
+
 - **Dredd**: HTTP API testing framework
 - **Schemathesis**: Property-based testing for OpenAPI specs
 
@@ -155,11 +161,13 @@ dredd proxy-api.yaml http://localhost:3000
 **Current Version**: 0.1.0 (PoC phase)
 
 **Versioning Strategy**:
+
 - URL path versioning: `/api/v1/`, `/api/v2/`, etc.
 - Breaking changes require major version bump
 - Backward-compatible additions require minor version bump
 
 **Migration Path**:
+
 - v0.x.x: PoC phase (rapid iteration, breaking changes allowed)
 - v1.0.0: Production-ready stable API
 - v1.x.x: Backward-compatible enhancements
@@ -179,11 +187,13 @@ dredd proxy-api.yaml http://localhost:3000
 ### Authentication in Proxy API
 
 The Proxy API does NOT require authentication by design:
+
 - Assumes deployment behind a trusted network or API gateway
 - Gateway/ingress handles authentication and authorization
 - Simplifies client integration and reduces latency
 
 If authentication is needed:
+
 1. Deploy an API gateway (e.g., Kong, Traefik) in front of the proxy
 2. Configure OAuth/API key authentication at gateway level
 3. Proxy remains auth-free for performance
@@ -191,6 +201,7 @@ If authentication is needed:
 ### OpenAI Compatibility
 
 The Proxy API follows OpenAI's API conventions:
+
 - Same request/response formats for completions and chat
 - Compatible with OpenAI client libraries (with custom base URL)
 - Supports streaming via Server-Sent Events (SSE)

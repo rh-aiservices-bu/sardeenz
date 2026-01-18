@@ -1,12 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import {
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-} from '@patternfly/react-table'
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
 import {
   Button,
   Modal,
@@ -43,7 +36,11 @@ interface BenchmarkHistoryTableProps {
 /**
  * Table listing past benchmark runs with pagination and filtering.
  */
-export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refreshTrigger }: BenchmarkHistoryTableProps) {
+export function BenchmarkHistoryTable({
+  onViewBenchmark,
+  onRerunBenchmark,
+  refreshTrigger,
+}: BenchmarkHistoryTableProps) {
   const { canWrite } = useAuth()
   const [benchmarks, setBenchmarks] = useState<BenchmarkSummary[]>([])
   const [total, setTotal] = useState(0)
@@ -118,7 +115,8 @@ export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refre
 
   // Bulk selection handlers
   const selectableBenchmarks = benchmarks.filter((b) => b.status !== 'running')
-  const areAllSelected = selectableBenchmarks.length > 0 && selectableBenchmarks.every((b) => selectedIds.includes(b.id))
+  const areAllSelected =
+    selectableBenchmarks.length > 0 && selectableBenchmarks.every((b) => selectedIds.includes(b.id))
 
   const handleSelectAll = (isSelected: boolean) => {
     if (isSelected) {
@@ -294,7 +292,8 @@ export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refre
       {benchmarks.length === 0 ? (
         <EmptyState>
           <EmptyStateBody>
-            No benchmark runs found. {statusFilter && 'Try changing the filter or '}Run a benchmark to get started.
+            No benchmark runs found. {statusFilter && 'Try changing the filter or '}Run a benchmark
+            to get started.
           </EmptyStateBody>
           <EmptyStateFooter>
             <EmptyStateActions>
@@ -366,7 +365,9 @@ export function BenchmarkHistoryTable({ onViewBenchmark, onRerunBenchmark, refre
                     aria-label={`Delete benchmark ${benchmark.name || benchmark.id}`}
                     onClick={() => handleDeleteClick(benchmark)}
                     isDisabled={benchmark.status === 'running' || !canWrite}
-                    title={!canWrite ? 'You do not have permission to delete benchmarks' : undefined}
+                    title={
+                      !canWrite ? 'You do not have permission to delete benchmarks' : undefined
+                    }
                   />
                 </Td>
               </Tr>

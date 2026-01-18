@@ -8,8 +8,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"],
-  "references": [
-    { "path": "../../packages/types" },
-    { "path": "../../packages/utils" }
-  ]
+  "references": [{ "path": "../../packages/types" }, { "path": "../../packages/utils" }]
 }

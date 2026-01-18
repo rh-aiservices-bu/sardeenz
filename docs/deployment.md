@@ -492,11 +492,11 @@ oc logs -f deployment/sardeenz -n sardeenz
 
 Sardeenz supports three authentication modes for the admin dashboard:
 
-| Mode     | Use Case                       | Configuration                                      |
-| -------- | ------------------------------ | -------------------------------------------------- |
-| `none`   | Development, testing           | No auth required                                   |
-| `simple` | Single-admin deployments       | Username/password with JWT                         |
-| `oauth`  | Enterprise with OpenShift SSO  | OpenShift OAuth 2.0 with Kubernetes-native RBAC    |
+| Mode     | Use Case                      | Configuration                                   |
+| -------- | ----------------------------- | ----------------------------------------------- |
+| `none`   | Development, testing          | No auth required                                |
+| `simple` | Single-admin deployments      | Username/password with JWT                      |
+| `oauth`  | Enterprise with OpenShift SSO | OpenShift OAuth 2.0 with Kubernetes-native RBAC |
 
 ### OpenShift OAuth Setup
 
@@ -595,10 +595,10 @@ After creating the RoleBinding, the user can click "Try Again" on the Access Den
 
 ### RBAC Permissions
 
-| Role             | Access Level                                                  |
-| ---------------- | ------------------------------------------------------------- |
-| `admin`          | Full access - load/unload models, run benchmarks, settings    |
-| `admin-readonly` | Read-only - view models, benchmarks, settings (no mutations)  |
+| Role             | Access Level                                                 |
+| ---------------- | ------------------------------------------------------------ |
+| `admin`          | Full access - load/unload models, run benchmarks, settings   |
+| `admin-readonly` | Read-only - view models, benchmarks, settings (no mutations) |
 
 For detailed RBAC setup including ServiceAccount permissions, see [RBAC Setup Guide](./rbac-setup.md).
 

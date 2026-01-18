@@ -39,11 +39,11 @@ import { Content } from '@patternfly/react-core';
 
 ```jsx
 // ✅ Correct - Wrap with Icon component
-import { Icon } from '@patternfly/react-core';
-import { UserIcon } from '@patternfly/react-icons';
-<Icon size="md">
+import { Icon } from '@patternfly/react-core'
+import { UserIcon } from '@patternfly/react-icons'
+;<Icon size="md">
   <UserIcon />
-</Icon>;
+</Icon>
 ```
 
 ### Styling Rules

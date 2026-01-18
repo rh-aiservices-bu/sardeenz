@@ -42,11 +42,11 @@ Core service managing vLLM subprocess lifecycle:
 
 **Sleep Mode Methods:**
 
-| Method | Description |
-| ------ | ----------- |
+| Method                          | Description                                                                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sleepModel(instanceId, level)` | Puts a running model to sleep. Level 1 offloads weights to CPU RAM, Level 2 discards weights. Requires model to be loaded with `enableSleepMode: true`. |
-| `wakeModel(instanceId, tags?)` | Wakes a sleeping model, restoring it to running state. Optionally specify `tags` to reload only specific components (weights, kv_cache). |
-| `isSleeping(instanceId)` | Returns whether the model is currently sleeping and at what level. |
+| `wakeModel(instanceId, tags?)`  | Wakes a sleeping model, restoring it to running state. Optionally specify `tags` to reload only specific components (weights, kv_cache).                |
+| `isSleeping(instanceId)`        | Returns whether the model is currently sleeping and at what level.                                                                                      |
 
 Sleep mode requires the `--enable-sleep-mode` vLLM flag and `VLLM_SERVER_DEV_MODE=1` environment variable, which are automatically set when `enableSleepMode: true` is passed to `launchModel()`.
 
@@ -247,12 +247,14 @@ SIGKILL doesn't propagate to children, so `killProcessImmediate()` uses `getDesc
 Each GPU (or GPU-pair for tensor-parallel models) gets its own IPC segment:
 
 **Naming Convention:**
+
 - Single GPU: `kvcached_vllm_GPU{id}` (e.g., `kvcached_vllm_GPU0`)
 - Tensor-parallel: `kvcached_vllm_GPU{id1}_GPU{id2}` (e.g., `kvcached_vllm_GPU0_GPU1`)
 
 The segment name is set via `KVCACHED_IPC_NAME` environment variable, configured automatically by the backend based on the model's GPU assignment.
 
 **Lifecycle:**
+
 - **Created:** Automatically by first vLLM process with `ENABLE_KVCACHED=true` on that GPU
 - **Preserved:** Not deleted when individual models unload (SIGKILL bypasses cleanup)
 - **Deleted:** Only on server shutdown via `cleanup()` → `deleteSharedIpcSegment()`
@@ -294,11 +296,15 @@ When a model transitions to 'running' status, the backend captures its memory ba
 - For tensor-parallel models, baselines are captured on each GPU
 
 **Purpose:** The memory baseline is used for accurate KVCache total calculation:
+
 ```
-KVCache Total = GPU Total - Model Baselines - Other Processes
+KVCache Total = GPU Free Memory + Prealloc KVCache + Used KVCache
+KVCache Free = max(0, KVCache Total - Used KVCache - Prealloc KVCache)
 ```
 
-This replaces the old approach of reading `total_size` from the IPC segment, which was set at initialization and never updated as models were added/removed.
+Prealloc memory appears as "used" in nvidia-smi but is actually available to the KVCache pool. This dynamic calculation provides accurate real-time reporting, replacing the old approach of reading `total_size` from the IPC segment.
+
+**Conditional Display:** KVCache metrics are only returned when models are loaded to prevent stale preallocation values from being displayed.
 
 ## Logging Architecture
 

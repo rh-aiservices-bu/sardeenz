@@ -27,10 +27,7 @@ export function SessionTabs({
     return null
   }
 
-  const handleTabSelect = (
-    _event: React.MouseEvent<HTMLElement>,
-    eventKey: string | number
-  ) => {
+  const handleTabSelect = (_event: React.MouseEvent<HTMLElement>, eventKey: string | number) => {
     onSessionSelect(String(eventKey))
   }
 

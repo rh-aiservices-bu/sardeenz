@@ -12,10 +12,10 @@ import https from 'https'
 // Connection pool for vLLM instances - optimized for high throughput streaming
 const httpAgent = new http.Agent({
   keepAlive: true,
-  maxSockets: Infinity,     // No artificial limit - let OS handle it
-  maxFreeSockets: 256,      // Keep more sockets warm for reuse
-  timeout: 120000,          // Longer timeout for streaming responses
-  scheduling: 'fifo',       // FIFO scheduling for predictable latency
+  maxSockets: Infinity, // No artificial limit - let OS handle it
+  maxFreeSockets: 256, // Keep more sockets warm for reuse
+  timeout: 120000, // Longer timeout for streaming responses
+  scheduling: 'fifo', // FIFO scheduling for predictable latency
 })
 
 const httpsAgent = new https.Agent({
@@ -129,12 +129,15 @@ export class ProxyRouter {
     // Select instance using round-robin load balancing
     const instance = this.loadBalancer.selectInstance(instances)
 
-    this.logger.debug({
-      modelPath,
-      instanceId: instance.id,
-      port: instance.port,
-      totalInstances: instances.length,
-    }, 'Selected instance for request')
+    this.logger.debug(
+      {
+        modelPath,
+        instanceId: instance.id,
+        port: instance.port,
+        totalInstances: instances.length,
+      },
+      'Selected instance for request'
+    )
 
     // Create inference request record
     const requestId = randomUUID()
@@ -161,7 +164,10 @@ export class ProxyRouter {
       // Forward request to vLLM instance
       const targetUrl = `http://localhost:${instance.port}${endpoint}`
 
-      this.logger.debug({ modelPath, instanceId: instance.id, targetUrl, streaming }, 'Forwarding request to vLLM')
+      this.logger.debug(
+        { modelPath, instanceId: instance.id, targetUrl, streaming },
+        'Forwarding request to vLLM'
+      )
 
       // Removed intermediate "forwarded" status update - minimal debugging value
       const requestHeaders = { 'Content-Type': 'application/json' }
@@ -288,7 +294,7 @@ export class ProxyRouter {
         const wasOk = response.ok
         setImmediate(() => {
           request.completedAt = new Date()
-          request.status = wasOk ? 'completed' as RequestStatus : 'failed' as RequestStatus
+          request.status = wasOk ? ('completed' as RequestStatus) : ('failed' as RequestStatus)
           request.statusCode = capturedStatus
           request.durationMs = durationMs
           requestStore.add(modelPath, request)

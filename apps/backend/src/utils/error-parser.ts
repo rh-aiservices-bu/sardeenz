@@ -87,8 +87,8 @@ const ERROR_PATTERNS: Array<{
 export function extractVllmError(logs: LogEntry[]): string | null {
   // Focus on stderr lines, process in reverse (most recent first)
   const stderrLines = logs
-    .filter(entry => entry.stream === 'stderr')
-    .map(entry => entry.content)
+    .filter((entry) => entry.stream === 'stderr')
+    .map((entry) => entry.content)
     .reverse()
 
   // Try to match error patterns
@@ -102,8 +102,8 @@ export function extractVllmError(logs: LogEntry[]): string | null {
   }
 
   // Look for Python traceback with the actual exception at the end
-  const allLines = logs.map(entry => entry.content)
-  const tracebackEndIdx = allLines.findIndex(line =>
+  const allLines = logs.map((entry) => entry.content)
+  const tracebackEndIdx = allLines.findIndex((line) =>
     line.includes('Traceback (most recent call last)')
   )
 
@@ -137,9 +137,9 @@ export function buildErrorMessage(
 
   // Fallback: include last few stderr lines for context
   const stderrLines = logs
-    .filter(entry => entry.stream === 'stderr')
+    .filter((entry) => entry.stream === 'stderr')
     .slice(-maxContextLines)
-    .map(entry => entry.content)
+    .map((entry) => entry.content)
 
   if (stderrLines.length > 0) {
     const context = stderrLines.join('\n')

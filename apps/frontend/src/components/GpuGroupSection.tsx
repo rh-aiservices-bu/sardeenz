@@ -16,6 +16,10 @@ interface GpuGroupSectionProps {
   wakingInstanceId?: string | null
   expandedCards: Set<string>
   onCardToggle: (instanceId: string) => void
+  /** KV cache total per GPU (gpu index -> total_gb) for max concurrent requests calculation */
+  kvCacheTotalByGpu?: Record<number, number>
+  /** GPU memory utilization per instance (instance_id -> percentage 0-1) for live updates */
+  memoryUtilizationByInstance?: Record<string, number>
 }
 
 /**
@@ -36,6 +40,8 @@ export function GpuGroupSection({
   wakingInstanceId,
   expandedCards,
   onCardToggle,
+  kvCacheTotalByGpu,
+  memoryUtilizationByInstance,
 }: GpuGroupSectionProps) {
   // Count models by status for summary
   const statusCounts = {
@@ -120,6 +126,8 @@ export function GpuGroupSection({
               isWaking={wakingInstanceId === model.id}
               isExpanded={expandedCards.has(model.id)}
               onToggle={() => onCardToggle(model.id)}
+              kvCacheTotalGb={kvCacheTotalByGpu?.[model.gpu_ids[0]]}
+              memoryUtilization={memoryUtilizationByInstance?.[model.id]}
             />
           </GridItem>
         ))}

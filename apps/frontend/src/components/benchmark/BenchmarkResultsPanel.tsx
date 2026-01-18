@@ -216,7 +216,7 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
   }
 
   const successRate = benchmark.total_requests
-    ? ((benchmark.successful_requests ?? 0) / benchmark.total_requests * 100).toFixed(1)
+    ? (((benchmark.successful_requests ?? 0) / benchmark.total_requests) * 100).toFixed(1)
     : '-'
 
   return (
@@ -284,7 +284,9 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
               <DescriptionList isCompact>
                 <DescriptionListGroup>
                   <DescriptionListTerm>Duration</DescriptionListTerm>
-                  <DescriptionListDescription>{formatDuration(benchmark.duration_seconds)}</DescriptionListDescription>
+                  <DescriptionListDescription>
+                    {formatDuration(benchmark.duration_seconds)}
+                  </DescriptionListDescription>
                 </DescriptionListGroup>
               </DescriptionList>
             </CardBody>
@@ -323,7 +325,10 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
         <Card>
           <CardTitle>Performance Metrics</CardTitle>
           <CardBody>
-            <Tabs activeKey={activeChartTab} onSelect={(_event, tabIndex) => setActiveChartTab(tabIndex)}>
+            <Tabs
+              activeKey={activeChartTab}
+              onSelect={(_event, tabIndex) => setActiveChartTab(tabIndex)}
+            >
               <Tab eventKey={0} title={<TabTitleText>TTFT (ms)</TabTitleText>}>
                 <div style={{ height: 300, marginTop: 'var(--pf-t--global--spacer--md)' }}>
                   <ResponsiveBar
@@ -468,22 +473,42 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
                 borderBottom: '1px solid var(--pf-t--global--border--color--default)',
               }}
             >
-              <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
+              <Flex
+                justifyContent={{ default: 'justifyContentSpaceBetween' }}
+                alignItems={{ default: 'alignItemsCenter' }}
+              >
                 <FlexItem>
                   <strong>{scenario.model_name || scenario.model_path}</strong>
-                  <span style={{ marginLeft: 'var(--pf-t--global--spacer--sm)', color: 'var(--pf-t--global--text--color--subtle)' }}>
-                    {scenario.input_tokens} input / {scenario.output_tokens} output tokens, concurrency {scenario.concurrency}
+                  <span
+                    style={{
+                      marginLeft: 'var(--pf-t--global--spacer--sm)',
+                      color: 'var(--pf-t--global--text--color--subtle)',
+                    }}
+                  >
+                    {scenario.input_tokens} input / {scenario.output_tokens} output tokens,
+                    concurrency {scenario.concurrency}
                   </span>
                 </FlexItem>
                 <FlexItem>
                   <Flex spaceItems={{ default: 'spaceItemsSm' }}>
                     <FlexItem>
-                      <Label color={scenario.routing_mode === 'proxy' ? 'purple' : 'teal'} isCompact>
+                      <Label
+                        color={scenario.routing_mode === 'proxy' ? 'purple' : 'teal'}
+                        isCompact
+                      >
                         {scenario.routing_mode === 'proxy' ? 'Proxy' : 'Direct'}
                       </Label>
                     </FlexItem>
                     <FlexItem>
-                      <Label color={scenario.status === 'completed' ? 'green' : scenario.status === 'failed' ? 'red' : 'blue'}>
+                      <Label
+                        color={
+                          scenario.status === 'completed'
+                            ? 'green'
+                            : scenario.status === 'failed'
+                              ? 'red'
+                              : 'blue'
+                        }
+                      >
                         {scenario.status}
                       </Label>
                     </FlexItem>
@@ -491,26 +516,34 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
                 </FlexItem>
               </Flex>
               {scenario.metrics && (
-                <DescriptionList isHorizontal isCompact style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}>
+                <DescriptionList
+                  isHorizontal
+                  isCompact
+                  style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}
+                >
                   <DescriptionListGroup>
                     <DescriptionListTerm>TTFT P50/P90/P99</DescriptionListTerm>
                     <DescriptionListDescription>
-                      {scenario.metrics.ttft_p50?.toFixed(0) ?? '-'} / {scenario.metrics.ttft_p90?.toFixed(0) ?? '-'} /{' '}
+                      {scenario.metrics.ttft_p50?.toFixed(0) ?? '-'} /{' '}
+                      {scenario.metrics.ttft_p90?.toFixed(0) ?? '-'} /{' '}
                       {scenario.metrics.ttft_p99?.toFixed(0) ?? '-'} ms
                     </DescriptionListDescription>
                   </DescriptionListGroup>
                   <DescriptionListGroup>
                     <DescriptionListTerm>TPS P50/P90/P99</DescriptionListTerm>
                     <DescriptionListDescription>
-                      {scenario.metrics.tps_p50?.toFixed(1) ?? '-'} / {scenario.metrics.tps_p90?.toFixed(1) ?? '-'} /{' '}
+                      {scenario.metrics.tps_p50?.toFixed(1) ?? '-'} /{' '}
+                      {scenario.metrics.tps_p90?.toFixed(1) ?? '-'} /{' '}
                       {scenario.metrics.tps_p99?.toFixed(1) ?? '-'} tokens/s
                     </DescriptionListDescription>
                   </DescriptionListGroup>
                   <DescriptionListGroup>
                     <DescriptionListTerm>Requests</DescriptionListTerm>
                     <DescriptionListDescription>
-                      {scenario.metrics.successful_requests} / {scenario.metrics.total_requests} successful
-                      {scenario.metrics.requests_per_second && ` (${scenario.metrics.requests_per_second.toFixed(1)} req/s)`}
+                      {scenario.metrics.successful_requests} / {scenario.metrics.total_requests}{' '}
+                      successful
+                      {scenario.metrics.requests_per_second &&
+                        ` (${scenario.metrics.requests_per_second.toFixed(1)} req/s)`}
                     </DescriptionListDescription>
                   </DescriptionListGroup>
                 </DescriptionList>

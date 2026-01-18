@@ -20,6 +20,7 @@ React 18 admin dashboard for managing multiple vLLM model instances on shared GP
 **DO NOT use Context7 for PatternFly components.** Context7 may contain outdated PatternFly versions.
 
 **Instead use:**
+
 - Local guide: `docs/development/pf6-guide/`
 - Official docs: PatternFly.org
 

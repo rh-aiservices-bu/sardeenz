@@ -15,6 +15,18 @@ All notable changes to this project will be documented in this file.
   - UI: Sleep/Wake actions in model dropdown menus with moon/sun icons
   - Purple "sleeping" status badge with moon icon
   - Proxy returns 503 with clear message for sleeping models
+- **Per-model benchmark parameters**: Each benchmark scenario now supports independent configuration for `totalRequests`, `warmupRequests`, `concurrency`, `inputTokens`, `outputTokens`, and `slaThresholdMs`
+- **Token validation for benchmarks**: API validates that combined `inputTokens + outputTokens` does not exceed model's `max_tokens`
+
+### Changed
+
+- **KVCache calculation formula**: Now dynamically calculates `KVCache Total = GPU Free + Prealloc + Used` for accurate real-time metrics
+- **Conditional KVCache display**: KVCache metrics hidden when no models loaded (fixes stale preallocation display)
+
+### Fixed
+
+- Memory overhead calculation now uses actual GPU memory from nvidia-smi
+- KVCache metrics no longer show stale values when models are unloaded
 
 ## [0.3.0] - 2026-01-10
 
