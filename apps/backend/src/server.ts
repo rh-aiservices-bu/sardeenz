@@ -217,9 +217,9 @@ if (config.nodeEnv === 'production') {
       // If same host, return a user-friendly error (shouldn't happen with proper config)
       return {
         error: 'Access Denied',
-        message: decodeURIComponent(authError || 'You are not a member of any authorized groups'),
+        message: decodeURIComponent(authError || 'You do not have access to sardeenz'),
         resolution:
-          'Please contact your administrator to be added to sardeenz-admins or sardeenz-admins-readonly groups',
+          'Please contact your administrator to create a RoleBinding for sardeenz-admin or sardeenz-admin-readonly',
       }
     }
 
