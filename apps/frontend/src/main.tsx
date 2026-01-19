@@ -8,17 +8,20 @@ import App from './App'
 import { NotificationProvider } from './contexts/NotificationContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { ConnectionProvider } from './contexts/ConnectionContext'
+import { OperationsProvider } from './contexts/OperationsContext'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <NotificationProvider>
-      <BrowserRouter>
-        <ConnectionProvider>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
-        </ConnectionProvider>
-      </BrowserRouter>
+      <OperationsProvider>
+        <BrowserRouter>
+          <ConnectionProvider>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </ConnectionProvider>
+        </BrowserRouter>
+      </OperationsProvider>
     </NotificationProvider>
   </React.StrictMode>
 )

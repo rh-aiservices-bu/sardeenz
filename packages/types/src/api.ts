@@ -72,6 +72,7 @@ export interface ModelInstanceDTO {
   sleep_mode_enabled: boolean // Whether sleep mode is enabled for this instance
   sleep_level?: 1 | 2 // Current sleep level if sleeping
   slept_at?: string // ISO timestamp when model went to sleep
+  routable?: boolean // Whether this instance is available for routing (false during move operations)
 }
 
 export interface GetModelResponse {
@@ -136,6 +137,8 @@ export interface MultiGpuMemoryUsageResponse {
   gpus: PerGpuMetrics[]
   kvcache: KVCacheMetrics
   total_system_free_gb: number
+  /** Whether virtual GPU mode is enabled (all vGPUs share same physical memory) */
+  is_virtual_gpu_mode: boolean
 }
 
 /** Individual GPU info for availability response */
@@ -399,4 +402,48 @@ export interface SleepStatusResponse {
   instance_id: string
   is_sleeping: boolean
   sleep_level?: 1 | 2
+}
+
+// Move Model API types
+
+/** Request to move a model to different GPU(s) */
+export interface MoveModelRequest {
+  /** Target GPU indices for the move */
+  target_gpu_ids: number[]
+  /** Timeout in ms to wait for in-flight requests to drain (default: 60000) */
+  drain_timeout_ms?: number
+}
+
+/** Response after initiating a model move operation */
+export interface MoveModelResponse {
+  /** Unique identifier for tracking this move operation */
+  move_id: string
+  /** Instance ID of the model being moved */
+  source_instance_id: string
+  /** Target GPU indices for the move */
+  target_gpu_ids: number[]
+}
+
+/** Phase of a model move operation (API representation) */
+export type MoveOperationPhaseDTO =
+  | 'validating'
+  | 'spawning'
+  | 'switching'
+  | 'draining'
+  | 'completing'
+  | 'failed'
+  | 'completed'
+
+/** SSE progress event during model move operation */
+export interface MoveProgressEvent {
+  /** Move operation identifier */
+  move_id: string
+  /** Current phase of the move operation */
+  phase: MoveOperationPhaseDTO
+  /** Human-readable progress message */
+  message: string
+  /** Progress percentage (0-100), primarily used during spawning phase */
+  progress?: number
+  /** Error message if phase is 'failed' */
+  error?: string
 }

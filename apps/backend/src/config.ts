@@ -50,6 +50,9 @@ export interface Config {
 
   // Streaming debug
   debugStreaming: boolean
+
+  // Virtual GPU configuration (dev mode only)
+  virtualGpuCount: number
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -147,6 +150,10 @@ export const config: Config = {
 
   // Streaming debug
   debugStreaming: getEnvBool('DEBUG_STREAMING', false),
+
+  // Virtual GPU configuration (dev mode only)
+  // 0 = disabled (use real GPUs), N = create N virtual GPUs mapping to physical GPU 0
+  virtualGpuCount: getEnvInt('DEV_VIRTUAL_GPU_COUNT', 0),
 }
 
 // Validate auth configuration

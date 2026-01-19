@@ -94,6 +94,7 @@ export class ProxyRouter {
     statusCode: number
     instanceId?: string
     startTime?: number // For streaming: caller computes duration after stream ends
+    onStreamComplete?: () => void // For streaming: caller invokes after stream ends to decrement connections
   }> {
     const { modelPath, endpoint, method, body, streaming } = options
 
@@ -160,6 +161,7 @@ export class ProxyRouter {
     try {
       // Update metrics - keep synchronous for accurate connection tracking
       metricsStore.updateConnections(modelPath, 1)
+      metricsStore.updateInstanceConnections(instance.id, 1)
 
       // Forward request to vLLM instance
       const targetUrl = `http://localhost:${instance.port}${endpoint}`
@@ -257,6 +259,10 @@ export class ProxyRouter {
           // Defer metrics recording for errors too
           setImmediate(() => metricsStore.recordRequest(modelPath, false, durationMs))
 
+          // Decrement connections on streaming error (before stream started)
+          metricsStore.updateConnections(modelPath, -1)
+          metricsStore.updateInstanceConnections(instance.id, -1)
+
           return {
             requestId,
             response: errorData,
@@ -267,12 +273,19 @@ export class ProxyRouter {
 
         // For streaming success: return raw Response for caller to pipe
         // Caller is responsible for recording completion metrics after stream ends
+        // and invoking onStreamComplete to decrement connection counts
+        const onStreamComplete = () => {
+          metricsStore.updateConnections(modelPath, -1)
+          metricsStore.updateInstanceConnections(instance.id, -1)
+        }
+
         return {
           requestId,
           response, // WHATWG Response with readable body
           statusCode: response.status,
           instanceId: instance.id,
           startTime, // Caller uses this to compute duration after stream ends
+          onStreamComplete, // Caller invokes after stream ends
         }
       } else {
         // Handle non-streaming request
@@ -303,6 +316,10 @@ export class ProxyRouter {
         // Defer metrics recording
         setImmediate(() => metricsStore.recordRequest(modelPath, wasOk, durationMs))
 
+        // Decrement connections for non-streaming (streaming uses onStreamComplete)
+        metricsStore.updateConnections(modelPath, -1)
+        metricsStore.updateInstanceConnections(instance.id, -1)
+
         return {
           requestId,
           response: responseData,
@@ -326,11 +343,46 @@ export class ProxyRouter {
       // Defer metrics recording
       setImmediate(() => metricsStore.recordRequest(modelPath, false, durationMs))
 
-      throw err
-    } finally {
-      // Decrement active connections - keep synchronous for accuracy
+      // Decrement connections on error
       metricsStore.updateConnections(modelPath, -1)
+      metricsStore.updateInstanceConnections(instance.id, -1)
+
+      throw err
     }
+  }
+
+  /**
+   * Select an instance for audio requests with connection tracking.
+   * Returns the selected instance and a release callback to decrement connections.
+   */
+  selectInstanceForAudio(modelName: string): {
+    instance: ModelInstance
+    releaseConnection: () => void
+  } {
+    const instances = modelStore.getRunningByName(modelName)
+
+    if (instances.length === 0) {
+      const allInstances = modelStore.getAllByName(modelName)
+      if (allInstances.length === 0) {
+        throw new NotFoundError(
+          `Model ${modelName} not loaded. Available models: ${modelStore.getAllNames().join(', ')}`
+        )
+      }
+      throw new ServiceUnavailableError(`Model ${modelName} has no running instances`)
+    }
+
+    const instance = this.loadBalancer.selectInstance(instances)
+
+    // Track connections for both model path and instance
+    metricsStore.updateConnections(modelName, 1)
+    metricsStore.updateInstanceConnections(instance.id, 1)
+
+    const releaseConnection = () => {
+      metricsStore.updateConnections(modelName, -1)
+      metricsStore.updateInstanceConnections(instance.id, -1)
+    }
+
+    return { instance, releaseConnection }
   }
 
   /**

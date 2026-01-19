@@ -35,7 +35,8 @@ async function pipeStreamToReply(
   response: Response,
   modelPath: string,
   startTime: number,
-  logger: Logger
+  logger: Logger,
+  onStreamComplete?: () => void
 ): Promise<void> {
   const debugStreaming = config.debugStreaming
 
@@ -146,6 +147,9 @@ async function pipeStreamToReply(
     }
 
     setImmediate(() => metricsStore.recordRequest(modelPath, true, durationMs))
+
+    // Decrement connection counts after stream ends
+    onStreamComplete?.()
   }
 }
 
@@ -218,7 +222,8 @@ async function handleJsonProxyRequest(
         result.response as Response,
         model,
         result.startTime!,
-        fastify.log
+        fastify.log,
+        result.onStreamComplete
       )
 
       routingTimer({ model, endpoint })
@@ -621,8 +626,10 @@ async function handleAudioProxyRequest(
   request: FastifyRequest,
   reply: FastifyReply,
   endpoint: string,
-  _proxyRouter: ProxyRouter
+  proxyRouter: ProxyRouter
 ): Promise<unknown> {
+  let releaseConnection: (() => void) | undefined
+
   try {
     // Check if request is multipart
     const contentType = request.headers['content-type'] || ''
@@ -680,28 +687,9 @@ async function handleAudioProxyRequest(
 
     const model = formData.model
 
-    // Find running instance for the model
-    const instances = modelStore.getRunningByName(model)
-    if (instances.length === 0) {
-      const allInstances = modelStore.getAllByName(model)
-      if (allInstances.length === 0) {
-        return reply.code(404).send({
-          error: {
-            message: `Model ${model} not loaded. Available models: ${modelStore.getAllNames().join(', ')}`,
-            type: 'model_not_found',
-          },
-        })
-      }
-      return reply.code(503).send({
-        error: {
-          message: `Model ${model} has no running instances`,
-          type: 'service_unavailable',
-        },
-      })
-    }
-
-    // Select instance (using first running instance for simplicity)
-    const instance = instances[0]
+    // Select instance with connection tracking using load balancer
+    const { instance, releaseConnection: release } = proxyRouter.selectInstanceForAudio(model)
+    releaseConnection = release
 
     // Rebuild multipart request and forward to vLLM
     const boundary = `----FormBoundary${Date.now()}`
@@ -766,5 +754,8 @@ async function handleAudioProxyRequest(
         type: 'bad_gateway',
       },
     })
+  } finally {
+    // Decrement connection counts when request completes
+    releaseConnection?.()
   }
 }

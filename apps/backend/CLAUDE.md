@@ -97,6 +97,7 @@ See `apps/backend/.env.example` for a complete reference.
 | `OAUTH_CLIENT_ID`      | `sardeenz`                | OAuth2 client ID                                                                             |
 | `OAUTH_CLIENT_SECRET`  | (none)                    | OAuth2 client secret (required when AUTH_MODE=oauth)                                         |
 | `INFERENCE_API_KEY`    | (none)                    | API key for inference endpoints. When set, `/v1/*` and `/api/direct/*` require Bearer token. |
+| `DEV_VIRTUAL_GPU_COUNT` | 0                        | (Dev only) Create N virtual GPUs for testing multi-GPU features with single GPU hardware. |
 
 ## Testing Notes
 

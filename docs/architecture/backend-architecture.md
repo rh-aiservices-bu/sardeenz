@@ -176,6 +176,55 @@ SQLite-backed store for model configuration presets:
 - **CRUD operations**: Create, read, update, delete configurations
 - **Entry management**: Each configuration contains multiple model entries
 
+### ModelMover (`src/services/model-mover.ts`)
+
+Orchestrates moving models between GPUs using a blue-green deployment pattern:
+
+- **Zero-downtime moves**: Target instance spins up while source continues serving
+- **Graceful drain**: Waits for in-flight requests to complete before unloading source
+- **Automatic rollback**: On failure, restores source to routable state
+- **Concurrent limit**: Only 1 move operation can run system-wide at a time
+
+**Move Phases:**
+
+| Phase | Description |
+|-------|-------------|
+| VALIDATING | Pre-flight checks (GPU memory, tensor parallelism, source status) |
+| SPAWNING | Loading model on target GPU with progress tracking (0-100%) |
+| SWITCHING | Removing source from routing table (target now receives requests) |
+| DRAINING | Waiting for active connections on source to complete |
+| COMPLETING | Unloading source instance |
+| COMPLETED/FAILED | Terminal states |
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `moveModel(request)` | Initiates move operation, returns move ID for tracking |
+| `cancelMove(moveId, force)` | Cancels in-progress move (graceful or forced) |
+| `waitForDrain(instanceId, timeout)` | Polls for connection drain with configurable timeout |
+
+**Integration Points:**
+
+- **ModelManager**: Launches target instance, unloads source
+- **ModelStore**: Controls `routable` flag to exclude source from routing
+- **MetricsStore**: Tracks per-instance connection counts for drain monitoring
+- **GpuSelector**: Pre-flight memory availability check
+- **EventBus**: SSE progress events to frontend
+
+**Routing Control:**
+
+During a move, the source instance's `routable` flag is set to `false`. The `getRunningByName()` method filters out non-routable instances, ensuring new requests go only to the target while existing connections on the source complete naturally.
+
+### MoveStore (`src/stores/move-store.ts`)
+
+In-memory store for tracking move operations:
+
+- **Concurrent move limiting**: Singleton lock ensures max 1 move at a time
+- **Operation tracking**: CRUD operations for move records
+- **Lookup methods**: Find moves by source or target instance ID
+- **Auto-pruning**: Keeps only last 10 completed operations
+
 ## Model Loading Flow
 
 ```

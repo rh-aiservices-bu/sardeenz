@@ -157,6 +157,55 @@ export CUDA_VISIBLE_DEVICES=0
 npm run dev:server -w apps/backend
 ```
 
+## Virtual GPU Mode (Testing Multi-GPU Features)
+
+If you only have a single GPU but need to test multi-GPU features like the model move feature, you can enable virtual GPU mode. This creates multiple virtual GPUs that all map to your single physical GPU.
+
+### Usage
+
+```bash
+# Start backend with 2 virtual GPUs
+DEV_VIRTUAL_GPU_COUNT=2 npm run dev -w apps/backend
+
+# In another terminal
+npm run dev -w apps/frontend
+```
+
+### What It Does
+
+- **GPU Detection**: Returns N virtual GPUs based on your real GPU's specs
+- **Model Assignment**: Models are assigned to virtual GPU IDs (0, 1, etc.)
+- **Physical Mapping**: All models actually run on physical GPU 0 via `CUDA_VISIBLE_DEVICES=0`
+- **Memory Display**: Each virtual GPU shows the real GPU's memory stats
+
+### What You Can Test
+
+| Feature | Testable? |
+|---------|-----------|
+| Model move between GPUs | ✅ |
+| Move phase transitions | ✅ |
+| Connection draining | ✅ |
+| Cancel/rollback semantics | ✅ |
+| Multi-GPU UI display | ✅ |
+| Actual GPU memory isolation | ❌ |
+| Real tensor parallelism | ❌ |
+
+### Limitations
+
+- All virtual GPUs share the same physical GPU memory
+- Memory tracking per virtual GPU is approximate
+- Cannot test actual multi-GPU tensor parallelism
+- Loading too many models will exhaust real GPU memory
+
+### Example Workflow
+
+1. Start backend with `DEV_VIRTUAL_GPU_COUNT=2`
+2. Open UI - you'll see 2 GPUs listed
+3. Load a model on vGPU 0
+4. Use "Move to different GPU" to move it to vGPU 1
+5. Verify the move completes through all phases
+6. Model now appears on vGPU 1 in the UI
+
 ## Running Without GPU
 
 If you don't have a GPU but want to develop the frontend or test the API:

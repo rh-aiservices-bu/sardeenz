@@ -14,6 +14,7 @@ import { modelStore } from '../stores/model-store.js'
 import type { Logger } from '@sardeenz/utils'
 import { InternalError } from '../utils/errors.js'
 import { getPrimaryGpuInfo, getNvidiaSmiInfo } from '../utils/gpu-info.js'
+import { config } from '../config.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -220,7 +221,13 @@ export class MemoryMonitor {
         } else {
           // Single GPU model
           const gpuInfo = pidToGpuMemory.get(gpuPid)
-          const gpuIndex = gpuInfo?.gpuIndex ?? instance.gpuIds[0] ?? 0
+
+          // In virtual GPU mode, use model's assigned GPU ID (not nvidia-smi process info)
+          // because all processes appear on physical GPU 0
+          const gpuIndex =
+            config.virtualGpuCount > 0
+              ? instance.gpuIds[0] ?? 0
+              : gpuInfo?.gpuIndex ?? instance.gpuIds[0] ?? 0
           const memoryGb = (gpuInfo?.memoryMB ?? 0) / 1024
 
           if (!modelsByGpu.has(gpuIndex)) {
@@ -304,6 +311,7 @@ export class MemoryMonitor {
         gpus,
         kvcache: globalKvcache,
         total_system_free_gb: gpus.reduce((sum, g) => sum + g.free_gb, 0),
+        is_virtual_gpu_mode: config.virtualGpuCount > 0,
       }
     } catch (err) {
       this.logger.error({ err }, 'Failed to get multi-GPU memory usage')

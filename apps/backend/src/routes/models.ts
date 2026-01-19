@@ -21,6 +21,7 @@ import {
   type WakeModelRequestType,
 } from '@sardeenz/types'
 import { getModelManager } from '../services/model-manager.js'
+import { getModelMover } from '../services/model-mover.js'
 import { modelStore } from '../stores/model-store.js'
 import { operationStore } from '../stores/operation-store.js'
 import { NotFoundError, AppError } from '../utils/errors.js'
@@ -61,9 +62,11 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       gpu_ids: instance.gpuIds,
       tensor_parallel_size: instance.tensorParallelSize,
       kvcached_enabled: instance.kvcachedEnabled,
+      memory_baseline_by_gpu: instance.memoryBaselineByGpu,
       sleep_mode_enabled: instance.sleepModeEnabled,
       sleep_level: instance.sleepLevel,
       slept_at: instance.sleptAt?.toISOString(),
+      routable: instance.routable,
     }
   }
 
@@ -698,6 +701,175 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         }
         throw err
       }
+    }
+  )
+
+  /**
+   * POST /api/models/instances/:instance_id/move - Move model to different GPU(s)
+   */
+  fastify.post<{
+    Params: { instance_id: string }
+    Body: { target_gpu_ids: number[]; drain_timeout_ms?: number }
+  }>(
+    '/api/models/instances/:instance_id/move',
+    {
+      schema: {
+        tags: ['models'],
+        summary: 'Move model instance to different GPU(s)',
+        description:
+          'Initiates a blue-green move operation to relocate a model to different GPU(s). Returns immediately with a move ID for SSE tracking.',
+        params: Type.Object({ instance_id: Type.String({ format: 'uuid' }) }),
+        body: Type.Object({
+          target_gpu_ids: Type.Array(Type.Number(), { minItems: 1 }),
+          drain_timeout_ms: Type.Optional(Type.Number({ minimum: 1000, default: 60000 })),
+        }),
+        response: {
+          202: Type.Object({
+            move_id: Type.String(),
+            source_instance_id: Type.String(),
+            target_gpu_ids: Type.Array(Type.Number()),
+          }),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin'),
+    },
+    async (request, reply) => {
+      const { instance_id } = request.params
+      const { target_gpu_ids, drain_timeout_ms } = request.body
+      const modelMover = getModelMover(fastify.log)
+
+      const result = await modelMover.moveModel({
+        instanceId: instance_id,
+        targetGpuIds: target_gpu_ids,
+        drainTimeoutMs: drain_timeout_ms,
+      })
+
+      return reply.code(202).send({
+        move_id: result.moveId,
+        source_instance_id: result.sourceInstanceId,
+        target_gpu_ids: result.targetGpuIds,
+      })
+    }
+  )
+
+  /**
+   * GET /api/models/moves/:move_id/events - SSE stream for move progress
+   */
+  fastify.get<{ Params: { move_id: string } }>(
+    '/api/models/moves/:move_id/events',
+    {
+      schema: {
+        tags: ['models', 'events'],
+        summary: 'Subscribe to move operation progress events (SSE)',
+        params: Type.Object({ move_id: Type.String({ format: 'uuid' }) }),
+        response: {
+          404: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin-readonly'),
+    },
+    async (request, reply) => {
+      const { move_id } = request.params
+      const modelMover = getModelMover(fastify.log)
+
+      const op = modelMover.getMove(move_id)
+      if (!op) {
+        throw new NotFoundError(`Move operation ${move_id} not found`)
+      }
+
+      // Set up SSE headers
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      })
+
+      const connectionId = randomUUID()
+
+      // Helper to send SSE event
+      const sendEvent = (event: {
+        id: string
+        phase: string
+        message: string
+        progress?: number
+        error?: string
+      }): void => {
+        try {
+          const data = JSON.stringify(event)
+          reply.raw.write(`id: ${event.id}\n`)
+          reply.raw.write(`event: move_progress\n`)
+          reply.raw.write(`data: ${data}\n\n`)
+        } catch {
+          // Connection closed
+        }
+      }
+
+      const connection = { id: connectionId, send: sendEvent }
+      modelMover.subscribeMoveEvents(move_id, connection)
+
+      // Send current status immediately
+      sendEvent({
+        id: randomUUID(),
+        phase: op.phase,
+        message: `Move operation in phase: ${op.phase}`,
+        error: op.error,
+      })
+
+      // Heartbeat
+      const heartbeat = setInterval(() => {
+        try {
+          reply.raw.write(': heartbeat\n\n')
+        } catch {
+          // Connection closed
+        }
+      }, 15000)
+
+      // Cleanup on close
+      request.raw.on('close', () => {
+        clearInterval(heartbeat)
+        modelMover.unsubscribeMoveEvents(move_id, connection)
+      })
+    }
+  )
+
+  /**
+   * DELETE /api/models/moves/:move_id - Cancel a move operation
+   */
+  fastify.delete<{
+    Params: { move_id: string }
+    Querystring: { force?: string }
+  }>(
+    '/api/models/moves/:move_id',
+    {
+      schema: {
+        tags: ['models'],
+        summary: 'Cancel a move operation',
+        description:
+          'Cancels an in-progress move. Without force, reverts to source. With force=true, completes the move immediately (may drop connections).',
+        params: Type.Object({ move_id: Type.String({ format: 'uuid' }) }),
+        querystring: Type.Object({
+          force: Type.Optional(Type.String()),
+        }),
+        response: {
+          204: Type.Null(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin'),
+    },
+    async (request, reply) => {
+      const { move_id } = request.params
+      const force = request.query.force === 'true'
+      const modelMover = getModelMover(fastify.log)
+
+      await modelMover.cancelMove(move_id, force)
+      return reply.code(204).send()
     }
   )
 
