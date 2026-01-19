@@ -20,6 +20,7 @@ export const ModelConfigurationEntrySchema = Type.Object({
   gpu_ids: Type.Optional(Type.Array(Type.Integer())),
   tensor_parallel_size: Type.Integer(),
   load_order: Type.Integer(),
+  sleep_mode_enabled: Type.Optional(Type.Boolean()),
 })
 
 // Configuration schema for API responses

@@ -36,7 +36,15 @@ oc new-project sardeenz
 kubectl create namespace sardeenz
 ```
 
-### 3. Configure Secrets
+### 3. Configure Deployment, ConfigMap and Secrets
+
+Edit the file `deployment.yaml` and adjust the values as you need, like the number of GPUs you want to allocate to Sardeenz.
+
+Edit the file `configmap.yaml` and adjust the values as you need.
+
+Edit the file `secret.yaml` and adjust the values as you need. They will be applied at step 4.
+
+As an example, the following commands show how to manually create different secrets for different configurations. The created Secrets can help you configure properly `secrets.yaml`.
 
 Create the application secret based on your authentication mode. See [Authentication Modes](#authentication-modes) for details.
 
@@ -44,7 +52,7 @@ Create the application secret based on your authentication mode. See [Authentica
 
 ```bash
 # HuggingFace token (optional, only needed for gated models when downloading from HuggingFace)
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=hf-token=$HF_TOKEN \
   -n sardeenz
 ```
@@ -52,7 +60,7 @@ oc create secret generic sardeenz-secrets \
 **For simple authentication (AUTH_MODE=simple):**
 
 ```bash
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=jwt-secret=$(openssl rand -base64 32) \
   --from-literal=admin-password=YOUR_SECURE_PASSWORD \
   --from-literal=hf-token=$HF_TOKEN \
@@ -62,7 +70,7 @@ oc create secret generic sardeenz-secrets \
 **For OAuth 2.0 (AUTH_MODE=oauth):**
 
 ```bash
-oc create secret generic sardeenz-secrets \
+oc create secret generic sardeenz-secrets-sample \
   --from-literal=client-id=$OAUTH_CLIENT_ID \
   --from-literal=client-secret=$OAUTH_CLIENT_SECRET \
   --from-literal=issuer-url=$OAUTH_ISSUER_URL \
@@ -95,16 +103,35 @@ kubectl apply -k deployment/
 
 ```bash
 # Apply in this order
-oc apply -f deployment/pvc.yaml            # Optional: Only if downloading models from HuggingFace
-oc apply -f deployment/pvc-app-data.yaml   # Required: Application data (SQLite, cache)
+oc apply -f deployment/serviceaccount.yaml  # Required: ServiceAccount for RBAC
+oc apply -f deployment/rbac.yaml            # Required: RBAC roles and permissions
+oc apply -f deployment/pvc.yaml             # Optional: Only if downloading models from HuggingFace
+oc apply -f deployment/pvc-app-data.yaml    # Required: Application data (SQLite, cache)
 oc apply -f deployment/configmap.yaml
-oc apply -f deployment/secret.yaml         # Skip if using `oc create secret`
-oc apply -f deployment/deployment.yaml     # Must be adapted based on storage choices (see Storage section)
+oc apply -f deployment/secret.yaml          # Skip if using `oc create secret`
+oc apply -f deployment/deployment.yaml      # Must be adapted based on storage choices (see Storage section)
 oc apply -f deployment/service.yaml
 oc apply -f deployment/route.yaml
 ```
 
-### 6. Verify Deployment
+### 6. Configure RBAC (OAuth Mode Only)
+
+If using OAuth authentication (`AUTH_MODE=oauth`), you need to create RoleBindings to grant users access to sardeenz. The deployment manifests create the necessary Roles but not the user/group bindings.
+
+```bash
+# Give admin access to specific users
+oc adm policy add-role-to-user sardeenz-admin alice@company.com -n sardeenz
+
+# Give read-only access to all authenticated users
+oc adm policy add-role-to-group sardeenz-admin-readonly system:authenticated -n sardeenz
+
+# Give admin access to a group
+oc adm policy add-role-to-group sardeenz-admin platform-admins -n sardeenz
+```
+
+See [RBAC Setup Guide](../docs/rbac-setup.md) for complete configuration options.
+
+### 7. Verify Deployment
 
 ```bash
 # Check deployment status
@@ -124,11 +151,23 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 
 ### Core Resources
 
+- **`serviceaccount.yaml`** - ServiceAccount for the sardeenz pod
+  - Used for RBAC authorization checks via LocalSubjectAccessReview
+  - Required for OAuth authentication mode
+
+- **`rbac.yaml`** - RBAC roles and permissions
+  - `sardeenz-admin` Role: Marker for full admin access
+  - `sardeenz-admin-readonly` Role: Marker for read-only access
+  - `sardeenz-auth-reviewer` Role: Allows ServiceAccount to check user permissions
+  - `sardeenz-auth-reviewer` RoleBinding: Binds ServiceAccount to auth-reviewer role
+  - See [RBAC Setup Guide](../docs/rbac-setup.md) for creating user/group bindings
+
 - **`deployment.yaml`** - Main application deployment with GPU resource requests
   - Configured for single replica (GPU constraint)
   - GPU node selector and tolerations
   - Liveness, readiness, and startup probes
   - Environment variables from ConfigMap and Secret
+  - Uses `sardeenz` ServiceAccount for RBAC
 
 - **`service.yaml`** - ClusterIP service exposing backend (3000) and frontend (80)
 
@@ -152,36 +191,36 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 
 #### ConfigMap Variables (configmap.yaml)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `production` | Node.js environment |
-| `PORT` | `3000` | Backend API port |
-| `HOST` | `0.0.0.0` | Backend bind address |
-| `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
-| `AUTH_MODE` | `none` | Authentication mode: `none`, `simple`, `oauth` |
-| `ADMIN_USERNAME` | `admin` | Username for simple auth mode |
-| `JWT_EXPIRATION_HOURS` | `8` | JWT token lifetime in hours |
-| `API_BASE_URL` | - | Base URL for OAuth callbacks (your route URL) |
-| `ENABLE_KVCACHED` | `true` | Enable kvcached GPU memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patch vLLM for kvcached |
-| `VLLM_BASE_PORT` | `12346` | Starting port for vLLM instances |
-| `VLLM_MAX_INSTANCES` | `10` | Maximum concurrent model instances |
-| `VLLM_STARTUP_TIMEOUT` | `1800000` | Model startup timeout in ms (30 min default) |
-| `LOCAL_MODELS_PATH` | - | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
-| `DEBUG_STREAMING` | `false` | Enable SSE streaming debug logs |
+| Variable               | Default      | Description                                                                                                                                                    |
+| ---------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`             | `production` | Node.js environment                                                                                                                                            |
+| `PORT`                 | `3000`       | Backend API port                                                                                                                                               |
+| `HOST`                 | `0.0.0.0`    | Backend bind address                                                                                                                                           |
+| `LOG_LEVEL`            | `info`       | Logging level (debug, info, warn, error)                                                                                                                       |
+| `AUTH_MODE`            | `none`       | Authentication mode: `none`, `simple`, `oauth`                                                                                                                 |
+| `ADMIN_USERNAME`       | `admin`      | Username for simple auth mode                                                                                                                                  |
+| `JWT_EXPIRATION_HOURS` | `8`          | JWT token lifetime in hours                                                                                                                                    |
+| `API_BASE_URL`         | -            | Base URL for OAuth callbacks (your route URL)                                                                                                                  |
+| `ENABLE_KVCACHED`      | `true`       | Enable kvcached GPU memory sharing                                                                                                                             |
+| `KVCACHED_AUTOPATCH`   | `1`          | Auto-patch vLLM for kvcached                                                                                                                                   |
+| `VLLM_BASE_PORT`       | `12346`      | Starting port for vLLM instances                                                                                                                               |
+| `VLLM_MAX_INSTANCES`   | `10`         | Maximum concurrent model instances                                                                                                                             |
+| `VLLM_STARTUP_TIMEOUT` | `1800000`    | Model startup timeout in ms (30 min default)                                                                                                                   |
+| `LOCAL_MODELS_PATH`    | -            | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
+| `DEBUG_STREAMING`      | `false`      | Enable SSE streaming debug logs                                                                                                                                |
 
 #### Secret Variables (secret.yaml)
 
-| Variable | Description |
-|----------|-------------|
-| `jwt-secret` | Secret for JWT token signing (required if AUTH_MODE ≠ none) |
-| `admin-password` | Password for simple auth mode |
-| `client-id` | OAuth client ID |
-| `client-secret` | OAuth client secret |
-| `issuer-url` | OAuth provider URL |
-| `k8s-api-url` | Kubernetes API URL for OAuth user info |
+| Variable            | Description                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| `jwt-secret`        | Secret for JWT token signing (required if AUTH_MODE ≠ none)        |
+| `admin-password`    | Password for simple auth mode                                      |
+| `client-id`         | OAuth client ID                                                    |
+| `client-secret`     | OAuth client secret                                                |
+| `issuer-url`        | OAuth provider URL                                                 |
+| `k8s-api-url`       | Kubernetes API URL for OAuth user info                             |
 | `inference-api-key` | API key for `/v1/*` endpoints (optional, separate from admin auth) |
-| `hf-token` | HuggingFace token for gated models |
+| `hf-token`          | HuggingFace token for gated models                                 |
 
 ### Resource Limits
 
@@ -190,16 +229,17 @@ Configured in `deployment.yaml`:
 ```yaml
 resources:
   requests:
-    cpu: "2"
-    memory: "8Gi"
+    cpu: '2'
+    memory: '8Gi'
     nvidia.com/gpu: 1
   limits:
-    cpu: "8"
-    memory: "32Gi"
+    cpu: '8'
+    memory: '32Gi'
     nvidia.com/gpu: 1
 ```
 
 **Adjust based on your workload:**
+
 - Small models (7B): 2 CPU, 8Gi RAM
 - Medium models (13B): 4 CPU, 16Gi RAM
 - Large models (70B): 8 CPU, 32Gi RAM
@@ -210,7 +250,7 @@ The deployment uses node selectors to target GPU nodes:
 
 ```yaml
 nodeSelector:
-  nvidia.com/gpu.present: "true"
+  nvidia.com/gpu.present: 'true'
 
 tolerations:
   - key: nvidia.com/gpu
@@ -228,7 +268,7 @@ oc get nodes -l nvidia.com/gpu.present=true
 
 ```yaml
 nodeSelector:
-  feature.node.kubernetes.io/pci-10de.present: "true"  # NVIDIA vendor ID
+  feature.node.kubernetes.io/pci-10de.present: 'true' # NVIDIA vendor ID
 ```
 
 ## Health Checks
@@ -250,7 +290,7 @@ startupProbe:
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 10
-  failureThreshold: 12  # 2 minutes to start
+  failureThreshold: 12 # 2 minutes to start
 
 livenessProbe:
   httpGet:
@@ -299,6 +339,7 @@ Use this if you download models from HuggingFace at runtime.
 - **Mount Path:** `/opt/app-root/models` (sets `HF_HOME`)
 
 **Model size reference:**
+
 - 7B models: ~14GB
 - 13B models: ~26GB
 - 70B models: ~140GB
@@ -349,7 +390,7 @@ Remove the HuggingFace cache volume and add your local models mount:
 volumes:
   - name: local-models
     persistentVolumeClaim:
-      claimName: your-models-pvc  # Or use hostPath, NFS, etc.
+      claimName: your-models-pvc # Or use hostPath, NFS, etc.
   - name: app-data
     persistentVolumeClaim:
       claimName: sardeenz-app-data
@@ -400,7 +441,7 @@ To use a specific storage class for any PVC:
 
 ```yaml
 spec:
-  storageClassName: fast-ssd  # or 'gp3', 'ocs-storagecluster-ceph-rbd', etc.
+  storageClassName: fast-ssd # or 'gp3', 'ocs-storagecluster-ceph-rbd', etc.
 ```
 
 ## Networking
@@ -413,6 +454,7 @@ spec:
 ### OpenShift Route
 
 The route exposes the frontend (port 80) with:
+
 - Edge TLS termination (automatic certificate)
 - HTTP to HTTPS redirect
 - 5-minute timeout for long inference requests
@@ -424,6 +466,7 @@ oc get route sardeenz -o jsonpath='{.spec.host}'
 ```
 
 **Access endpoints:**
+
 - Frontend: `https://<route-host>/`
 - Controller API: `https://<route-host>/api/models`
 - Inference API: `https://<route-host>/v1/chat/completions`
@@ -477,6 +520,7 @@ Default mode. No authentication required for admin dashboard.
 Username/password authentication for admin dashboard.
 
 **Required configuration:**
+
 1. Set `AUTH_MODE: "simple"` in ConfigMap
 2. Set `ADMIN_USERNAME` in ConfigMap (default: `admin`)
 3. Create secret with `admin-password` and `jwt-secret`
@@ -493,6 +537,7 @@ oc create secret generic sardeenz-secrets \
 Full OAuth 2.0 integration with OpenShift or external providers.
 
 **Required configuration:**
+
 1. Set `AUTH_MODE: "oauth"` in ConfigMap
 2. Set `API_BASE_URL` in ConfigMap to your route URL
 3. Create OAuth application in your identity provider
@@ -510,6 +555,7 @@ oc create secret generic sardeenz-secrets \
 ```
 
 **The application supports:**
+
 - OAuth 2.0 Authorization Code flow
 - Manual OAuth configuration (for OpenShift OAuth and other non-OIDC providers)
 - JWT token validation
@@ -562,6 +608,7 @@ curl https://<route-host>/metrics
 ```
 
 **Key metrics:**
+
 - `vllm_model_load_duration_seconds` - Model loading time
 - `vllm_routing_latency_seconds` - Proxy routing overhead
 - `vllm_active_models` - Currently loaded models
@@ -601,6 +648,7 @@ oc describe pod -l app=sardeenz
 ```
 
 **Common issues:**
+
 - No GPU nodes available → Scale GPU nodes or adjust node selector
 - GPU already allocated → Check for other GPU workloads
 - Image pull errors → Verify image name and registry credentials
@@ -614,6 +662,7 @@ oc logs -f deployment/sardeenz
 ```
 
 **Common causes:**
+
 - vLLM taking too long to start → Increase `startupProbe.failureThreshold`
 - Out of GPU memory → Reduce model size or adjust `VLLM_MAX_INSTANCES`
 - Port conflicts → Check `VLLM_BASE_PORT` configuration
@@ -627,6 +676,7 @@ oc logs deployment/sardeenz | grep -i error
 ```
 
 **Common causes:**
+
 - Insufficient GPU memory → Unload other models or use smaller models
 - Model not cached → First download takes longer; ensure HuggingFace cache PVC is configured if downloading models
 - kvcached not enabled → Verify `ENABLE_KVCACHED=true` in ConfigMap
@@ -640,6 +690,7 @@ oc adm top pod -l app=sardeenz
 ```
 
 **Optimize:**
+
 - Increase CPU/memory limits in `deployment.yaml`
 - Enable kvcached for better GPU memory sharing
 - Use faster storage class for PVC
@@ -661,6 +712,7 @@ oc rollout status deployment/sardeenz
 ### Recreate Strategy
 
 The deployment uses `Recreate` strategy (not `RollingUpdate`) because:
+
 - GPU resources cannot be shared between old and new pods
 - Ensures clean shutdown of vLLM processes
 - Prevents port conflicts on GPU device

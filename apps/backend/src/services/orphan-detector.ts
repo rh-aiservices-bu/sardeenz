@@ -142,7 +142,10 @@ export class OrphanDetector {
       }
     }
 
-    this.logger.info({ killedCount: killed.length, failedCount: failed.length }, 'Killed orphan processes')
+    this.logger.info(
+      { killedCount: killed.length, failedCount: failed.length },
+      'Killed orphan processes'
+    )
 
     return { killed, failed }
   }

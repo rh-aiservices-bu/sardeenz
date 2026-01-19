@@ -25,6 +25,9 @@ export interface Config {
   oauthClientSecret: string
   oauthIssuerUrl: string
   k8sApiUrl: string
+  namespace: string
+  serviceAccountToken: string
+  serviceAccountTokenPath: string
 
   // Inference API key (optional, for protecting inference endpoints separately)
   inferenceApiKey: string
@@ -116,6 +119,12 @@ export const config: Config = {
   oauthClientSecret: getEnv('OAUTH_CLIENT_SECRET', ''),
   oauthIssuerUrl: getEnv('OAUTH_ISSUER_URL', ''),
   k8sApiUrl: getEnv('K8S_API_URL', ''),
+  namespace: getEnv('NAMESPACE', 'sardeenz'),
+  serviceAccountToken: getEnv('SERVICE_ACCOUNT_TOKEN', ''),
+  serviceAccountTokenPath: getEnv(
+    'SERVICE_ACCOUNT_TOKEN_PATH',
+    '/var/run/secrets/kubernetes.io/serviceaccount/token'
+  ),
 
   // Inference API key (optional, for protecting inference endpoints separately)
   inferenceApiKey: getEnv('INFERENCE_API_KEY', ''),

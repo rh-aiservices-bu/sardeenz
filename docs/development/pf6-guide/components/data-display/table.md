@@ -10,9 +10,8 @@ Essential rules for PatternFly table components, including usage, sorting, selec
 
 ```jsx
 // ✅ Correct table structure
-import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
-
-<Table>
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
+;<Table>
   <Thead>
     <Tr>
       <Th>Name</Th>
@@ -27,7 +26,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
       </Tr>
     ))}
   </Tbody>
-</Table>;
+</Table>
 ```
 
 ## Sorting Rules
@@ -38,9 +37,9 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 
 ```jsx
 // ✅ Required sorting pattern
-const [sortBy, setSortBy] = useState({});
+const [sortBy, setSortBy] = useState({})
 
-<Th sort={{ sortBy, onSort: handleSort, columnIndex: 0 }}>Name</Th>;
+;<Th sort={{ sortBy, onSort: handleSort, columnIndex: 0 }}>Name</Th>
 ```
 
 ## Selection Rules
@@ -51,16 +50,16 @@ const [sortBy, setSortBy] = useState({});
 
 ```jsx
 // ✅ Required selection pattern
-const [selectedItems, setSelectedItems] = useState(new Set());
+const [selectedItems, setSelectedItems] = useState(new Set())
 
-const isAllSelected = selectedItems.size === data.length && data.length > 0;
-const isPartiallySelected = selectedItems.size > 0 && selectedItems.size < data.length;
+const isAllSelected = selectedItems.size === data.length && data.length > 0
+const isPartiallySelected = selectedItems.size > 0 && selectedItems.size < data.length
 
-<Checkbox
+;<Checkbox
   isChecked={isAllSelected ? true : isPartiallySelected ? null : false}
   onChange={handleSelectAll}
   aria-label="Select all rows"
-/>;
+/>
 ```
 
 ## Column and Header Management
@@ -75,10 +74,9 @@ Use the `width` modifier on the `<Th>` component to specify column widths as a p
 - ❌ **Avoid fixed pixel widths**: Can break responsiveness.
 
 ```jsx
-import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
-import { width } from '@patternfly/react-table';
-
-<Table>
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
+import { width } from '@patternfly/react-table'
+;<Table>
   <Thead>
     <Tr>
       <Th width={40}>User ID</Th>
@@ -87,7 +85,7 @@ import { width } from '@patternfly/react-table';
     </Tr>
   </Thead>
   <Tbody>{/* ... */}</Tbody>
-</Table>;
+</Table>
 ```
 
 ### Controlling Text and Column Width
@@ -116,9 +114,8 @@ For tables that scroll horizontally or vertically, you can make the header, spec
 
 ```jsx
 // ✅ Sticky header, first column, and action column
-import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
-
-<Table isStickyHeader>
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
+;<Table isStickyHeader>
   <Thead>
     <Tr>
       <Th isSticky>ID</Th>
@@ -139,7 +136,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
       </Tr>
     ))}
   </Tbody>
-</Table>;
+</Table>
 ```
 
 ## Performance Rules
@@ -152,10 +149,10 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 
 ```jsx
 // ✅ Required for large datasets
-import { Pagination } from '@patternfly/react-core';
+import { Pagination } from '@patternfly/react-core'
 
 // For better UX, use pagination
-<Pagination itemCount={data.length} perPage={20} page={page} />;
+;<Pagination itemCount={data.length} perPage={20} page={page} />
 ```
 
 ## Essential Do's and Don'ts

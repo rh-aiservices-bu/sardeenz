@@ -53,37 +53,34 @@ async function authPlugin(fastify: FastifyInstance) {
   })
 
   // Authentication decorator - enforces authentication
-  fastify.decorate(
-    'authenticate',
-    async function (request: FastifyRequest, reply: FastifyReply) {
-      // Skip authentication if auth mode is 'none'
-      if (config.authMode === 'none') {
-        return
-      }
+  fastify.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
+    // Skip authentication if auth mode is 'none'
+    if (config.authMode === 'none') {
+      return
+    }
 
-      // Check for token in query params (fallback for EventSource/SSE which can't send headers)
-      const queryToken = (request.query as { token?: string })?.token
-      if (queryToken) {
-        try {
-          request.user = fastify.jwt.verify<JWTPayload>(queryToken)
-          return
-        } catch {
-          // Fall through to standard error handling
-        }
-      }
-
+    // Check for token in query params (fallback for EventSource/SSE which can't send headers)
+    const queryToken = (request.query as { token?: string })?.token
+    if (queryToken) {
       try {
-        await request.jwtVerify()
+        request.user = fastify.jwt.verify<JWTPayload>(queryToken)
+        return
       } catch {
-        reply.code(401).send({
-          error: {
-            message: 'Unauthorized',
-            type: 'authentication_error',
-          },
-        })
+        // Fall through to standard error handling
       }
     }
-  )
+
+    try {
+      await request.jwtVerify()
+    } catch {
+      reply.code(401).send({
+        error: {
+          message: 'Unauthorized',
+          type: 'authentication_error',
+        },
+      })
+    }
+  })
 
   // Optional authentication - doesn't fail if no token, but sets user if present
   fastify.decorate(
@@ -115,14 +112,13 @@ async function authPlugin(fastify: FastifyInstance) {
       const userRoles = request.user?.roles || []
 
       // Check if user has no recognized roles at all
-      const hasNoRoles =
-        !userRoles.includes('admin') && !userRoles.includes('admin-readonly')
+      const hasNoRoles = !userRoles.includes('admin') && !userRoles.includes('admin-readonly')
 
       if (hasNoRoles) {
         reply.code(403).send({
           error: {
             message:
-              'Access denied: You are not a member of any authorized groups. Please contact your administrator to be added to sardeenz-admins or sardeenz-admins-readonly.',
+              'Access denied: You are not bound to any sardeenz roles. Contact your administrator to create a RoleBinding.',
             type: 'authorization_error',
             code: 'no_roles',
           },

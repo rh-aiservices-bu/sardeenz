@@ -22,6 +22,7 @@
 ### Decision: Use Fastify with TypeScript strict mode and OpenAPI integration
 
 **Rationale:**
+
 - Fastify is high-performance (67k req/sec benchmarks), meets <50ms routing overhead requirement
 - Native TypeScript support with `fastify` npm package
 - OpenAPI integration via `@fastify/swagger` and `@fastify/swagger-ui`
@@ -64,30 +65,35 @@ await fastify.register(import('@fastify/swagger-ui'), {
 })
 
 // Type-safe route definition
-fastify.post('/api/models/load', {
-  schema: {
-    body: Type.Object({
-      model_path: Type.String(),
-      max_tokens: Type.Optional(Type.Integer({ default: 4096 })),
-      gpu_memory_utilization: Type.Optional(Type.Number({ default: 0.9 })),
-    }),
-    response: {
-      200: Type.Object({
-        status: Type.Literal('success'),
-        model: Type.String(),
-        port: Type.Integer(),
-        loaded_at: Type.String(),
+fastify.post(
+  '/api/models/load',
+  {
+    schema: {
+      body: Type.Object({
+        model_path: Type.String(),
+        max_tokens: Type.Optional(Type.Integer({ default: 4096 })),
+        gpu_memory_utilization: Type.Optional(Type.Number({ default: 0.9 })),
       }),
+      response: {
+        200: Type.Object({
+          status: Type.Literal('success'),
+          model: Type.String(),
+          port: Type.Integer(),
+          loaded_at: Type.String(),
+        }),
+      },
     },
   },
-}, async (request, reply) => {
-  // TypeScript infers request.body types automatically
-  const { model_path, max_tokens, gpu_memory_utilization } = request.body
-  // Implementation...
-})
+  async (request, reply) => {
+    // TypeScript infers request.body types automatically
+    const { model_path, max_tokens, gpu_memory_utilization } = request.body
+    // Implementation...
+  }
+)
 ```
 
 **Key Libraries:**
+
 - `fastify`: ^5.1.0
 - `@fastify/swagger`: ^9.3.0
 - `@fastify/swagger-ui`: ^5.0.1
@@ -95,6 +101,7 @@ fastify.post('/api/models/load', {
 - `@sinclair/typebox`: ^0.34.0
 
 **Best Practices:**
+
 1. Use TypeBox for schema definitions (better TypeScript inference than JSON Schema)
 2. Enable strict mode in tsconfig.json
 3. Use Fastify plugins for separation of concerns
@@ -102,6 +109,7 @@ fastify.post('/api/models/load', {
 5. Error handling via `@fastify/error`
 
 **Alternatives Considered:**
+
 - Express: Too slow for <50ms routing requirement
 - NestJS: Over-engineered for PoC, unnecessary abstraction layers
 - tRPC: Excellent type safety but ties frontend to backend implementation
@@ -113,6 +121,7 @@ fastify.post('/api/models/load', {
 ### Decision: Direct subprocess spawning with Node.js child_process
 
 **Rationale:**
+
 - kvcached Controller requires restart for model changes (unacceptable downtime)
 - Direct vLLM subprocess management provides full lifecycle control
 - Node.js `child_process` is sufficient, no need for Python wrapper
@@ -151,22 +160,26 @@ export class ModelManager extends EventEmitter {
     const port = this.nextPort++
 
     // Launch vLLM with kvcached enabled
-    const process = spawn('vllm', [
-      'serve',
-      modelPath,
-      '--disable-log-requests',
-      '--no-enable-prefix-caching',  // Required for kvcached
-      `--port=${port}`,
-      `--gpu-memory-utilization=${gpuMemoryUtilization}`,
-      `--max-model-len=${maxTokens}`,
-    ], {
-      env: {
-        ...process.env,
-        ENABLE_KVCACHED: 'true',
-        KVCACHED_AUTOPATCH: '1',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    const process = spawn(
+      'vllm',
+      [
+        'serve',
+        modelPath,
+        '--disable-log-requests',
+        '--no-enable-prefix-caching', // Required for kvcached
+        `--port=${port}`,
+        `--gpu-memory-utilization=${gpuMemoryUtilization}`,
+        `--max-model-len=${maxTokens}`,
+      ],
+      {
+        env: {
+          ...process.env,
+          ENABLE_KVCACHED: 'true',
+          KVCACHED_AUTOPATCH: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    )
 
     // Track instance
     const instance: ModelInstance = {
@@ -232,18 +245,14 @@ export class ModelManager extends EventEmitter {
       } catch {
         // Continue polling
       }
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
     throw new Error(`Model failed to start within ${timeout}ms`)
   }
 
   private getIpcSegmentName(modelPath: string): string {
     // Convert "meta-llama/Llama-3.2-1B" -> "VLLM_META_LLAMA_LLAMA_3_2_1B"
-    const name = modelPath
-      .replace(/\//g, '_')
-      .replace(/-/g, '_')
-      .replace(/\./g, '_')
-      .toUpperCase()
+    const name = modelPath.replace(/\//g, '_').replace(/-/g, '_').replace(/\./g, '_').toUpperCase()
     return `VLLM_${name}`
   }
 
@@ -258,14 +267,17 @@ export class ModelManager extends EventEmitter {
 ```
 
 **Key Environment Variables:**
+
 - `ENABLE_KVCACHED=true`: Enable kvcached memory sharing
 - `KVCACHED_AUTOPATCH=1`: Auto-patch vLLM for kvcached compatibility
 
 **Critical vLLM Flags:**
+
 - `--no-enable-prefix-caching`: Required for kvcached (incompatible otherwise)
 - `--disable-log-requests`: Reduce noise in logs
 
 **Alternatives Considered:**
+
 - kvcached Controller: Rejected due to restart requirement for model changes
 - Python wrapper scripts: Unnecessary complexity, Node.js subprocess management is sufficient
 - Docker containers per model: Requires Docker-in-Docker, adds latency and complexity
@@ -277,6 +289,7 @@ export class ModelManager extends EventEmitter {
 ### Decision: Use manual OAuth 2.0 flow for OpenShift compatibility
 
 **Rationale:**
+
 - Enterprise-grade authentication via OAuth 2.0 (constitution requirement)
 - Supports role-based access control via JWT claims
 - Compatible with Keycloak, Auth0, Okta, Azure AD
@@ -341,20 +354,29 @@ export default fp(async (fastify) => {
 })
 
 // Usage in routes:
-fastify.post('/api/models/load', {
-  onRequest: fastify.requireRole('admin'),
-}, async (request, reply) => {
-  // Only accessible to 'admin' role
-})
+fastify.post(
+  '/api/models/load',
+  {
+    onRequest: fastify.requireRole('admin'),
+  },
+  async (request, reply) => {
+    // Only accessible to 'admin' role
+  }
+)
 
-fastify.get('/api/models', {
-  onRequest: fastify.requireRole('admin-readonly'),
-}, async (request, reply) => {
-  // Accessible to both 'admin' and 'admin-readonly'
-})
+fastify.get(
+  '/api/models',
+  {
+    onRequest: fastify.requireRole('admin-readonly'),
+  },
+  async (request, reply) => {
+    // Accessible to both 'admin' and 'admin-readonly'
+  }
+)
 ```
 
 **Required Environment Variables:**
+
 - `OAUTH_CLIENT_ID`: OAuth client ID
 - `OAUTH_CLIENT_SECRET`: OAuth client secret
 - `OAUTH_ISSUER_URL`: OAuth issuer URL (e.g., OpenShift OAuth server)
@@ -363,10 +385,12 @@ fastify.get('/api/models', {
 - `API_BASE_URL`: Base URL for callback redirect
 
 **RBAC Roles (from constitution):**
+
 - `admin`: Full access (load/unload models, configure settings)
 - `admin-readonly`: Read-only access (view models, metrics, logs)
 
 **JWT Claims Expected:**
+
 ```json
 {
   "sub": "user-uuid",
@@ -379,10 +403,12 @@ fastify.get('/api/models', {
 ```
 
 **Key Libraries:**
+
 - `@fastify/oauth2`: ^8.1.0
 - `@fastify/jwt`: ^9.0.1
 
 **Alternatives Considered:**
+
 - API Key-based auth: Too simple, no SSO integration, manual key management
 - JWT with simple login: No OAuth provider integration, manual user management
 - Defer to Phase 2: Constitution requires security by design from start
@@ -394,6 +420,7 @@ fastify.get('/api/models', {
 ### Decision: Use Fastify reply.hijack() for efficient streaming
 
 **Rationale:**
+
 - vLLM supports streaming completions via Server-Sent Events (SSE)
 - Fastify's `reply.hijack()` allows low-level HTTP streaming
 - Minimal latency overhead (direct TCP passthrough)
@@ -432,14 +459,11 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       })
 
       // Stream response body
-      await pipeline(
-        response.body as NodeJS.ReadableStream,
-        reply.raw
-      )
+      await pipeline(response.body as NodeJS.ReadableStream, reply.raw)
     } else {
       // Non-streaming response
       const response = await fetch(targetUrl, {
@@ -479,13 +503,10 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       })
 
-      await pipeline(
-        response.body as NodeJS.ReadableStream,
-        reply.raw
-      )
+      await pipeline(response.body as NodeJS.ReadableStream, reply.raw)
     } else {
       const response = await fetch(targetUrl, {
         method: 'POST',
@@ -503,11 +524,13 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
 ```
 
 **Performance Optimization:**
+
 - Connection pooling to vLLM instances via `http.Agent` (maxSockets: 100)
 - No buffering for streaming responses (direct TCP passthrough)
 - Request ID propagation for tracing
 
 **Alternatives Considered:**
+
 - `http-proxy` package: Additional dependency, not Fastify-native
 - `reply.send(stream)`: Fastify wraps streams, adds latency
 - Separate proxy service: Adds network hop and complexity
@@ -519,6 +542,7 @@ export default async function proxyRoutes(fastify: FastifyInstance) {
 ### Decision: Use `fastify-metrics` with custom metrics
 
 **Rationale:**
+
 - Prometheus is industry-standard for observability
 - `fastify-metrics` provides automatic HTTP metrics + custom metric support
 - Meets constitution requirement for Prometheus-format metrics
@@ -611,6 +635,7 @@ try {
 ```
 
 **Metrics to Track (from constitution):**
+
 - `vllm_routing_latency_milliseconds` (p50, p95, p99 via histogram)
 - `vllm_active_connections` (per model)
 - `vllm_model_load_duration_seconds`
@@ -619,10 +644,12 @@ try {
 - `vllm_active_models` (gauge)
 
 **Key Libraries:**
+
 - `fastify-metrics`: ^11.0.0
 - `prom-client`: ^15.1.3
 
 **Alternatives Considered:**
+
 - Custom Prometheus implementation: Reinventing the wheel
 - OpenTelemetry: More complex, overkill for PoC phase
 - StatsD: Not Prometheus-compatible
@@ -634,6 +661,7 @@ try {
 ### Decision: Use Vite + React + PatternFly 6 with TypeScript
 
 **Rationale:**
+
 - Vite is fastest dev server and build tool (esbuild-based)
 - PatternFly 6 provides enterprise UI components (Red Hat design system)
 - Full TypeScript support with strict mode
@@ -753,6 +781,7 @@ export const ModelDashboard: React.FC = () => {
 ```
 
 **Key Libraries:**
+
 - `vite`: ^6.0.0
 - `react`: ^18.3.1
 - `react-dom`: ^18.3.1
@@ -784,6 +813,7 @@ export const ModelDashboard: React.FC = () => {
 ```
 
 **Alternatives Considered:**
+
 - Next.js: Over-engineered for dashboard UI, unnecessary SSR
 - Create React App: Deprecated, slower build times
 - Webpack: Slower than Vite, more configuration
@@ -795,6 +825,7 @@ export const ModelDashboard: React.FC = () => {
 ### Decision: Use npm workspaces (built into Node.js 22)
 
 **Rationale:**
+
 - No additional tooling required (built into npm 7+)
 - Simple configuration
 - Workspace protocol for linking packages
@@ -860,10 +891,7 @@ export const ModelDashboard: React.FC = () => {
   "name": "sardeenz",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev:backend": "npm run dev -w apps/backend",
     "dev:frontend": "npm run dev -w apps/frontend",
@@ -936,12 +964,14 @@ export const ModelDashboard: React.FC = () => {
 ```
 
 **Key Commands:**
+
 - `npm install`: Install all workspace dependencies
 - `npm run dev -w apps/backend`: Run backend in dev mode
 - `npm run build --workspaces`: Build all workspaces
 - `npm run test --workspaces --if-present`: Run tests in all workspaces
 
 **Alternatives Considered:**
+
 - pnpm workspaces: Faster, but additional tool dependency
 - yarn workspaces: Mature, but npm workspaces are built-in
 - Nx/Turborepo: Over-engineered for PoC, adds complexity
@@ -950,15 +980,15 @@ export const ModelDashboard: React.FC = () => {
 
 ## Decisions Summary
 
-| Area | Decision | Key Library/Tool | Rationale |
-|------|----------|------------------|-----------|
-| **Backend Framework** | Fastify with TypeScript | `fastify@^5.1.0` | Performance (<50ms routing), TypeScript support, OpenAPI integration |
-| **Process Management** | Direct subprocess | Node.js `child_process` | Full control, no downtime on model changes, kvcached compatible |
-| **Authentication** | OAuth 2.0 | Manual OAuth flow | Enterprise-grade auth, RBAC via JWT claims, OpenShift OAuth compatible |
-| **Streaming Proxy** | Fastify reply.hijack() | Built-in | Minimal latency, direct TCP passthrough |
-| **Metrics** | Prometheus | `fastify-metrics@^11.0.0` | Industry standard, custom metrics support |
-| **Frontend** | React + PatternFly 6 + Vite | `vite@^6.0.0`, `@patternfly/react-core@^6.0.0` | Fast dev server, enterprise UI components, TypeScript support |
-| **Monorepo** | npm workspaces | Built-in (npm 7+) | No additional tooling, simple configuration |
+| Area                   | Decision                    | Key Library/Tool                               | Rationale                                                              |
+| ---------------------- | --------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| **Backend Framework**  | Fastify with TypeScript     | `fastify@^5.1.0`                               | Performance (<50ms routing), TypeScript support, OpenAPI integration   |
+| **Process Management** | Direct subprocess           | Node.js `child_process`                        | Full control, no downtime on model changes, kvcached compatible        |
+| **Authentication**     | OAuth 2.0                   | Manual OAuth flow                              | Enterprise-grade auth, RBAC via JWT claims, OpenShift OAuth compatible |
+| **Streaming Proxy**    | Fastify reply.hijack()      | Built-in                                       | Minimal latency, direct TCP passthrough                                |
+| **Metrics**            | Prometheus                  | `fastify-metrics@^11.0.0`                      | Industry standard, custom metrics support                              |
+| **Frontend**           | React + PatternFly 6 + Vite | `vite@^6.0.0`, `@patternfly/react-core@^6.0.0` | Fast dev server, enterprise UI components, TypeScript support          |
+| **Monorepo**           | npm workspaces              | Built-in (npm 7+)                              | No additional tooling, simple configuration                            |
 
 ## Next Steps
 

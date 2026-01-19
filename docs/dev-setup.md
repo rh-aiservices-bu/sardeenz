@@ -5,10 +5,12 @@ This guide covers setting up a local development environment with NVIDIA GPU sup
 ## Prerequisites
 
 ### Hardware
+
 - NVIDIA GPU with CUDA 12.x drivers
 - 8GB+ VRAM (16GB+ recommended for larger models)
 
 ### Software
+
 - **Node.js 22.x** - See main README for installation
 - **Python 3.12** - Required for vLLM (auto-installed by uv on first run)
 - **uv** - Fast Python package manager
@@ -43,6 +45,7 @@ npm run dev
 ```
 
 On first run, the script will:
+
 1. Create a Python virtual environment at `apps/backend/.venv`
 2. Install dependencies from `apps/backend/pyproject.toml` (vLLM, kvcached)
 3. Set up kvcached environment variables
@@ -56,17 +59,17 @@ The backend uses environment variables for configuration. A reference file is av
 
 **kvcached variables** (configured by start-dev script):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_KVCACHED` | `true` | Enables kvcached memory sharing |
-| `KVCACHED_AUTOPATCH` | `1` | Auto-patches vLLM for kvcached support |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU device index |
+| Variable               | Default | Description                            |
+| ---------------------- | ------- | -------------------------------------- |
+| `ENABLE_KVCACHED`      | `true`  | Enables kvcached memory sharing        |
+| `KVCACHED_AUTOPATCH`   | `1`     | Auto-patches vLLM for kvcached support |
+| `CUDA_VISIBLE_DEVICES` | `0`     | GPU device index                       |
 
 **HuggingFace authentication** (for gated models like Llama):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HF_TOKEN` | (none) | HuggingFace access token for gated models |
+| Variable   | Default | Description                               |
+| ---------- | ------- | ----------------------------------------- |
+| `HF_TOKEN` | (none)  | HuggingFace access token for gated models |
 
 Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens). You can also set this via the Settings page in the web UI.
 
@@ -83,12 +86,12 @@ Models are loaded dynamically via the API or Admin Dashboard - no models are pre
 
 For development and testing on 8GB GPUs:
 
-| Model | Parameters | VRAM Usage | Notes |
-|-------|-----------|------------|-------|
-| `Qwen/Qwen3-0.6B` | 0.6B | ~2GB | Ideal for testing, fast inference |
-| `meta-llama/Llama-3.2-1B` | 1B | ~3GB | Good balance of size and capability |
-| `microsoft/phi-2` | 2.7B | ~6GB | Near 8GB limit, good quality |
-| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1.1B | ~3GB | Chat-optimized small model |
+| Model                                | Parameters | VRAM Usage | Notes                               |
+| ------------------------------------ | ---------- | ---------- | ----------------------------------- |
+| `Qwen/Qwen3-0.6B`                    | 0.6B       | ~2GB       | Ideal for testing, fast inference   |
+| `meta-llama/Llama-3.2-1B`            | 1B         | ~3GB       | Good balance of size and capability |
+| `microsoft/phi-2`                    | 2.7B       | ~6GB       | Near 8GB limit, good quality        |
+| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1.1B       | ~3GB       | Chat-optimized small model          |
 
 ### Memory Tips
 
@@ -102,10 +105,10 @@ Python dependencies are managed via `apps/backend/pyproject.toml` using [uv](htt
 
 ### Dependency Groups
 
-| Group | Packages | Used In |
-|-------|----------|---------|
-| (base) | kvcached | Dev + Docker |
-| dev | vllm | Dev only (Docker base image has vLLM) |
+| Group  | Packages | Used In                               |
+| ------ | -------- | ------------------------------------- |
+| (base) | kvcached | Dev + Docker                          |
+| dev    | vllm     | Dev only (Docker base image has vLLM) |
 
 ### Adding New Packages
 
@@ -114,12 +117,14 @@ Python dependencies are managed via `apps/backend/pyproject.toml` using [uv](htt
    - Add to `[dependency-groups] dev` for development-only packages
 
 2. Regenerate lock file:
+
    ```bash
    cd apps/backend
    uv lock
    ```
 
 3. Install updated dependencies:
+
    ```bash
    uv sync --locked --group dev
    ```
@@ -141,6 +146,7 @@ source .venv/bin/activate
 ```
 
 Then run the server without the wrapper:
+
 ```bash
 # Set environment variables manually
 export ENABLE_KVCACHED=true
@@ -165,11 +171,150 @@ npm run dev -w apps/frontend
 
 The backend will start but model loading will fail without GPU/vLLM.
 
+## Developing with OAuth Authentication
+
+If you want to test OAuth authentication locally against a remote OpenShift cluster, follow these steps.
+
+### Prerequisites
+
+- Access to an OpenShift cluster with OAuth configured
+- `oc` CLI logged in with namespace admin permissions
+- A namespace for sardeenz RBAC resources (e.g., `sardeenz`)
+
+### Step 1: Create OAuth Client on OpenShift
+
+Register a development OAuth client with localhost callback URL:
+
+```bash
+oc apply -f - <<EOF
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: sardeenz-dev
+grantMethod: auto
+redirectURIs:
+  - http://localhost:3000/api/auth/callback
+secret: dev-secret-change-me
+EOF
+```
+
+> **Note:** Change the `secret` value to something unique for your development environment.
+
+### Step 2: Create RBAC Resources on OpenShift
+
+Create the namespace and apply the RBAC manifests from the deployment folder:
+
+```bash
+# Create namespace (if it doesn't exist)
+oc new-project sardeenz
+
+# Apply ServiceAccount and RBAC resources
+oc apply -f deployment/serviceaccount.yaml -n sardeenz
+oc apply -f deployment/rbac.yaml -n sardeenz
+```
+
+This creates:
+
+- The `sardeenz` ServiceAccount
+- The `sardeenz-admin` and `sardeenz-admin-readonly` marker Roles
+- The `sardeenz-auth-reviewer` Role and RoleBinding
+
+### Step 3: Create RoleBinding for Your User
+
+Grant yourself admin access:
+
+```bash
+oc adm policy add-role-to-user sardeenz-admin $(oc whoami) -n sardeenz
+```
+
+For complete RBAC configuration options (adding other users, groups, or all authenticated users), see the [RBAC Setup Guide](./rbac-setup.md).
+
+> **Note for Cluster-Admin Users:** If you're logged in as a cluster-admin, you will automatically have access to sardeenz regardless of whether you have a sardeenz-admin RoleBinding. This is expected Kubernetes RBAC behavior—cluster-admin has wildcard permissions on all resources including sardeenz marker roles. To properly test RBAC authorization (denied access, read-only vs admin), use a non-cluster-admin account.
+
+### Step 4: Generate ServiceAccount Token
+
+Generate a long-lived token for local development:
+
+```bash
+oc create token sardeenz -n sardeenz --duration=8760h
+```
+
+Save this token - you'll need it for the environment variable.
+
+### Step 5: Configure Environment Variables
+
+Create or update `apps/backend/.env` with the OAuth configuration:
+
+```bash
+# Authentication mode
+AUTH_MODE=oauth
+
+# OAuth client configuration (must match the OAuthClient created above)
+OAUTH_CLIENT_ID=sardeenz-dev
+OAUTH_CLIENT_SECRET=dev-secret-change-me
+
+# OpenShift URLs
+OAUTH_ISSUER_URL=https://oauth-openshift.apps.your-cluster.com
+K8S_API_URL=https://api.your-cluster.com:6443
+
+# RBAC configuration
+NAMESPACE=sardeenz
+SERVICE_ACCOUNT_TOKEN=<paste token from Step 4>
+
+# Local development URLs
+API_BASE_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:5173
+
+# JWT secret (any random string for development)
+JWT_SECRET=your-dev-jwt-secret-change-me
+```
+
+### Getting the OpenShift URLs
+
+To find the correct URLs for your cluster:
+
+```bash
+# Get the Kubernetes API URL
+oc whoami --show-server
+# Example output: https://api.your-cluster.com:6443
+
+# The OAuth issuer URL is typically derived from the API URL
+# Replace 'api.' with 'oauth-openshift.apps.' and remove the port
+# Example: https://oauth-openshift.apps.your-cluster.com
+```
+
+### Step 6: Start Development
+
+```bash
+npm run dev
+```
+
+Navigate to `http://localhost:5173`. When you click "Login", you'll be redirected to OpenShift OAuth, then back to the local frontend with your session authenticated.
+
+### Troubleshooting OAuth Development
+
+**"Access denied" after login:**
+
+- Verify your RoleBinding exists: `oc get rolebindings -n sardeenz`
+- Check if you have the right role: `oc auth can-i get admin.sardeenz.rh-aiservices-bu.io -n sardeenz --as=$(oc whoami)`
+
+**"LocalSubjectAccessReview failed" errors:**
+
+- Check that the `sardeenz-auth-reviewer` RoleBinding exists
+- Verify your SERVICE_ACCOUNT_TOKEN is valid and not expired
+- Ensure K8S_API_URL is correct and reachable from your machine
+
+**"Invalid redirect URI" from OpenShift:**
+
+- Verify the OAuthClient has `http://localhost:3000/api/auth/callback` in redirectURIs
+- Ensure API_BASE_URL matches exactly
+
 ## Troubleshooting
 
 ### "uv is not installed"
 
 Install uv:
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc  # or restart terminal
@@ -178,6 +323,7 @@ source ~/.bashrc  # or restart terminal
 ### "nvidia-smi: command not found"
 
 NVIDIA drivers are not installed. Install them from:
+
 - Ubuntu: `sudo apt install nvidia-driver-535`
 - Fedora: `sudo dnf install akmod-nvidia`
 - Or download from [NVIDIA's website](https://www.nvidia.com/drivers)
@@ -192,6 +338,7 @@ NVIDIA drivers are not installed. Install them from:
 ### "vLLM not found" or spawn errors
 
 Ensure the virtual environment is activated and vLLM is installed:
+
 ```bash
 cd apps/backend
 uv sync --locked --group dev
@@ -202,6 +349,7 @@ which vllm  # Should show path in .venv/bin/
 ### kvcached IPC errors
 
 If you see IPC segment errors:
+
 ```bash
 # Clear stale IPC segments
 ipcs -m | grep $(whoami) | awk '{print $2}' | xargs -I {} ipcrm -m {}
@@ -229,4 +377,5 @@ kvctl limit <segment-name> 4G
 
 - [Architecture Documentation](./architecture.md) - System design and vLLM integration
 - [API Guide](./api-guide.md) - Model loading API endpoints
+- [RBAC Setup Guide](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
 - [kvcached Documentation](./kvcached/) - Detailed kvcached configuration

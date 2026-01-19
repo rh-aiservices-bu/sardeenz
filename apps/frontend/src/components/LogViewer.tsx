@@ -94,12 +94,7 @@ export function LogViewer({
         <FlexItem>
           <Flex gap={{ default: 'gapSm' }}>
             {!isConnected && onReconnect && (
-              <Button
-                variant="link"
-                icon={<SyncAltIcon />}
-                onClick={onReconnect}
-                size="sm"
-              >
+              <Button variant="link" icon={<SyncAltIcon />} onClick={onReconnect} size="sm">
                 Reconnect
               </Button>
             )}

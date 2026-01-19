@@ -1,23 +1,25 @@
 import { Label, Spinner } from '@patternfly/react-core'
+import { MoonIcon } from '@patternfly/react-icons'
 import type { ModelStatus } from '@sardeenz/types'
 
 interface ModelStatusBadgeProps {
   status: ModelStatus
+  isCompact?: boolean
 }
 
 /**
  * Status badge component that displays model status with appropriate colors
  * following PatternFly 6 design patterns.
  */
-export function ModelStatusBadge({ status }: ModelStatusBadgeProps) {
-  const getColor = (): 'green' | 'orange' | 'grey' | 'red' | 'blue' | 'purple' => {
+export function ModelStatusBadge({ status, isCompact = false }: ModelStatusBadgeProps) {
+  const getColor = (): 'green' | 'orange' | 'grey' | 'red' | 'teal' | 'purple' => {
     switch (status) {
       case 'running':
         return 'green'
       case 'sleeping':
         return 'purple'
       case 'starting':
-        return 'blue'
+        return 'teal'
       case 'stopping':
         return 'grey'
       case 'failed':
@@ -32,9 +34,16 @@ export function ModelStatusBadge({ status }: ModelStatusBadgeProps) {
   }
 
   const isLoading = status === 'starting' || status === 'stopping'
+  const isSleeping = status === 'sleeping'
+
+  const getIcon = () => {
+    if (isLoading) return <Spinner size="sm" />
+    if (isSleeping) return <MoonIcon />
+    return undefined
+  }
 
   return (
-    <Label color={getColor()} icon={isLoading ? <Spinner size="sm" /> : undefined}>
+    <Label color={getColor()} isCompact={isCompact} icon={getIcon()}>
       {getLabel()}
     </Label>
   )

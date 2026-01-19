@@ -13,7 +13,8 @@ import {
   Alert,
   Spinner,
 } from '@patternfly/react-core'
-import type { ModelMemoryMetricsDTO, MemoryUsageResponse } from '@sardeenz/types'
+import type { ModelMemoryMetricsDTO } from '@sardeenz/types'
+import { apiClient } from '../services/api'
 
 interface MemoryDetailsModalProps {
   /** Whether the modal is open */
@@ -57,11 +58,8 @@ export function MemoryDetailsModal({
     setLoading(true)
     setError(null)
 
-    fetch('/api/memory/usage')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch memory usage')
-        return res.json() as Promise<MemoryUsageResponse>
-      })
+    apiClient
+      .getMemoryUsage()
       .then((data) => {
         // Get total GPU memory from response
         setGpuTotalGb(data.gpu.total_gb)
@@ -94,8 +92,11 @@ export function MemoryDetailsModal({
   // Calculate overhead dynamically from live data
   const overheadMemoryGib =
     liveGpuMemoryGb && memoryMetrics
-      ? Math.max(0, liveGpuMemoryGb - memoryMetrics.weights_memory_gib - memoryMetrics.cuda_graph_memory_gib)
-      : memoryMetrics?.overhead_memory_gib ?? 0
+      ? Math.max(
+          0,
+          liveGpuMemoryGb - memoryMetrics.weights_memory_gib - memoryMetrics.cuda_graph_memory_gib
+        )
+      : (memoryMetrics?.overhead_memory_gib ?? 0)
 
   // Calculate GPU utilization from live data
   const gpuMemoryUtilization = gpuTotalGb > 0 ? totalGpuMemoryGib / gpuTotalGb : 0
@@ -105,7 +106,13 @@ export function MemoryDetailsModal({
       <ModalHeader title={`Memory Details - ${modelPath}`} />
       <ModalBody>
         {loading && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--pf-t--global--spacer--lg)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              padding: 'var(--pf-t--global--spacer--lg)',
+            }}
+          >
             <Spinner size="lg" aria-label="Loading memory details" />
           </div>
         )}

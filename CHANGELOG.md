@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-01-18
+
+### Chatbot Playground
+
+- **New Chatbot Playground page**: Full-featured inference testing UI replacing the old InferenceTests page
+  - Workspace-based layout with resizable panes for multi-model comparison
+  - Model sidebar with GPU-grouped organization and quick model selection
+  - Session tabs for managing multiple chat sessions per model
+  - Layout selector: single pane, side-by-side, or 2x2 grid layouts
+  - Real-time streaming responses with token-by-token display
+
+### Kubernetes RBAC Authorization
+
+- **Kubernetes-native authorization**: New auth integration using Kubernetes SubjectAccessReview API
+  - `K8S_API_URL` environment variable for Kubernetes API endpoint
+  - Role determination via Kubernetes RBAC (sardeenz-admin, sardeenz-admin-readonly resources)
+  - ServiceAccount-based authentication for pod deployments
+  - New deployment manifests: `deployment/rbac.yaml`, `deployment/serviceaccount.yaml`
+
+### Model Management UI Overhaul
+
+- **Table-based model view**: New `ModelTable` component for compact model listing
+  - Sortable columns: model name, status, GPU assignment, memory usage
+  - Inline actions: view logs, sleep/wake, unload
+  - GPU grouping with collapsible sections via `GpuGroupSection` component
+- **View mode toggle**: Switch between card and table layouts via `ModelToolbar`
+- **Compact model cards**: New `ModelCardCompact` component for denser layouts
+
+### Sleep Mode Enhancements
+
+- **Per-model benchmark parameters**: Each benchmark scenario now supports independent configuration
+  - Configurable: `totalRequests`, `warmupRequests`, `concurrency`, `inputTokens`, `outputTokens`, `slaThresholdMs`
+- **Token validation for benchmarks**: API validates that `inputTokens + outputTokens` does not exceed model's `max_tokens`
+
+### Changed
+
+- **KVCache calculation formula**: Now dynamically calculates `KVCache Total = GPU Free + Prealloc + Used` for accurate real-time metrics
+- **Conditional KVCache display**: KVCache metrics hidden when no models loaded (fixes stale preallocation display)
+
+### Fixed
+
+- Memory overhead calculation now uses actual GPU memory from nvidia-smi
+- KVCache metrics no longer show stale values when models are unloaded
+- Pinned kvcached version at 0.1.3 for stability
+
 ## [0.3.0] - 2026-01-10
 
 ### Per-GPU KVCache Metrics

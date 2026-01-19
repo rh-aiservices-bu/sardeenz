@@ -4,7 +4,14 @@ import { randomUUID } from 'crypto'
 import type { ModelInstance, ModelStatus } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
-import { getNextPort, killProcessImmediate, isProcessRunning, getDescendantPids, findVllmProcessesByPort, findProcessesByEnvMarker } from '../utils/process.js'
+import {
+  getNextPort,
+  killProcessImmediate,
+  isProcessRunning,
+  getDescendantPids,
+  findVllmProcessesByPort,
+  findProcessesByEnvMarker,
+} from '../utils/process.js'
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
 import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
@@ -23,6 +30,7 @@ export interface LaunchModelOptions {
   tensorParallelSize?: number // For large models spanning multiple GPUs (default: 1)
   sourceType?: 'huggingface' | 'local' // Model source type (default: 'huggingface')
   servedModelName?: string // Name for vLLM --served-model-name (default: modelPath)
+  enableSleepMode?: boolean // Enable vLLM sleep mode for GPU memory offloading
 }
 
 /** Arguments that are managed by the system and should be filtered out from user input */
@@ -94,6 +102,7 @@ export class ModelManager extends EventEmitter {
       gpuIds,
       tensorParallelSize = 1,
       servedModelName,
+      enableSleepMode = false,
     } = options
 
     // Use explicit servedModelName if provided, otherwise fall back to modelPath
@@ -145,6 +154,7 @@ export class ModelManager extends EventEmitter {
       tensorParallelSize,
       kvcachedEnabled: enableKvcached,
       memoryBaselineByGpu: {}, // Will be populated when model becomes ready
+      sleepModeEnabled: enableSleepMode,
     }
 
     try {
@@ -154,12 +164,7 @@ export class ModelManager extends EventEmitter {
       const hfToken = runtimeSettings.getHfToken()
 
       // Build the command arguments array
-      const baseArgs = [
-        'serve',
-        modelPath,
-        '--disable-log-stats',
-        `--port=${port}`,
-      ]
+      const baseArgs = ['serve', modelPath, '--disable-log-stats', `--port=${port}`]
 
       // Add --served-model-name only if not overridden in extra args
       if (!hasArg(sanitizedExtraArgs, '--served-model-name')) {
@@ -179,6 +184,11 @@ export class ModelManager extends EventEmitter {
       // Only add prefix caching flag if kvcached is enabled
       if (enableKvcached) {
         baseArgs.push('--no-enable-prefix-caching') // Required for kvcached
+      }
+
+      // Add sleep mode flag if enabled
+      if (enableSleepMode) {
+        baseArgs.push('--enable-sleep-mode')
       }
 
       // Append sanitized user-provided extra arguments (may include overrides)
@@ -204,6 +214,7 @@ export class ModelManager extends EventEmitter {
           KVCACHED_AUTOPATCH: config.kvcachedAutopatch && enableKvcached ? '1' : '0',
           ...(kvcachedIpcName ? { KVCACHED_IPC_NAME: kvcachedIpcName } : {}), // Per-GPU IPC segment
           ...(hfToken ? { HF_TOKEN: hfToken } : {}),
+          ...(enableSleepMode ? { VLLM_SERVER_DEV_MODE: '1' } : {}), // Required for sleep mode
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -326,7 +337,11 @@ export class ModelManager extends EventEmitter {
    * Monitor model startup in background and update status when ready
    * Called without await so API can return immediately
    */
-  private async monitorModelStartup(instanceId: string, port: number, modelPath: string): Promise<void> {
+  private async monitorModelStartup(
+    instanceId: string,
+    port: number,
+    modelPath: string
+  ): Promise<void> {
     try {
       // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
       await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
@@ -410,7 +425,13 @@ export class ModelManager extends EventEmitter {
           )
         } else {
           this.logger.warn(
-            { modelPath, instanceId, engineCorePid: instance.engineCorePid, processId: instance.processId, searchedPids: Array.from(allPids) },
+            {
+              modelPath,
+              instanceId,
+              engineCorePid: instance.engineCorePid,
+              processId: instance.processId,
+              searchedPids: Array.from(allPids),
+            },
             'No matching processes found in nvidia-smi output'
           )
         }
@@ -440,10 +461,7 @@ export class ModelManager extends EventEmitter {
           'Parsed memory metrics from vLLM logs'
         )
       } else {
-        this.logger.warn(
-          { instanceId, modelPath },
-          'Could not parse memory metrics from vLLM logs'
-        )
+        this.logger.warn({ instanceId, modelPath }, 'Could not parse memory metrics from vLLM logs')
       }
 
       // Test if model supports chat templates
@@ -468,7 +486,10 @@ export class ModelManager extends EventEmitter {
           // Check if error is about missing chat template
           if (errorMsg.includes('chat template') || errorMsg.includes('chat_template')) {
             instance.hasChatTemplate = false
-            this.logger.info({ modelPath, instanceId }, 'Model does not support chat templates (will need manual wrapping)')
+            this.logger.info(
+              { modelPath, instanceId },
+              'Model does not support chat templates (will need manual wrapping)'
+            )
           } else {
             // Different 400 error, assume templates work
             instance.hasChatTemplate = true
@@ -567,7 +588,10 @@ export class ModelManager extends EventEmitter {
       // Remove from store
       modelStore.delete(instance.id)
 
-      this.logger.info({ instanceId: instance.id, modelPath: instance.modelPath }, 'Model entry removed')
+      this.logger.info(
+        { instanceId: instance.id, modelPath: instance.modelPath },
+        'Model entry removed'
+      )
       this.emit('model:unloaded', instance)
       return
     }
@@ -585,7 +609,10 @@ export class ModelManager extends EventEmitter {
       if (instance.engineCorePid) {
         try {
           process.kill(instance.engineCorePid, 'SIGKILL')
-          this.logger.debug({ instanceId: instance.id, engineCorePid: instance.engineCorePid }, 'Killed EngineCore process')
+          this.logger.debug(
+            { instanceId: instance.id, engineCorePid: instance.engineCorePid },
+            'Killed EngineCore process'
+          )
         } catch {
           // Process may have already exited
         }
@@ -633,11 +660,16 @@ export class ModelManager extends EventEmitter {
       modelStore.delete(instance.id)
       this.processes.delete(instance.id)
 
-      this.logger.info({ instanceId: instance.id, modelPath: instance.modelPath }, 'Model unloaded successfully')
+      this.logger.info(
+        { instanceId: instance.id, modelPath: instance.modelPath },
+        'Model unloaded successfully'
+      )
       this.emit('model:unloaded', instance)
     } catch (err) {
       this.logger.error({ instanceId: instance.id, err }, 'Error unloading model')
-      throw new InternalError(`Failed to unload model: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      throw new InternalError(
+        `Failed to unload model: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
     }
   }
 
@@ -682,6 +714,184 @@ export class ModelManager extends EventEmitter {
   }
 
   /**
+   * Put a model instance to sleep.
+   * Offloads model weights to CPU RAM and frees GPU memory.
+   * Requires model to have been loaded with enableSleepMode=true.
+   */
+  async sleepModel(instanceId: string, level: 1 | 2 = 1): Promise<void> {
+    const instance = modelStore.get(instanceId)
+    if (!instance) {
+      throw new NotFoundError(`Model instance ${instanceId} not found`)
+    }
+
+    if (!instance.sleepModeEnabled) {
+      throw new InternalError('Model was not loaded with sleep mode enabled')
+    }
+
+    if (instance.status !== 'running') {
+      throw new InternalError(`Cannot sleep model: current status is ${instance.status}`)
+    }
+
+    try {
+      // Call vLLM sleep endpoint
+      const response = await fetch(`http://localhost:${instance.port}/sleep?level=${level}`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(30000),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText)
+        throw new InternalError(`Failed to put model to sleep: ${errorText}`)
+      }
+
+      // Update instance state
+      const previousStatus = instance.status
+      instance.status = 'sleeping' as ModelStatus
+      instance.sleepLevel = level
+      instance.sleptAt = new Date()
+      modelStore.set(instance)
+
+      // Emit status event
+      eventBus.emitEvent(
+        eventBus.createStatusEvent(
+          instanceId,
+          previousStatus,
+          'sleeping' as ModelStatus,
+          `Model sleeping (level ${level})`
+        )
+      )
+
+      this.logger.info({ instanceId, modelPath: instance.modelPath, level }, 'Model put to sleep')
+    } catch (err) {
+      if (err instanceof NotFoundError || err instanceof InternalError) {
+        throw err
+      }
+      throw new InternalError(
+        `Failed to put model to sleep: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+    }
+  }
+
+  /**
+   * Wake a sleeping model instance.
+   * Reloads model weights from CPU RAM back to GPU.
+   */
+  async wakeModel(instanceId: string, tags?: 'weights' | 'kv_cache'): Promise<void> {
+    const instance = modelStore.get(instanceId)
+    if (!instance) {
+      throw new NotFoundError(`Model instance ${instanceId} not found`)
+    }
+
+    if (instance.status !== 'sleeping') {
+      throw new InternalError('Model is not sleeping')
+    }
+
+    try {
+      // Build request body for optional tags
+      const requestBody = tags ? JSON.stringify({ tags: [tags] }) : undefined
+      const headers: Record<string, string> = {}
+      if (requestBody) {
+        headers['Content-Type'] = 'application/json'
+      }
+
+      // Call vLLM wake_up endpoint
+      const response = await fetch(`http://localhost:${instance.port}/wake_up`, {
+        method: 'POST',
+        headers,
+        body: requestBody,
+        signal: AbortSignal.timeout(60000), // Wake may take longer
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText)
+        throw new InternalError(`Failed to wake model: ${errorText}`)
+      }
+
+      // Poll for ready state (model may need time to reload weights)
+      const pollStart = Date.now()
+      const pollTimeout = 120000 // 2 minutes max
+      const pollInterval = 2000
+
+      while (Date.now() - pollStart < pollTimeout) {
+        try {
+          const healthResponse = await fetch(`http://localhost:${instance.port}/health`, {
+            signal: AbortSignal.timeout(2000),
+          })
+
+          if (healthResponse.ok) {
+            break // Model is ready
+          }
+        } catch {
+          // Continue polling
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+      }
+
+      // Update instance state
+      const previousStatus = instance.status
+      instance.status = 'running' as ModelStatus
+      instance.sleepLevel = undefined
+      instance.sleptAt = undefined
+      modelStore.set(instance)
+
+      // Emit status event
+      eventBus.emitEvent(
+        eventBus.createStatusEvent(
+          instanceId,
+          previousStatus,
+          'running' as ModelStatus,
+          'Model woken up and ready'
+        )
+      )
+
+      this.logger.info({ instanceId, modelPath: instance.modelPath }, 'Model woken up')
+    } catch (err) {
+      if (err instanceof NotFoundError || err instanceof InternalError) {
+        throw err
+      }
+      throw new InternalError(
+        `Failed to wake model: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+    }
+  }
+
+  /**
+   * Check if a model instance is sleeping.
+   */
+  async isSleeping(instanceId: string): Promise<{ isSleeping: boolean; level?: 1 | 2 }> {
+    const instance = modelStore.get(instanceId)
+    if (!instance) {
+      throw new NotFoundError(`Model instance ${instanceId} not found`)
+    }
+
+    // If status is sleeping in our store, return that
+    if (instance.status === 'sleeping') {
+      return { isSleeping: true, level: instance.sleepLevel }
+    }
+
+    // Optionally verify with vLLM endpoint if sleep mode is enabled
+    if (instance.sleepModeEnabled && instance.status === 'running') {
+      try {
+        const response = await fetch(`http://localhost:${instance.port}/is_sleeping`, {
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (response.ok) {
+          const data = (await response.json()) as { is_sleeping: boolean }
+          return {
+            isSleeping: data.is_sleeping,
+            level: data.is_sleeping ? instance.sleepLevel : undefined,
+          }
+        }
+      } catch {
+        // If endpoint fails, rely on stored state
+      }
+    }
+
+    return { isSleeping: false }
+  }
+
+  /**
    * Wait for model to be ready by polling health endpoint
    */
   private async waitForReady(port: number, modelPath: string, timeout: number): Promise<void> {
@@ -714,11 +924,7 @@ export class ModelManager extends EventEmitter {
    */
   private getIpcSegmentName(modelPath: string, instanceId: string): string {
     // Convert "meta-llama/Llama-3.2-1B" -> "VLLM_META_LLAMA_LLAMA_3_2_1B"
-    const name = modelPath
-      .replace(/\//g, '_')
-      .replace(/-/g, '_')
-      .replace(/\./g, '_')
-      .toUpperCase()
+    const name = modelPath.replace(/\//g, '_').replace(/-/g, '_').replace(/\./g, '_').toUpperCase()
     // Add short instance suffix for uniqueness
     const suffix = instanceId.slice(0, 8).toUpperCase()
     return `VLLM_${name}_${suffix}`
@@ -786,7 +992,11 @@ export class ModelManager extends EventEmitter {
   /**
    * Handle process exit
    */
-  private handleProcessExit(instanceId: string, code: number | null, signal: NodeJS.Signals | null): void {
+  private handleProcessExit(
+    instanceId: string,
+    code: number | null,
+    signal: NodeJS.Signals | null
+  ): void {
     const instance = modelStore.get(instanceId)
     if (!instance) return
 
@@ -811,7 +1021,10 @@ export class ModelManager extends EventEmitter {
         )
       )
 
-      this.logger.error({ instanceId, modelPath: instance.modelPath, errorMessage }, 'Model failed to load')
+      this.logger.error(
+        { instanceId, modelPath: instance.modelPath, errorMessage },
+        'Model failed to load'
+      )
       this.emit('model:failed', instance)
 
       // Schedule cleanup of logs after 30 minutes for failed instances
@@ -833,9 +1046,7 @@ export class ModelManager extends EventEmitter {
 
     // Try to extract better error from logs, fall back to err.message
     const logs = processLogBuffer.getBuffer(instanceId)
-    const extractedError = logs.length > 0
-      ? buildErrorMessage(logs, null, null)
-      : err.message
+    const extractedError = logs.length > 0 ? buildErrorMessage(logs, null, null) : err.message
 
     const previousStatus = instance.status
     instance.status = 'failed' as ModelStatus
@@ -853,7 +1064,10 @@ export class ModelManager extends EventEmitter {
       )
     )
 
-    this.logger.error({ instanceId, modelPath: instance.modelPath, errorMessage: extractedError }, 'Model process error')
+    this.logger.error(
+      { instanceId, modelPath: instance.modelPath, errorMessage: extractedError },
+      'Model process error'
+    )
     this.emit('model:failed', instance)
 
     // Schedule cleanup of logs after 30 minutes for failed instances
@@ -873,7 +1087,10 @@ export class ModelManager extends EventEmitter {
       try {
         await this.unloadModel(model.id)
       } catch (err) {
-        this.logger.error({ instanceId: model.id, modelPath: model.modelPath, err }, 'Error cleaning up model')
+        this.logger.error(
+          { instanceId: model.id, modelPath: model.modelPath, err },
+          'Error cleaning up model'
+        )
       }
     }
 

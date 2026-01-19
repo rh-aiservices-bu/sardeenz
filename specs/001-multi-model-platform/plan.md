@@ -10,12 +10,14 @@
 Create a multi-model vLLM management platform that enables dynamic loading/unloading of Large Language Models with a unified inference proxy, administrative control API, monitoring dashboard, and containerized deployment for OpenShift.
 
 **Primary Requirements**:
+
 - Controller API for model lifecycle management (load, unload, status)
 - Unified Proxy for routing inference requests to model instances
 - Admin UI dashboard for monitoring and control
 - Container packaging for OpenShift deployment
 
 **Technical Approach**:
+
 - **Backend**: Fastify (Node.js 22 + TypeScript) with direct vLLM subprocess management
 - **Frontend**: React + PatternFly 6 + TypeScript + Vite
 - **Monorepo**: npm workspaces (apps/backend, apps/frontend, packages/types)
@@ -28,6 +30,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Language/Version**: TypeScript 5.7+ (strict mode) with Node.js 22.x (backend), ES2022 target
 
 **Primary Dependencies**:
+
 - **Backend**: Fastify 5.1+, @fastify/swagger (OpenAPI), @fastify/oauth2 (auth), @fastify/jwt, prom-client (metrics)
 - **Frontend**: React 18.3+, PatternFly 6.0+, Vite 6.0+, react-router-dom 6.28+
 - **Shared**: @sinclair/typebox (schema validation), tsx (TypeScript execution)
@@ -36,12 +39,14 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Storage**: In-memory storage for PoC phase (Map data structures for ModelInstance, ResourceMetrics, InferenceRequest logs, ControllerOperation audit trail). Future: Config file for ModelConfiguration catalog, optional database for persistence.
 
 **Testing**:
+
 - Backend: Vitest (or Jest) for unit tests, integration tests MANDATORY for all API endpoints
 - Frontend: Vitest + React Testing Library
 - Contract tests: Dredd or Schemathesis for OpenAPI compliance
 - E2E: Optional for PoC phase
 
 **Target Platform**:
+
 - Development: Linux (Ubuntu 22.04+) with NVIDIA GPU (CUDA 12.x)
 - Production: OpenShift / Kubernetes with GPU node scheduling
 - Container: Based on `quay.io/vllm/vllm-cuda:0.11.2` (includes Python 3.12, CUDA, vLLM) + Node.js 22
@@ -49,6 +54,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Project Type**: Web application (monorepo with backend + frontend + shared packages)
 
 **Performance Goals**:
+
 - Routing overhead: <50ms for proxy requests (p95) - **CRITICAL** per constitution
 - Model load time: <60 seconds for small models (1-3B parameters) - per spec
 - Model unload time: <30 seconds - per spec
@@ -56,6 +62,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - Request throughput: Limited by vLLM instances, proxy adds <5% overhead
 
 **Constraints**:
+
 - GPU memory: Shared via kvcached, fair allocation required (prevent OOM)
 - No database dependency for PoC (in-memory storage acceptable)
 - OAuth 2.0 integration required from start (security by design)
@@ -63,6 +70,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 - Stateless operation (container restarts = clean state)
 
 **Scale/Scope**:
+
 - Users: 10-50 concurrent users (PoC phase)
 - Models: 3-5 concurrent instances on single GPU
 - Request rate: 10-100 req/s (limited by model inference speed)
@@ -71,7 +79,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Type Safety & Monorepo Structure ✅
 
@@ -100,6 +108,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `research.md` section 4 (streaming proxy implementation), `contracts/proxy-api.yaml` (streaming endpoints)
 
 **Performance Strategy**:
+
 - Use Fastify (67k req/sec benchmarks) instead of Express
 - Minimize middleware in hot path (auth at gateway, not proxy)
 - Direct subprocess management (no Docker-in-Docker overhead)
@@ -119,6 +128,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `contracts/` directory (OpenAPI specs), `data-model.md` (validation schemas)
 
 **Versioning Strategy**:
+
 - v0.x.x: PoC phase (rapid iteration)
 - v1.0.0: Production-ready stable API
 - Breaking changes require major version bump
@@ -138,6 +148,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `research.md` section 3 (OAuth integration), `contracts/controller-api.yaml` (security schemes)
 
 **Design Decision**:
+
 - Controller API: Auth REQUIRED (model management is privileged)
 - Proxy API: NO auth (assumes trusted network or gateway handles it)
 - Inference routing does not require authentication (per spec requirements)
@@ -158,6 +169,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `quickstart.md` (Docker setup), spec requirements (OpenShift deployment)
 
 **Deployment Strategy**:
+
 - Single unified container for MVP (all-in-one image)
 - Multi-container for production (separate backend, frontend, scaling)
 
@@ -176,6 +188,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `research.md` section 5 (Prometheus metrics), `contracts/controller-api.yaml` (health endpoints)
 
 **Metrics to Track**:
+
 - `vllm_routing_latency_milliseconds` (histogram with p50/p95/p99)
 - `vllm_active_connections` (gauge per model)
 - `vllm_model_load_duration_seconds` (histogram)
@@ -197,6 +210,7 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Evidence**: See `research.md` (decision rationale for each technology), Technical Context (testing strategy)
 
 **Pragmatic Choices**:
+
 - npm workspaces over pnpm/Turborepo (no additional tooling)
 - Fastify over NestJS (less abstraction, better performance)
 - Direct vLLM management over kvcached Controller (simpler, more flexible)
@@ -208,12 +222,14 @@ Create a multi-model vLLM management platform that enables dynamic loading/unloa
 **Status**: ✅ **ALL GATES PASSED**
 
 **Design Artifacts Generated**:
+
 - ✅ `research.md`: All technical decisions documented
 - ✅ `data-model.md`: Entities, relationships, validation rules defined
 - ✅ `contracts/`: OpenAPI 3.1 specs for Controller and Proxy APIs
 - ✅ `quickstart.md`: Project structure and development setup
 
 **Constitution Alignment**:
+
 1. Type Safety & Monorepo: Workspace structure defined, TypeScript types documented
 2. Performance-First: Streaming proxy implementation designed, <50ms target validated
 3. API-First: OpenAPI specs completed, versioning strategy defined
@@ -348,12 +364,14 @@ specs/[###-feature]/
 **Structure Decision**: **Monorepo with npm workspaces** (Option 2: Web application)
 
 **Rationale**:
+
 - Workspace structure aligns with constitution requirement (apps/, packages/)
 - Backend and frontend share types via `packages/types` (single source of truth)
 - Contracts live in `packages/contracts` for versioning and client generation
 - Utilities package (`packages/utils`) for shared logging and validation
 
 **Key Design Points**:
+
 1. **Backend structure**: Services layer separates business logic from routes (testability)
 2. **Frontend structure**: Component-based architecture with PatternFly components
 3. **Shared types**: All data structures defined once in `packages/types`, imported by both apps
@@ -363,7 +381,7 @@ specs/[###-feature]/
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| Violation                  | Why Needed         | Simpler Alternative Rejected Because |
+| -------------------------- | ------------------ | ------------------------------------ |
+| [e.g., 4th project]        | [current need]     | [why 3 projects insufficient]        |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient]  |

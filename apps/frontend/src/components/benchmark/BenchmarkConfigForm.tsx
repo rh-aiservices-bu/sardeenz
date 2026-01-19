@@ -107,7 +107,11 @@ export interface BenchmarkFormConfig {
  * Form to configure benchmark parameters.
  * Follows PatternFly 6 patterns.
  */
-export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: BenchmarkConfigFormProps) {
+export function BenchmarkConfigForm({
+  onSubmit,
+  isSubmitting,
+  initialConfig,
+}: BenchmarkConfigFormProps) {
   const { canWrite } = useAuth()
 
   // Running instances
@@ -178,7 +182,10 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
 
   const handleInstanceToggle = (instanceId: string, checked: boolean) => {
     if (checked) {
-      setSelectedModels([...selectedModels, { instanceId, routingMode: 'direct', ...DEFAULT_PARAMS }])
+      setSelectedModels([
+        ...selectedModels,
+        { instanceId, routingMode: 'direct', ...DEFAULT_PARAMS },
+      ])
       // Auto-expand the newly selected model
       setExpandedModels((prev) => new Set([...prev, instanceId]))
     } else {
@@ -203,9 +210,7 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
     if (!sourceModel) return
 
     const { instanceId: _id, routingMode: _route, ...params } = sourceModel
-    setSelectedModels(
-      selectedModels.map((m) => ({ ...m, ...params }))
-    )
+    setSelectedModels(selectedModels.map((m) => ({ ...m, ...params })))
   }
 
   const toggleModelExpanded = (instanceId: string) => {
@@ -230,7 +235,11 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
     return selectedModels.some((m) => m.instanceId === instanceId)
   }
 
-  const getTokenValidationError = (instanceId: string, inputTokens: number, outputTokens: number): string | null => {
+  const getTokenValidationError = (
+    instanceId: string,
+    inputTokens: number,
+    outputTokens: number
+  ): string | null => {
     const instance = runningInstances.find((i) => i.id === instanceId)
     if (!instance) return null
 
@@ -314,7 +323,9 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                             id={`model-${instance.id}`}
                             label={`${instance.model_path} (${instance.max_tokens} tokens)`}
                             isChecked={isSelected}
-                            onChange={(_event, checked) => handleInstanceToggle(instance.id, checked)}
+                            onChange={(_event, checked) =>
+                              handleInstanceToggle(instance.id, checked)
+                            }
                           />
                         </FlexItem>
                         {isSelected && (
@@ -354,16 +365,23 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                             style={{
                               marginLeft: 'var(--pf-t--global--spacer--xl)',
                               padding: 'var(--pf-t--global--spacer--md)',
-                              backgroundColor: 'var(--pf-t--global--background--color--secondary--default)',
+                              backgroundColor:
+                                'var(--pf-t--global--background--color--secondary--default)',
                               borderRadius: 'var(--pf-t--global--border--radius--small)',
                             }}
                           >
                             <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
                               <FlexItem>
-                                <FormGroup label="Input Tokens" fieldId={`input-tokens-${instance.id}`}>
+                                <FormGroup
+                                  label="Input Tokens"
+                                  fieldId={`input-tokens-${instance.id}`}
+                                >
                                   <Slider
                                     id={`input-tokens-${instance.id}`}
-                                    value={findStepIndex(modelConfig.inputTokens, INPUT_TOKEN_STEPS)}
+                                    value={findStepIndex(
+                                      modelConfig.inputTokens,
+                                      INPUT_TOKEN_STEPS
+                                    )}
                                     min={0}
                                     max={INPUT_TOKEN_STEPS.length - 1}
                                     step={1}
@@ -373,17 +391,25 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                       label: formatTokens(val),
                                     }))}
                                     onChange={(_event: SliderOnChangeEvent, index: number) =>
-                                      handleModelConfigChange(instance.id, { inputTokens: INPUT_TOKEN_STEPS[index] })
+                                      handleModelConfigChange(instance.id, {
+                                        inputTokens: INPUT_TOKEN_STEPS[index],
+                                      })
                                     }
                                   />
                                 </FormGroup>
                               </FlexItem>
 
                               <FlexItem>
-                                <FormGroup label="Output Tokens" fieldId={`output-tokens-${instance.id}`}>
+                                <FormGroup
+                                  label="Output Tokens"
+                                  fieldId={`output-tokens-${instance.id}`}
+                                >
                                   <Slider
                                     id={`output-tokens-${instance.id}`}
-                                    value={findStepIndex(modelConfig.outputTokens, OUTPUT_TOKEN_STEPS)}
+                                    value={findStepIndex(
+                                      modelConfig.outputTokens,
+                                      OUTPUT_TOKEN_STEPS
+                                    )}
                                     min={0}
                                     max={OUTPUT_TOKEN_STEPS.length - 1}
                                     step={1}
@@ -393,7 +419,9 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                       label: formatTokens(val),
                                     }))}
                                     onChange={(_event: SliderOnChangeEvent, index: number) =>
-                                      handleModelConfigChange(instance.id, { outputTokens: OUTPUT_TOKEN_STEPS[index] })
+                                      handleModelConfigChange(instance.id, {
+                                        outputTokens: OUTPUT_TOKEN_STEPS[index],
+                                      })
                                     }
                                   />
                                   {(() => {
@@ -405,14 +433,20 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                     return tokenError ? (
                                       <FormHelperText>
                                         <HelperText>
-                                          <HelperTextItem variant="error">{tokenError}</HelperTextItem>
+                                          <HelperTextItem variant="error">
+                                            {tokenError}
+                                          </HelperTextItem>
                                         </HelperText>
                                       </FormHelperText>
                                     ) : (
                                       <FormHelperText>
                                         <HelperText>
                                           <HelperTextItem>
-                                            Total: {(modelConfig.inputTokens + modelConfig.outputTokens).toLocaleString()} / {instance.max_tokens.toLocaleString()} tokens
+                                            Total:{' '}
+                                            {(
+                                              modelConfig.inputTokens + modelConfig.outputTokens
+                                            ).toLocaleString()}{' '}
+                                            / {instance.max_tokens.toLocaleString()} tokens
                                           </HelperTextItem>
                                         </HelperText>
                                       </FormHelperText>
@@ -424,7 +458,10 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                               <FlexItem>
                                 <Flex gap={{ default: 'gapLg' }}>
                                   <FlexItem>
-                                    <FormGroup label="Concurrency" fieldId={`concurrency-${instance.id}`}>
+                                    <FormGroup
+                                      label="Concurrency"
+                                      fieldId={`concurrency-${instance.id}`}
+                                    >
                                       <NumberInput
                                         id={`concurrency-${instance.id}`}
                                         value={modelConfig.concurrency}
@@ -441,9 +478,13 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                           })
                                         }
                                         onChange={(event) => {
-                                          const value = Number((event.target as HTMLInputElement).value)
+                                          const value = Number(
+                                            (event.target as HTMLInputElement).value
+                                          )
                                           if (!isNaN(value)) {
-                                            handleModelConfigChange(instance.id, { concurrency: value })
+                                            handleModelConfigChange(instance.id, {
+                                              concurrency: value,
+                                            })
                                           }
                                         }}
                                         inputName={`concurrency-${instance.id}`}
@@ -453,7 +494,10 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                   </FlexItem>
 
                                   <FlexItem>
-                                    <FormGroup label="Total Requests" fieldId={`total-requests-${instance.id}`}>
+                                    <FormGroup
+                                      label="Total Requests"
+                                      fieldId={`total-requests-${instance.id}`}
+                                    >
                                       <NumberInput
                                         id={`total-requests-${instance.id}`}
                                         value={modelConfig.totalRequests}
@@ -461,18 +505,28 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         max={500}
                                         onMinus={() =>
                                           handleModelConfigChange(instance.id, {
-                                            totalRequests: Math.max(10, modelConfig.totalRequests - 10),
+                                            totalRequests: Math.max(
+                                              10,
+                                              modelConfig.totalRequests - 10
+                                            ),
                                           })
                                         }
                                         onPlus={() =>
                                           handleModelConfigChange(instance.id, {
-                                            totalRequests: Math.min(500, modelConfig.totalRequests + 10),
+                                            totalRequests: Math.min(
+                                              500,
+                                              modelConfig.totalRequests + 10
+                                            ),
                                           })
                                         }
                                         onChange={(event) => {
-                                          const value = Number((event.target as HTMLInputElement).value)
+                                          const value = Number(
+                                            (event.target as HTMLInputElement).value
+                                          )
                                           if (!isNaN(value)) {
-                                            handleModelConfigChange(instance.id, { totalRequests: value })
+                                            handleModelConfigChange(instance.id, {
+                                              totalRequests: value,
+                                            })
                                           }
                                         }}
                                         inputName={`total-requests-${instance.id}`}
@@ -490,18 +544,28 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         max={10}
                                         onMinus={() =>
                                           handleModelConfigChange(instance.id, {
-                                            warmupRequests: Math.max(1, modelConfig.warmupRequests - 1),
+                                            warmupRequests: Math.max(
+                                              1,
+                                              modelConfig.warmupRequests - 1
+                                            ),
                                           })
                                         }
                                         onPlus={() =>
                                           handleModelConfigChange(instance.id, {
-                                            warmupRequests: Math.min(10, modelConfig.warmupRequests + 1),
+                                            warmupRequests: Math.min(
+                                              10,
+                                              modelConfig.warmupRequests + 1
+                                            ),
                                           })
                                         }
                                         onChange={(event) => {
-                                          const value = Number((event.target as HTMLInputElement).value)
+                                          const value = Number(
+                                            (event.target as HTMLInputElement).value
+                                          )
                                           if (!isNaN(value)) {
-                                            handleModelConfigChange(instance.id, { warmupRequests: value })
+                                            handleModelConfigChange(instance.id, {
+                                              warmupRequests: value,
+                                            })
                                           }
                                         }}
                                         inputName={`warmup-${instance.id}`}
@@ -511,7 +575,10 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                   </FlexItem>
 
                                   <FlexItem>
-                                    <FormGroup label="SLA Threshold (ms)" fieldId={`sla-${instance.id}`}>
+                                    <FormGroup
+                                      label="SLA Threshold (ms)"
+                                      fieldId={`sla-${instance.id}`}
+                                    >
                                       <NumberInput
                                         id={`sla-${instance.id}`}
                                         value={modelConfig.slaThresholdMs ?? 0}
@@ -526,11 +593,16 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
                                         }}
                                         onPlus={() => {
                                           const current = modelConfig.slaThresholdMs ?? 0
-                                          const newVal = current === 0 ? 1000 : Math.min(60000, current + 500)
-                                          handleModelConfigChange(instance.id, { slaThresholdMs: newVal })
+                                          const newVal =
+                                            current === 0 ? 1000 : Math.min(60000, current + 500)
+                                          handleModelConfigChange(instance.id, {
+                                            slaThresholdMs: newVal,
+                                          })
                                         }}
                                         onChange={(event) => {
-                                          const value = Number((event.target as HTMLInputElement).value)
+                                          const value = Number(
+                                            (event.target as HTMLInputElement).value
+                                          )
                                           if (!isNaN(value) && value >= 0 && value <= 60000) {
                                             handleModelConfigChange(instance.id, {
                                               slaThresholdMs: value === 0 ? undefined : value,
@@ -587,7 +659,11 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
             <FormGroup fieldId="mode-toggle">
               <Switch
                 id="mode-toggle"
-                label={mode === 'contention' ? 'Contention mode (parallel scenarios)' : 'Isolated mode (sequential scenarios)'}
+                label={
+                  mode === 'contention'
+                    ? 'Contention mode (parallel scenarios)'
+                    : 'Isolated mode (sequential scenarios)'
+                }
                 isChecked={mode === 'contention'}
                 onChange={(_event, checked) => setMode(checked ? 'contention' : 'isolated')}
               />
@@ -628,8 +704,14 @@ export function BenchmarkConfigForm({ onSubmit, isSubmitting, initialConfig }: B
               </Button>
             </FlexItem>
             <FlexItem>
-              <div style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: 'var(--pf-t--global--font--size--sm)' }}>
-                Estimated total duration: ~{estimatedDurationSeconds}s ({selectedModels.length} model{selectedModels.length !== 1 ? 's' : ''})
+              <div
+                style={{
+                  color: 'var(--pf-t--global--text--color--subtle)',
+                  fontSize: 'var(--pf-t--global--font--size--sm)',
+                }}
+              >
+                Estimated total duration: ~{estimatedDurationSeconds}s ({selectedModels.length}{' '}
+                model{selectedModels.length !== 1 ? 's' : ''})
               </div>
             </FlexItem>
           </Flex>

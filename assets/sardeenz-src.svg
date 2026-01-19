@@ -8,9 +8,9 @@
    version="1.1"
    id="svg1"
    xml:space="preserve"
-   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
    sodipodi:docname="sardeenz-src.svg"
-   inkscape:export-filename="sardeenz.svg"
+   inkscape:export-filename="sardeenz.png"
    inkscape:export-xdpi="160.19485"
    inkscape:export-ydpi="160.19485"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -34,7 +34,7 @@
      inkscape:window-x="1920"
      inkscape:window-y="32"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer4"
+     inkscape:current-layer="layer2"
      showgrid="false" /><defs
      id="defs1" /><g
      inkscape:label="background"
@@ -179,7 +179,7 @@
        transform="scale(0.26458333)"
        sodipodi:insensitive="true" /><path
        id="rect1"
-       style="display:inline;fill:none;stroke:#a1a1a1;stroke-width:4.04444;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+       style="display:inline;fill:none;stroke:#113f6f;stroke-width:4.04444;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
        inkscape:label="outer"
        d="m 76.737197,114.45084 h 62.826273 c 7.75798,0 14.00355,6.98595 14.00355,15.66339 v 28.50512 c 0,8.67746 -6.24557,15.66341 -14.00355,15.66341 H 76.737197 c -7.757913,0 -14.003459,-6.98595 -14.003459,-15.66341 v -28.50512 c 0,-8.67744 6.245546,-15.66339 14.003459,-15.66339 z" /><path
        id="rect1-2"

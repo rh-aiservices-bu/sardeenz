@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   PageSection,
   Content,
-  Grid,
-  GridItem,
   Card,
   CardBody,
   Button,
@@ -23,27 +21,98 @@ import {
 } from '@patternfly/react-core'
 import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon, TrashIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
-import type { ModelInstanceDTO, LoadModelRequest } from '@sardeenz/types'
+import type {
+  ModelInstanceDTO,
+  LoadModelRequest,
+  MultiGpuMemoryUsageResponse,
+} from '@sardeenz/types'
 import {
-  ModelCard,
   LoadModelDialog,
   GpuMemoryPanel,
   SaveConfigurationDialog,
   LoadConfigurationDialog,
+  ModelToolbar,
+  GpuGroupSection,
+  ModelTable,
 } from '../components'
+import type { ViewMode, FilterState, SortField, SortDirection } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
+
+// Helper to determine GPU group key
+function getGpuGroupKey(model: ModelInstanceDTO): string {
+  return model.gpu_ids.length > 1 ? 'multi-gpu' : `gpu-${model.gpu_ids[0]}`
+}
+
+// Format GPU key to display label
+function formatGpuLabel(gpuKey: string): string {
+  if (gpuKey === 'multi-gpu') return 'Multi-GPU'
+  return gpuKey.replace('gpu-', 'GPU ')
+}
 
 function ModelManagement() {
   const [models, setModels] = useState<ModelInstanceDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false)
   const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
+  const [sleepingInstanceId, setSleepingInstanceId] = useState<string | null>(null)
+  const [wakingInstanceId, setWakingInstanceId] = useState<string | null>(null)
   const [isSaveConfigOpen, setIsSaveConfigOpen] = useState(false)
   const [isLoadConfigOpen, setIsLoadConfigOpen] = useState(false)
   const [isUnloadAllModalOpen, setIsUnloadAllModalOpen] = useState(false)
   const [isUnloadingAll, setIsUnloadingAll] = useState(false)
+  const [gpuRefreshTrigger, setGpuRefreshTrigger] = useState(0)
+  // KV cache total per GPU (gpu index -> total_gb), updated from GpuMemoryPanel
+  const [kvCacheTotalByGpu, setKvCacheTotalByGpu] = useState<Record<number, number>>({})
+  // GPU memory utilization per instance (instance_id -> percentage 0-1), from GpuMemoryPanel
+  const [memoryUtilizationByInstance, setMemoryUtilizationByInstance] = useState<
+    Record<string, number>
+  >({})
+
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
+
+  // Filter state
+  const [filters, setFilters] = useState<FilterState>({
+    status: [],
+    gpuAssignment: [],
+    searchTerm: '',
+  })
+
+  // Sort state
+  const [sortBy, setSortBy] = useState<SortField>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  // Expansion state
+  const [expandedGpuGroups, setExpandedGpuGroups] = useState<Set<string>>(new Set())
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
 
   const { addNotification } = useNotifications()
+
+  // Trigger GPU memory panel refresh
+  const triggerGpuRefresh = useCallback(() => {
+    setGpuRefreshTrigger((prev) => prev + 1)
+  }, [])
+
+  // Handle memory data updates from GpuMemoryPanel
+  const handleMemoryDataChange = useCallback((data: MultiGpuMemoryUsageResponse) => {
+    const kvCacheMap: Record<number, number> = {}
+    const memoryMap: Record<string, number> = {}
+
+    for (const gpu of data.gpus) {
+      // Use per-GPU kvcache if available, otherwise fall back to global
+      const kvcacheTotal = gpu.kvcache?.total_gb ?? data.kvcache.total_gb
+      kvCacheMap[gpu.gpu_index] = kvcacheTotal
+
+      // Memory utilization per model instance (for live updates after sleep/wake)
+      for (const model of gpu.models) {
+        const utilization = gpu.total_gb > 0 ? model.gpu_memory_gb / gpu.total_gb : 0
+        memoryMap[model.instance_id] = utilization
+      }
+    }
+
+    setKvCacheTotalByGpu(kvCacheMap)
+    setMemoryUtilizationByInstance(memoryMap)
+  }, [])
 
   // Count running models for configuration save
   const runningModelCount = useMemo(
@@ -52,6 +121,93 @@ function ModelManagement() {
   )
 
   const inferenceUrl = useMemo(() => `${window.location.origin}/v1`, [])
+
+  // Get available GPUs from loaded models
+  const availableGpus = useMemo(() => {
+    const gpuSet = new Set<string>()
+    models.forEach((model) => {
+      gpuSet.add(getGpuGroupKey(model))
+    })
+    // Sort: gpu-0, gpu-1, ..., multi-gpu
+    return Array.from(gpuSet).sort((a, b) => {
+      if (a === 'multi-gpu') return 1
+      if (b === 'multi-gpu') return -1
+      return a.localeCompare(b)
+    })
+  }, [models])
+
+  // Initialize expanded GPU groups when models load
+  useEffect(() => {
+    if (models.length > 0 && expandedGpuGroups.size === 0) {
+      setExpandedGpuGroups(new Set(availableGpus))
+    }
+  }, [models, availableGpus, expandedGpuGroups.size])
+
+  // Filter and sort models
+  const filteredModels = useMemo(() => {
+    return models
+      .filter((model) => {
+        // Status filter
+        if (filters.status.length > 0 && !filters.status.includes(model.status)) {
+          return false
+        }
+        // GPU assignment filter
+        if (filters.gpuAssignment.length > 0) {
+          const gpuKey = getGpuGroupKey(model)
+          if (!filters.gpuAssignment.includes(gpuKey)) {
+            return false
+          }
+        }
+        // Search filter
+        if (filters.searchTerm) {
+          const term = filters.searchTerm.toLowerCase()
+          return (
+            model.model_path.toLowerCase().includes(term) ||
+            model.model_name.toLowerCase().includes(term)
+          )
+        }
+        return true
+      })
+      .sort((a, b) => {
+        let comparison = 0
+        switch (sortBy) {
+          case 'name':
+            comparison = a.model_path.localeCompare(b.model_path)
+            break
+          case 'startTime':
+            comparison = (a.loaded_at || '').localeCompare(b.loaded_at || '')
+            break
+          case 'memoryUsage':
+            comparison = a.gpu_memory_utilization - b.gpu_memory_utilization
+            break
+        }
+        return sortDirection === 'asc' ? comparison : -comparison
+      })
+  }, [models, filters, sortBy, sortDirection])
+
+  // Group models by GPU for card view
+  const groupedModels = useMemo(() => {
+    const groups: Record<string, ModelInstanceDTO[]> = {}
+
+    filteredModels.forEach((model) => {
+      const gpuKey = getGpuGroupKey(model)
+      if (!groups[gpuKey]) {
+        groups[gpuKey] = []
+      }
+      groups[gpuKey].push(model)
+    })
+
+    return groups
+  }, [filteredModels])
+
+  // Get ordered GPU keys for rendering
+  const orderedGpuKeys = useMemo(() => {
+    return Object.keys(groupedModels).sort((a, b) => {
+      if (a === 'multi-gpu') return 1
+      if (b === 'multi-gpu') return -1
+      return a.localeCompare(b)
+    })
+  }, [groupedModels])
 
   const fetchModels = useCallback(async () => {
     try {
@@ -78,14 +234,13 @@ function ModelManagement() {
 
   const handleLoadModel = async (request: LoadModelRequest) => {
     // Start the load and return instance_id for SSE subscription
-    // The LoadModelDialog handles the loading state and success/failure
     const result = await apiClient.loadModel(request)
     return { instance_id: result.instance_id }
   }
 
   const handleLoadSuccess = () => {
-    // Refresh the model list when a model is successfully loaded
     fetchModels()
+    triggerGpuRefresh()
     addNotification({
       title: 'Model loaded',
       description: 'Model is now ready for inference',
@@ -105,6 +260,7 @@ function ModelManagement() {
         variant: 'success',
       })
       await fetchModels()
+      triggerGpuRefresh()
     } catch (err) {
       addNotification({
         title: isFailed ? 'Failed to remove model' : 'Failed to unload model',
@@ -113,6 +269,56 @@ function ModelManagement() {
       })
     } finally {
       setUnloadingInstanceId(null)
+    }
+  }
+
+  const handleSleepModel = async (instanceId: string) => {
+    const model = models.find((m) => m.id === instanceId)
+    if (!model) return
+
+    setSleepingInstanceId(instanceId)
+    try {
+      await apiClient.sleepModel(instanceId)
+      addNotification({
+        title: 'Model sleeping',
+        description: `${model.model_path} has been put to sleep`,
+        variant: 'success',
+      })
+      await fetchModels()
+      triggerGpuRefresh()
+    } catch (err) {
+      addNotification({
+        title: 'Failed to sleep model',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      })
+    } finally {
+      setSleepingInstanceId(null)
+    }
+  }
+
+  const handleWakeModel = async (instanceId: string) => {
+    const model = models.find((m) => m.id === instanceId)
+    if (!model) return
+
+    setWakingInstanceId(instanceId)
+    try {
+      await apiClient.wakeModel(instanceId)
+      addNotification({
+        title: 'Model woken up',
+        description: `${model.model_path} is now ready for inference`,
+        variant: 'success',
+      })
+      await fetchModels()
+      triggerGpuRefresh()
+    } catch (err) {
+      addNotification({
+        title: 'Failed to wake model',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'danger',
+      })
+    } finally {
+      setWakingInstanceId(null)
     }
   }
 
@@ -130,19 +336,19 @@ function ModelManagement() {
       description: message,
       variant: 'info',
     })
-    // Refresh models list after a delay to show updated state
-    setTimeout(fetchModels, 2000)
+    setTimeout(() => {
+      fetchModels()
+      triggerGpuRefresh()
+    }, 2000)
   }
 
   const handleUnloadAll = async () => {
     setIsUnloadingAll(true)
     try {
-      // Unload all models sequentially
       for (const model of models) {
         try {
           await apiClient.unloadModelByInstanceId(model.id)
         } catch (err) {
-          // Log but continue with other models
           addNotification({
             title: 'Failed to unload model',
             description: `${model.model_path}: ${err instanceof Error ? err.message : 'Unknown error'}`,
@@ -156,6 +362,7 @@ function ModelManagement() {
         variant: 'success',
       })
       await fetchModels()
+      triggerGpuRefresh()
     } catch (err) {
       addNotification({
         title: 'Error unloading models',
@@ -165,6 +372,83 @@ function ModelManagement() {
     } finally {
       setIsUnloadingAll(false)
       setIsUnloadAllModalOpen(false)
+    }
+  }
+
+  // Toolbar handlers
+  const handleFiltersChange = (newFilters: FilterState) => {
+    setFilters(newFilters)
+  }
+
+  const handleSortChange = (field: SortField, direction: SortDirection) => {
+    setSortBy(field)
+    setSortDirection(direction)
+  }
+
+  const handleClearAllFilters = () => {
+    setFilters({
+      status: [],
+      gpuAssignment: [],
+      searchTerm: '',
+    })
+  }
+
+  // GPU group toggle
+  const handleGpuGroupToggle = (gpuKey: string) => {
+    setExpandedGpuGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(gpuKey)) {
+        next.delete(gpuKey)
+      } else {
+        next.add(gpuKey)
+      }
+      return next
+    })
+  }
+
+  // Card toggle
+  const handleCardToggle = (instanceId: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev)
+      if (next.has(instanceId)) {
+        next.delete(instanceId)
+      } else {
+        next.add(instanceId)
+      }
+      return next
+    })
+  }
+
+  // Handle click from GPU memory panel - scroll to model card
+  const handleMemoryBarClick = useCallback(
+    (instanceId: string) => {
+      const model = models.find((m) => m.id === instanceId)
+      if (!model) return
+
+      const gpuKey = getGpuGroupKey(model)
+
+      // Ensure GPU group is expanded
+      setExpandedGpuGroups((prev) => new Set([...prev, gpuKey]))
+
+      // Ensure card is expanded
+      setExpandedCards((prev) => new Set([...prev, instanceId]))
+
+      // Scroll to card after state updates
+      requestAnimationFrame(() => {
+        const cardElement = document.getElementById(`model-card-${instanceId}`)
+        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
+    },
+    [models]
+  )
+
+  // Table sort handler
+  const handleTableSort = (field: SortField) => {
+    if (field === sortBy) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(field)
+      setSortDirection('asc')
     }
   }
 
@@ -189,7 +473,7 @@ function ModelManagement() {
         >
           <FlexItem>
             <Content component="h1">Model Placement Management</Content>
-            <Content component="p" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+            <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
               Inference URL:{' '}
               <ClipboardCopy
                 isReadOnly
@@ -199,7 +483,7 @@ function ModelManagement() {
               >
                 {inferenceUrl}
               </ClipboardCopy>
-            </Content>
+            </span>
           </FlexItem>
           <FlexItem>
             <Flex gap={{ default: 'gapSm' }}>
@@ -247,7 +531,11 @@ function ModelManagement() {
 
         {/* GPU Memory Overview Panel */}
         <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
-          <GpuMemoryPanel />
+          <GpuMemoryPanel
+            onModelClick={handleMemoryBarClick}
+            refreshTrigger={gpuRefreshTrigger}
+            onMemoryDataChange={handleMemoryDataChange}
+          />
         </div>
 
         {models.length === 0 ? (
@@ -270,17 +558,80 @@ function ModelManagement() {
             </CardBody>
           </Card>
         ) : (
-          <Grid hasGutter style={{ marginTop: 'var(--pf-t--global--spacer--xl)' }}>
-            {models.map((model) => (
-              <GridItem key={model.id} span={12} lg={6} xl={4}>
-                <ModelCard
-                  model={model}
+          <>
+            {/* Toolbar */}
+            <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
+              <ModelToolbar
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                sortBy={sortBy}
+                sortDirection={sortDirection}
+                onSortChange={handleSortChange}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                availableGpus={availableGpus}
+                onClearAllFilters={handleClearAllFilters}
+              />
+            </div>
+
+            {/* Model List/Table */}
+            <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
+              {filteredModels.length === 0 ? (
+                <Card>
+                  <CardBody>
+                    <EmptyState titleText="No models match filters" icon={CubesIcon}>
+                      <EmptyStateBody>Try adjusting your filters or search term.</EmptyStateBody>
+                      <EmptyStateFooter>
+                        <EmptyStateActions>
+                          <Button variant="link" onClick={handleClearAllFilters}>
+                            Clear all filters
+                          </Button>
+                        </EmptyStateActions>
+                      </EmptyStateFooter>
+                    </EmptyState>
+                  </CardBody>
+                </Card>
+              ) : viewMode === 'card' ? (
+                // Card View with GPU Groups
+                <>
+                  {orderedGpuKeys.map((gpuKey) => (
+                    <GpuGroupSection
+                      key={gpuKey}
+                      gpuKey={gpuKey}
+                      gpuLabel={formatGpuLabel(gpuKey)}
+                      models={groupedModels[gpuKey]}
+                      isExpanded={expandedGpuGroups.has(gpuKey)}
+                      onToggle={handleGpuGroupToggle}
+                      onUnload={handleUnloadModel}
+                      onSleep={handleSleepModel}
+                      onWake={handleWakeModel}
+                      unloadingInstanceId={unloadingInstanceId}
+                      sleepingInstanceId={sleepingInstanceId}
+                      wakingInstanceId={wakingInstanceId}
+                      expandedCards={expandedCards}
+                      onCardToggle={handleCardToggle}
+                      kvCacheTotalByGpu={kvCacheTotalByGpu}
+                      memoryUtilizationByInstance={memoryUtilizationByInstance}
+                    />
+                  ))}
+                </>
+              ) : (
+                // Table View
+                <ModelTable
+                  models={filteredModels}
+                  sortBy={sortBy}
+                  sortDirection={sortDirection}
+                  onSort={handleTableSort}
                   onUnload={handleUnloadModel}
-                  isUnloading={unloadingInstanceId === model.id}
+                  onSleep={handleSleepModel}
+                  onWake={handleWakeModel}
+                  unloadingInstanceId={unloadingInstanceId}
+                  sleepingInstanceId={sleepingInstanceId}
+                  wakingInstanceId={wakingInstanceId}
                 />
-              </GridItem>
-            ))}
-          </Grid>
+              )}
+            </div>
+          </>
         )}
       </PageSection>
 

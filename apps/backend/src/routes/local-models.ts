@@ -50,9 +50,14 @@ export default async function localModelsRoutes(fastify: FastifyInstance) {
     {
       schema: {
         tags: ['local-models'],
-        description: 'List available local models from configured path. Use subpath query param to browse subdirectories.',
+        description:
+          'List available local models from configured path. Use subpath query param to browse subdirectories.',
         querystring: Type.Object({
-          subpath: Type.Optional(Type.String({ description: 'Relative subpath to browse within the base models directory' })),
+          subpath: Type.Optional(
+            Type.String({
+              description: 'Relative subpath to browse within the base models directory',
+            })
+          ),
         }),
         response: {
           200: ListLocalModelsResponseSchema,
@@ -67,7 +72,8 @@ export default async function localModelsRoutes(fastify: FastifyInstance) {
       if (!config.localModelsPath) {
         return reply.status(503).send({
           error: {
-            message: 'Local models path not configured. Set LOCAL_MODELS_PATH environment variable.',
+            message:
+              'Local models path not configured. Set LOCAL_MODELS_PATH environment variable.',
             type: 'service_unavailable',
           },
         })

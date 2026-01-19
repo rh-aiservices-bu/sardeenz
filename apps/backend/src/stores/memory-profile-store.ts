@@ -175,7 +175,9 @@ class MemoryProfileStore {
    * Find profiles for a model path (any max_tokens/gpu_name)
    */
   findProfilesByModelPath(modelPath: string): MemoryProfile[] {
-    const stmt = this.db.prepare('SELECT * FROM memory_profiles WHERE model_path = ? ORDER BY max_tokens')
+    const stmt = this.db.prepare(
+      'SELECT * FROM memory_profiles WHERE model_path = ? ORDER BY max_tokens'
+    )
     const rows = stmt.all(modelPath) as MemoryProfileRow[]
     return rows.map(rowToProfile)
   }

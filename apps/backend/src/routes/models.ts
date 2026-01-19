@@ -10,8 +10,15 @@ import {
   ErrorResponseSchema,
   ListInstancesResponseSchema,
   UnloadInstanceResponseSchema,
+  SleepModelRequestSchema,
+  SleepModelResponseSchema,
+  WakeModelRequestSchema,
+  WakeModelResponseSchema,
+  SleepStatusResponseSchema,
   type ModelInstanceDTO,
   type LoadModelRequestType,
+  type SleepModelRequestType,
+  type WakeModelRequestType,
 } from '@sardeenz/types'
 import { getModelManager } from '../services/model-manager.js'
 import { modelStore } from '../stores/model-store.js'
@@ -54,6 +61,9 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       gpu_ids: instance.gpuIds,
       tensor_parallel_size: instance.tensorParallelSize,
       kvcached_enabled: instance.kvcachedEnabled,
+      sleep_mode_enabled: instance.sleepModeEnabled,
+      sleep_level: instance.sleepLevel,
+      slept_at: instance.sleptAt?.toISOString(),
     }
   }
 
@@ -84,6 +94,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         tensor_parallel_size,
         source_type,
         served_model_name,
+        enable_sleep_mode,
       } = request.body
 
       const operationId = randomUUID()
@@ -94,7 +105,14 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         initiatedBy: 'system', // TODO: Get from auth context
         initiatedAt: new Date(),
         status: OperationStatus.InProgress,
-        parameters: { max_tokens, extra_args, gpu_ids, tensor_parallel_size, source_type, served_model_name },
+        parameters: {
+          max_tokens,
+          extra_args,
+          gpu_ids,
+          tensor_parallel_size,
+          source_type,
+          served_model_name,
+        },
       }
 
       operationStore.add(operation)
@@ -112,6 +130,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           tensorParallelSize: tensor_parallel_size,
           sourceType: source_type,
           servedModelName: served_model_name,
+          enableSleepMode: enable_sleep_mode,
         })
 
         // Operation stays InProgress - will be updated when model finishes loading
@@ -335,9 +354,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
             status: 'unhealthy',
             model: decodedPath,
             port: instance.port,
-            uptime_seconds: instance.readyAt
-              ? (Date.now() - instance.readyAt.getTime()) / 1000
-              : 0,
+            uptime_seconds: instance.readyAt ? (Date.now() - instance.readyAt.getTime()) / 1000 : 0,
           })
         }
 
@@ -345,9 +362,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           status: 'healthy' as const,
           model: decodedPath,
           port: instance.port,
-          uptime_seconds: instance.readyAt
-            ? (Date.now() - instance.readyAt.getTime()) / 1000
-            : 0,
+          uptime_seconds: instance.readyAt ? (Date.now() - instance.readyAt.getTime()) / 1000 : 0,
         }
       } catch {
         return reply.code(503).send({
@@ -517,6 +532,171 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
         instance_id,
         logs,
         line_count: lineCount,
+      }
+    }
+  )
+
+  /**
+   * POST /api/models/instances/:instance_id/sleep - Put model to sleep
+   */
+  fastify.post<{
+    Params: { instance_id: string }
+    Body: SleepModelRequestType
+  }>(
+    '/api/models/instances/:instance_id/sleep',
+    {
+      schema: {
+        tags: ['models'],
+        summary: 'Put model instance to sleep',
+        params: Type.Object({ instance_id: Type.String({ format: 'uuid' }) }),
+        body: SleepModelRequestSchema,
+        response: {
+          200: SleepModelResponseSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin'),
+    },
+    async (request, reply) => {
+      const { instance_id } = request.params
+      const { level = 1 } = request.body ?? {}
+
+      try {
+        await modelManager.sleepModel(instance_id, level)
+
+        const instance = modelStore.get(instance_id)
+        if (!instance) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: `Model instance ${instance_id} not found`,
+          })
+        }
+
+        return reply.send({
+          status: 'success' as const,
+          instance_id,
+          model_path: instance.modelPath,
+          sleep_level: level,
+          slept_at: instance.sleptAt?.toISOString() ?? new Date().toISOString(),
+        })
+      } catch (err) {
+        if (err instanceof NotFoundError) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: err.message,
+          })
+        }
+        if (err instanceof AppError) {
+          const statusCode = err.message.includes('not loaded with sleep mode') ? 400 : 409
+          return reply.status(statusCode).send({
+            error: statusCode === 400 ? 'Bad Request' : 'Conflict',
+            message: err.message,
+          })
+        }
+        throw err
+      }
+    }
+  )
+
+  /**
+   * POST /api/models/instances/:instance_id/wake - Wake sleeping model
+   */
+  fastify.post<{
+    Params: { instance_id: string }
+    Body: WakeModelRequestType
+  }>(
+    '/api/models/instances/:instance_id/wake',
+    {
+      schema: {
+        tags: ['models'],
+        summary: 'Wake a sleeping model instance',
+        params: Type.Object({ instance_id: Type.String({ format: 'uuid' }) }),
+        body: WakeModelRequestSchema,
+        response: {
+          200: WakeModelResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin'),
+    },
+    async (request, reply) => {
+      const { instance_id } = request.params
+      const { tags } = request.body ?? {}
+
+      try {
+        await modelManager.wakeModel(instance_id, tags)
+
+        const instance = modelStore.get(instance_id)
+        if (!instance) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: `Model instance ${instance_id} not found`,
+          })
+        }
+
+        return reply.send({
+          status: 'success' as const,
+          instance_id,
+          model_path: instance.modelPath,
+          woke_at: new Date().toISOString(),
+        })
+      } catch (err) {
+        if (err instanceof NotFoundError) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: err.message,
+          })
+        }
+        if (err instanceof AppError) {
+          return reply.status(409).send({
+            error: 'Conflict',
+            message: err.message,
+          })
+        }
+        throw err
+      }
+    }
+  )
+
+  /**
+   * GET /api/models/instances/:instance_id/sleep-status - Check sleep status
+   */
+  fastify.get<{ Params: { instance_id: string } }>(
+    '/api/models/instances/:instance_id/sleep-status',
+    {
+      schema: {
+        tags: ['models'],
+        summary: 'Check if model instance is sleeping',
+        params: Type.Object({ instance_id: Type.String({ format: 'uuid' }) }),
+        response: {
+          200: SleepStatusResponseSchema,
+          404: ErrorResponseSchema,
+        },
+      },
+      onRequest: fastify.requireRole('admin-readonly'),
+    },
+    async (request, reply) => {
+      const { instance_id } = request.params
+
+      try {
+        const sleepStatus = await modelManager.isSleeping(instance_id)
+
+        return reply.send({
+          instance_id,
+          is_sleeping: sleepStatus.isSleeping,
+          sleep_level: sleepStatus.level,
+        })
+      } catch (err) {
+        if (err instanceof NotFoundError) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: err.message,
+          })
+        }
+        throw err
       }
     }
   )

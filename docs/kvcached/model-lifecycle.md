@@ -61,6 +61,7 @@ There are three methods to load models with kvcached:
 Use the kvcached Controller to launch and manage multiple models from a YAML configuration.
 
 **Configuration File** (`config.yaml`):
+
 ```yaml
 kvcached:
   gpu_memory_utilization: 0.9
@@ -68,29 +69,29 @@ kvcached:
 
 router:
   enabled: true
-  host: "0.0.0.0"
+  host: '0.0.0.0'
   port: 8080
 
 instances:
-  - name: "llama-3.2-1b"
-    model: "meta-llama/Llama-3.2-1B"
-    engine: "vllm"
+  - name: 'llama-3.2-1b'
+    model: 'meta-llama/Llama-3.2-1B'
+    engine: 'vllm'
     port: 12346
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
       max_model_len: 4096
 
-  - name: "qwen-0.6b"
-    model: "Qwen/Qwen3-0.6B"
-    engine: "vllm"
+  - name: 'qwen-0.6b'
+    model: 'Qwen/Qwen3-0.6B'
+    engine: 'vllm'
     port: 12347
     env:
-      ENABLE_KVCACHED: "true"
-      KVCACHED_AUTOPATCH: "1"
+      ENABLE_KVCACHED: 'true'
+      KVCACHED_AUTOPATCH: '1'
     engine_args:
       disable_log_requests: true
       enable_prefix_caching: false
@@ -98,11 +99,13 @@ instances:
 ```
 
 **Launch Command**:
+
 ```bash
 python -m controller.launch --config config.yaml
 ```
 
 **What Happens**:
+
 1. Controller reads configuration
 2. For each instance:
    - Creates tmux session
@@ -113,6 +116,7 @@ python -m controller.launch --config config.yaml
 4. Begins traffic monitoring and sleep management
 
 **Checking Status**:
+
 ```bash
 # Check models are running
 curl http://localhost:8080/models
@@ -126,6 +130,7 @@ curl http://localhost:8080/health
 Launch vLLM directly with kvcached enabled.
 
 **Command**:
+
 ```bash
 # Set environment variables
 export ENABLE_KVCACHED=true
@@ -141,6 +146,7 @@ vllm serve meta-llama/Llama-3.2-1B \
 ```
 
 **Verification**:
+
 ```bash
 # Check vLLM is responding
 curl http://localhost:12346/v1/models
@@ -150,6 +156,7 @@ kvctl list
 ```
 
 **Use Cases**:
+
 - Single model deployment
 - Testing and development
 - Custom launch scripts
@@ -160,6 +167,7 @@ kvctl list
 Launch models from Python code for backend integration.
 
 **Python Example**:
+
 ```python
 import subprocess
 import os
@@ -212,6 +220,7 @@ process = launch_vllm_model("meta-llama/Llama-3.2-1B", port=12346)
 ```
 
 **Enhanced with Controller Integration**:
+
 ```python
 import yaml
 import subprocess
@@ -291,6 +300,7 @@ kvcached uses a shared IPC segment (`kvcached_mem_info`) for all models. When a 
 ### Understanding vLLM Process Tree
 
 vLLM spawns multiple processes:
+
 - **API Server** (parent) - handles HTTP requests, no GPU memory
 - **EngineCore** (child) - allocates and uses GPU VRAM
 
@@ -299,6 +309,7 @@ SIGKILL only kills the target process - it doesn't propagate to children. If you
 ### Method 1: Stop vLLM Process (SIGKILL)
 
 **If launched manually**:
+
 ```bash
 # Find process
 ps aux | grep vllm
@@ -313,6 +324,7 @@ pkill -9 -f "vllm serve meta-llama/Llama-3.2-1B"
 > **Warning:** Do NOT use `kill <PID>` without `-9` as it sends SIGTERM which triggers IPC cleanup.
 
 **If launched via controller (tmux)**:
+
 ```bash
 # List tmux sessions
 tmux list-sessions
@@ -324,6 +336,7 @@ tmux kill-session -t <session-name>
 ### Method 2: Programmatic Termination
 
 **Python Example**:
+
 ```python
 import subprocess
 import signal
@@ -446,16 +459,18 @@ kvcached's key feature is the ability to put models to sleep and wake them on de
 When `auto_sleep_enabled: true` in configuration, the Sleep Manager automatically puts idle models to sleep.
 
 **Configuration**:
+
 ```yaml
 sleep_manager:
   enabled: true
   auto_sleep_enabled: true
-  idle_threshold_seconds: 300    # 5 minutes
+  idle_threshold_seconds: 300 # 5 minutes
   min_sleep_duration_seconds: 60
   check_interval_seconds: 60
 ```
 
 **Behavior**:
+
 1. Traffic Monitor tracks last request time per model
 2. Sleep Manager checks idle times every `check_interval_seconds`
 3. Models idle > `idle_threshold_seconds` are put to sleep
@@ -463,11 +478,13 @@ sleep_manager:
 5. Process remains running for fast wake-up
 
 **Checking Sleep Status**:
+
 ```bash
 curl http://localhost:8080/sleep/status
 ```
 
 **Response**:
+
 ```json
 {
   "models": {
@@ -489,6 +506,7 @@ curl http://localhost:8080/sleep/status
 Put a model to sleep manually via API:
 
 **cURL**:
+
 ```bash
 MODEL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl -X POST http://localhost:8080/action/sleep/$MODEL \
@@ -497,6 +515,7 @@ curl -X POST http://localhost:8080/action/sleep/$MODEL \
 ```
 
 **Python**:
+
 ```python
 import requests
 import urllib.parse
@@ -515,6 +534,7 @@ print(result)
 ```
 
 **Response (Success)**:
+
 ```json
 {
   "status": "success",
@@ -529,6 +549,7 @@ print(result)
 When a request arrives for a sleeping model, it is automatically woken up.
 
 **Flow**:
+
 1. Client sends request to sleeping model
 2. Router detects model is asleep
 3. Sleep Manager wakes up model
@@ -537,6 +558,7 @@ When a request arrives for a sleeping model, it is automatically woken up.
 6. Response returned to client
 
 **Example**:
+
 ```python
 import requests
 
@@ -556,6 +578,7 @@ response = requests.post(
 ```
 
 **Wake-Up Latency**:
+
 - Typically: 2-10 seconds
 - Depends on model size and hardware
 - First request after wake is slower
@@ -566,6 +589,7 @@ response = requests.post(
 Wake a sleeping model manually:
 
 **cURL**:
+
 ```bash
 MODEL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl -X POST http://localhost:8080/action/wakeup/$MODEL \
@@ -574,6 +598,7 @@ curl -X POST http://localhost:8080/action/wakeup/$MODEL \
 ```
 
 **Python**:
+
 ```python
 def wake_up_model(model_name, base_url="http://localhost:8080"):
     """Wake up a sleeping model."""
@@ -589,6 +614,7 @@ print(result)
 ```
 
 **Response (Success)**:
+
 ```json
 {
   "status": "success",
@@ -599,6 +625,7 @@ print(result)
 ```
 
 **Response (Error - Too Soon)**:
+
 ```json
 {
   "status": "error",
@@ -618,6 +645,7 @@ curl http://localhost:8080/sleep/candidates
 ```
 
 **Response**:
+
 ```json
 {
   "candidates": [
@@ -646,6 +674,7 @@ curl http://localhost:8080/traffic/stats
 ```
 
 **Response**:
+
 ```json
 {
   "overall": {
@@ -677,12 +706,14 @@ curl http://localhost:8080/traffic/stats
 ```
 
 **Per-Model Stats**:
+
 ```bash
 MODEL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl http://localhost:8080/traffic/stats/$MODEL
 ```
 
 **Time-Windowed Stats** (last 5 minutes):
+
 ```bash
 curl http://localhost:8080/traffic/stats?window=300
 ```
@@ -692,11 +723,13 @@ curl http://localhost:8080/traffic/stats?window=300
 Use CLI tools to monitor memory:
 
 **kvctl** (detailed view):
+
 ```bash
 kvctl list
 ```
 
 **Output**:
+
 ```
 IPC Name         Total      Used       Free       Limit      Usage
 ─────────────────────────────────────────────────────────────────
@@ -705,11 +738,13 @@ VLLM_MODEL_2     6.0 GB     1.5 GB     4.5 GB     6.0 GB     25%
 ```
 
 **kvtop** (real-time visual):
+
 ```bash
 kvtop
 ```
 
 **JSON Output for Programmatic Access**:
+
 ```bash
 kvctl list --json
 ```
@@ -729,11 +764,13 @@ kvctl list --json
 ### Active vs. Idle Models
 
 **Active Models**:
+
 ```bash
 curl http://localhost:8080/models/active
 ```
 
 **Idle Models**:
+
 ```bash
 curl http://localhost:8080/models/idle
 ```
@@ -741,11 +778,13 @@ curl http://localhost:8080/models/idle
 ### Health Checks
 
 **Overall Health**:
+
 ```bash
 curl http://localhost:8080/health
 ```
 
 **Per-Model Health**:
+
 ```bash
 MODEL=$(python3 -c "import urllib.parse; print(urllib.parse.quote('meta-llama/Llama-3.2-1B'))")
 curl http://localhost:8080/health/$MODEL
@@ -754,6 +793,7 @@ curl http://localhost:8080/health/$MODEL
 ### Programmatic Monitoring
 
 **Python Example**:
+
 ```python
 import requests
 

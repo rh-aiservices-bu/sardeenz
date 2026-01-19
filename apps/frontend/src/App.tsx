@@ -65,6 +65,7 @@ import { AlertToastGroup } from './components/AlertToastGroup'
 import Login from './pages/Login'
 import OAuthCallback from './pages/OAuthCallback'
 import AccessDenied from './pages/AccessDenied'
+import { InferenceWorkspaceProvider } from './contexts/InferenceWorkspaceContext'
 import axios from 'axios'
 
 function App() {
@@ -248,7 +249,8 @@ function App() {
             {'App by '}
             <a href="http://red.ht/cai-team" target="_blank" rel="noreferrer">
               red.ht/cai team
-            </a><br />
+            </a>
+            <br />
             {version && <FlexItem style={{ marginTop: '0.5rem' }}>Version {version}</FlexItem>}
             <Flex direction={{ default: 'column' }} style={{ width: '100%', alignItems: 'center' }}>
               <FlexItem style={{ marginBottom: '0rem' }}>
@@ -405,7 +407,7 @@ function App() {
   }
 
   return (
-    <>
+    <InferenceWorkspaceProvider>
       <AlertToastGroup notifications={toastNotifications} onRemove={removeToastNotification} />
       <Page masthead={masthead} sidebar={sidebar}>
         <Drawer isExpanded={isDrawerOpen} onExpand={() => setIsDrawerOpen(true)}>
@@ -420,7 +422,7 @@ function App() {
           </DrawerContent>
         </Drawer>
       </Page>
-    </>
+    </InferenceWorkspaceProvider>
   )
 }
 

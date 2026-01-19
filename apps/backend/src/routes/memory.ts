@@ -88,7 +88,8 @@ export default async function memoryRoutes(fastify: FastifyInstance) {
     {
       schema: {
         tags: ['memory'],
-        description: 'Get per-GPU memory usage with per-model breakdown for multi-GPU visualization',
+        description:
+          'Get per-GPU memory usage with per-model breakdown for multi-GPU visualization',
         response: {
           200: MultiGpuMemoryUsageResponseSchema,
           500: ErrorResponseSchema,

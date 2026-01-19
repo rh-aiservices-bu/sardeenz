@@ -36,12 +36,12 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Key Value Propositions
 
-| For... | Performance Benchmarking | Memory Profiling |
-|--------|--------------------------|------------------|
-| **ML Engineers** | Quantify model performance before production | Know exact VRAM requirements |
-| **Platform Operators** | Capacity planning with concurrency data | Pre-load warnings prevent OOM failures |
-| **Decision Makers** | Data-driven model selection | Cost optimization via memory awareness |
-| **kvcached Users** | Measure performance impact | Understand memory overhead per model |
+| For...                 | Performance Benchmarking                     | Memory Profiling                       |
+| ---------------------- | -------------------------------------------- | -------------------------------------- |
+| **ML Engineers**       | Quantify model performance before production | Know exact VRAM requirements           |
+| **Platform Operators** | Capacity planning with concurrency data      | Pre-load warnings prevent OOM failures |
+| **Decision Makers**    | Data-driven model selection                  | Cost optimization via memory awareness |
+| **kvcached Users**     | Measure performance impact                   | Understand memory overhead per model   |
 
 ---
 
@@ -49,22 +49,22 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Performance Benchmarking
 
-| Role | User Story | Acceptance Criteria |
-|------|------------|---------------------|
-| ML Engineer | As an ML Engineer, I want to measure baseline performance of a model so that I can establish a reference point before production | TTFT/TPS/E2E percentiles displayed for isolated single-model test |
-| ML Engineer | As an ML Engineer, I want to compare two models side-by-side so that I can choose the best one for my use case | Comparison view showing metrics for multiple models in same benchmark run |
-| Platform Operator | As a Platform Operator, I want to test performance under concurrent load so that I can validate capacity planning | Contention mode runs multiple models in parallel, reports per-model metrics |
-| Platform Operator | As a Platform Operator, I want to measure kvcached impact so that I can quantify the performance/memory tradeoff | Compare historical runs with/without KVCache using comparison view |
-| Decision Maker | As a Decision Maker, I want to export benchmark results so that I can include them in reports | Export to CSV/JSON with all metrics and configuration |
+| Role              | User Story                                                                                                                       | Acceptance Criteria                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| ML Engineer       | As an ML Engineer, I want to measure baseline performance of a model so that I can establish a reference point before production | TTFT/TPS/E2E percentiles displayed for isolated single-model test           |
+| ML Engineer       | As an ML Engineer, I want to compare two models side-by-side so that I can choose the best one for my use case                   | Comparison view showing metrics for multiple models in same benchmark run   |
+| Platform Operator | As a Platform Operator, I want to test performance under concurrent load so that I can validate capacity planning                | Contention mode runs multiple models in parallel, reports per-model metrics |
+| Platform Operator | As a Platform Operator, I want to measure kvcached impact so that I can quantify the performance/memory tradeoff                 | Compare historical runs with/without KVCache using comparison view          |
+| Decision Maker    | As a Decision Maker, I want to export benchmark results so that I can include them in reports                                    | Export to CSV/JSON with all metrics and configuration                       |
 
 ### Memory Profiling
 
-| Role | User Story | Acceptance Criteria |
-|------|------------|---------------------|
-| ML Engineer | As an ML Engineer, I want to capture memory profile of a running model so that I know its exact VRAM footprint | Profile shows weights, CUDA graphs, KV cache breakdown |
-| Platform Operator | As a Platform Operator, I want to be warned before loading a model that won't fit so that I can avoid OOM failures | Pre-load warning appears when estimated memory exceeds available GPU |
+| Role              | User Story                                                                                                          | Acceptance Criteria                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ML Engineer       | As an ML Engineer, I want to capture memory profile of a running model so that I know its exact VRAM footprint      | Profile shows weights, CUDA graphs, KV cache breakdown                           |
+| Platform Operator | As a Platform Operator, I want to be warned before loading a model that won't fit so that I can avoid OOM failures  | Pre-load warning appears when estimated memory exceeds available GPU             |
 | Platform Operator | As a Platform Operator, I want to see memory profiles for different max_tokens settings so that I can plan capacity | Profile keyed by model_path + max_tokens + gpu_name, multiple profiles per model |
-| Decision Maker | As a Decision Maker, I want to compare memory requirements across models so that I can optimize GPU costs | Profiles table with sortable columns for memory metrics |
+| Decision Maker    | As a Decision Maker, I want to compare memory requirements across models so that I can optimize GPU costs           | Profiles table with sortable columns for memory metrics                          |
 
 ---
 
@@ -72,14 +72,14 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Performance Metrics
 
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **TTFT** (Time to First Token) | Latency from request to first response token | User-perceived responsiveness; critical for streaming UX |
-| **TPS** (Tokens Per Second) | Token generation throughput | Raw model speed; higher = faster completions |
-| **E2E Latency** | Total request-to-completion time | Overall response time; combines TTFT + generation |
-| **Goodput** | % of requests meeting SLA threshold | Production reliability; what % of requests are "fast enough" |
+| Metric                         | What It Measures                             | Why It Matters                                               |
+| ------------------------------ | -------------------------------------------- | ------------------------------------------------------------ |
+| **TTFT** (Time to First Token) | Latency from request to first response token | User-perceived responsiveness; critical for streaming UX     |
+| **TPS** (Tokens Per Second)    | Token generation throughput                  | Raw model speed; higher = faster completions                 |
+| **E2E Latency**                | Total request-to-completion time             | Overall response time; combines TTFT + generation            |
+| **Goodput**                    | % of requests meeting SLA threshold          | Production reliability; what % of requests are "fast enough" |
 
-*Note: TPOT (Time Per Output Token) can be calculated as `1000 / TPS` if needed for latency analysis.*
+_Note: TPOT (Time Per Output Token) can be calculated as `1000 / TPS` if needed for latency analysis._
 
 **Goodput Calculation:**
 
@@ -88,13 +88,13 @@ Without benchmarking and profiling, these decisions rely on guesswork. This feat
 
 ### Memory Metrics
 
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **Weights Memory** | Model parameters loaded to GPU | Fixed cost - cannot be reduced |
-| **CUDA Graphs** | Pre-compiled inference kernels | Fixed cost after warmup |
-| **KV Cache Available** | Memory pool for attention cache | Shared across all models (via kvcached) |
-| **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency |
-| **Baseline Memory** | Weights + CUDA Graphs | Minimum VRAM to load model |
+| Metric                   | What It Measures                       | Why It Matters                          |
+| ------------------------ | -------------------------------------- | --------------------------------------- |
+| **Weights Memory**       | Model parameters loaded to GPU         | Fixed cost - cannot be reduced          |
+| **CUDA Graphs**          | Pre-compiled inference kernels         | Fixed cost after warmup                 |
+| **KV Cache Available**   | Memory pool for attention cache        | Shared across all models (via kvcached) |
+| **KV Cache Per Request** | Estimated cache per concurrent request | Scales with max_tokens × concurrency    |
+| **Baseline Memory**      | Weights + CUDA Graphs                  | Minimum VRAM to load model              |
 
 ### Statistical Percentiles
 
@@ -283,7 +283,7 @@ Navigate to Model Benchmark page from sidebar → Performance tab. See:
 - **Total Requests**: 10-500 measured requests (default: 50)
 - **Warmup**: 0-10 warmup requests (default: 3)
 
-*Note: Token counts are approximate using 4:1 character-to-token ratio. Actual tokens depend on model tokenizer.*
+_Note: Token counts are approximate using 4:1 character-to-token ratio. Actual tokens depend on model tokenizer._
 
 **Advanced Options**
 
@@ -373,15 +373,15 @@ When loading a new model via Load Model dialog:
 
 ## 6. Product Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Two-tab interface (Performance / Memory) | Different workflows, different audiences - cleaner separation |
-| Warn-only pre-load | User knows best - avoid blocking legitimate experiments |
-| Standard presets + custom tokens | Cover common cases (512, 1024, 2048, 4096) + allow experimentation |
+| Decision                                            | Rationale                                                                   |
+| --------------------------------------------------- | --------------------------------------------------------------------------- |
+| Two-tab interface (Performance / Memory)            | Different workflows, different audiences - cleaner separation               |
+| Warn-only pre-load                                  | User knows best - avoid blocking legitimate experiments                     |
+| Standard presets + custom tokens                    | Cover common cases (512, 1024, 2048, 4096) + allow experimentation          |
 | Profile keyed by model_path + max_tokens + gpu_name | Same model at different token limits or GPUs has different memory footprint |
-| Warmup requests | Avoids cold-start skew from CUDA compilation |
-| P50/P90/P95/P99 percentiles | Captures distribution, not just averages; P99 matters for SLAs |
-| Isolated vs Contention modes | Different use cases: baseline profiling vs capacity planning |
+| Warmup requests                                     | Avoids cold-start skew from CUDA compilation                                |
+| P50/P90/P95/P99 percentiles                         | Captures distribution, not just averages; P99 matters for SLAs              |
+| Isolated vs Contention modes                        | Different use cases: baseline profiling vs capacity planning                |
 
 ---
 

@@ -21,6 +21,9 @@ spec:
         app.kubernetes.io/name: sardeenz
         app.kubernetes.io/component: ml-platform
     spec:
+      # ServiceAccount for RBAC checks (LocalSubjectAccessReview)
+      serviceAccountName: sardeenz
+
       # GPU node selector - target nodes with NVIDIA GPUs
       nodeSelector:
         nvidia.com/gpu.present: "true"
@@ -131,6 +134,11 @@ spec:
                   name: sardeenz-secrets
                   key: k8s-api-url
                   optional: true
+            # Namespace for RBAC checks (uses downward API)
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
 
             # Inference API key (optional)
             - name: INFERENCE_API_KEY
@@ -279,5 +287,4 @@ spec:
 
       # Security context - OpenShift runs as non-root with random UID
       securityContext:
-        fsGroup: 0
         runAsNonRoot: true

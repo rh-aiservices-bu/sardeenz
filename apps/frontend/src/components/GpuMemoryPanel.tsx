@@ -15,6 +15,7 @@ import {
   Tab,
   TabTitleText,
 } from '@patternfly/react-core'
+import { MoonIcon } from '@patternfly/react-icons'
 import { ResponsiveBar } from '@nivo/bar'
 import type { MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient } from '../services/api'
@@ -37,6 +38,19 @@ const KVCACHE_COLORS = {
 
 const FREE_COLOR = '#D2D2D2' // Light gray for free space
 
+// Pattern definition for sleeping models (diagonal hatching)
+const SLEEPING_PATTERN_DEFS = [
+  {
+    id: 'sleeping-pattern',
+    type: 'patternLines' as const,
+    background: 'inherit',
+    color: 'rgba(0, 0, 0, 0.3)',
+    rotation: -45,
+    lineWidth: 3,
+    spacing: 8,
+  },
+]
+
 // Nivo tooltip theme - detects PatternFly dark mode for proper styling
 const getTooltipTheme = () => {
   const isDark = document.documentElement.classList.contains('pf-v6-theme-dark')
@@ -56,6 +70,10 @@ const getTooltipTheme = () => {
 
 interface GpuMemoryPanelProps {
   defaultRefreshInterval?: number | null
+  onModelClick?: (instanceId: string) => void
+  refreshTrigger?: number
+  /** Callback when memory data is fetched/updated - exposes data for other components */
+  onMemoryDataChange?: (data: MultiGpuMemoryUsageResponse) => void
 }
 
 /**
@@ -65,7 +83,12 @@ interface GpuMemoryPanelProps {
  * - KVCache: shared pool (Prealloc / Used / Free)
  * - GPU: per-model breakdown with colors
  */
-export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanelProps) {
+export function GpuMemoryPanel({
+  defaultRefreshInterval = 5000,
+  onModelClick,
+  refreshTrigger,
+  onMemoryDataChange,
+}: GpuMemoryPanelProps) {
   const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,12 +101,13 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
       const data = await apiClient.getMultiGpuMemoryUsage()
       setMemoryData(data)
       setError(null)
+      onMemoryDataChange?.(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch memory usage')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [onMemoryDataChange])
 
   // Initial fetch and polling
   useEffect(() => {
@@ -93,7 +117,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
 
     const interval = setInterval(fetchMemoryUsage, refreshInterval)
     return () => clearInterval(interval)
-  }, [fetchMemoryUsage, refreshInterval])
+  }, [fetchMemoryUsage, refreshInterval, refreshTrigger])
 
   // Get the currently selected GPU data
   const selectedGpu: PerGpuMetrics | null = useMemo(() => {
@@ -107,7 +131,10 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
   const kvcacheData = useMemo(() => {
     // Use per-GPU kvcache from selected GPU (if available)
     const kvcache = selectedGpu?.kvcache
-    if (!kvcache || kvcache.total_gb === 0) return []
+    // If no models loaded, kvcache should be considered non-existent (workaround for kvcached bug
+    // that reports stale preallocation values after all vLLMCore processes are terminated)
+    const hasModels = selectedGpu?.models && selectedGpu.models.length > 0
+    if (!kvcache || kvcache.total_gb === 0 || !hasModels) return []
 
     return [
       {
@@ -121,7 +148,13 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
 
   // Build GPU bar data with per-model breakdown for selected GPU
   const gpuData = useMemo(() => {
-    if (!selectedGpu) return { data: [], keys: [], colors: {} as Record<string, string> }
+    if (!selectedGpu)
+      return {
+        data: [],
+        keys: [],
+        colors: {} as Record<string, string>,
+        fill: [] as Array<{ match: { id: string }; id: string }>,
+      }
 
     const { models } = selectedGpu
     const modelsMemory = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
@@ -132,6 +165,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     const dataObj: Record<string, number | string> = { id: 'GPU' }
     const keys: string[] = []
     const colors: Record<string, string> = {}
+    const fill: Array<{ match: { id: string }; id: string }> = []
 
     // Add each model
     models.forEach((model) => {
@@ -139,6 +173,11 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
       dataObj[key] = Number(model.gpu_memory_gb.toFixed(2))
       keys.push(key)
       colors[key] = model.color
+
+      // Apply hatching pattern to sleeping models
+      if (model.is_sleeping) {
+        fill.push({ match: { id: key }, id: 'sleeping-pattern' })
+      }
     })
 
     // Add Other (system processes, etc.)
@@ -153,7 +192,7 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
     keys.push('Free')
     colors['Free'] = FREE_COLOR
 
-    return { data: [dataObj], keys, colors }
+    return { data: [dataObj], keys, colors, fill }
   }, [selectedGpu])
 
   const formatGb = (value: number) => `${value.toFixed(2)} GB`
@@ -243,7 +282,11 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
               <Tab
                 key={gpu.gpu_index}
                 eventKey={gpu.gpu_index}
-                title={<TabTitleText>GPU {gpu.gpu_index}: {gpu.name}</TabTitleText>}
+                title={
+                  <TabTitleText>
+                    GPU {gpu.gpu_index}: {gpu.name}
+                  </TabTitleText>
+                }
               />
             ))}
           </Tabs>
@@ -251,13 +294,17 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
 
         <Flex direction={{ default: 'row' }} gap={{ default: 'gapLg' }}>
           {/* GPU Memory Bar - Column 1 */}
-          <FlexItem flex={{ default: 'flex_1' }}>
-            <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+          <FlexItem flex={{ default: 'flex_2' }}>
+            <Content
+              component="small"
+              style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
+            >
               {memoryData && memoryData.gpus.length === 1 && selectedGpu && (
                 <>{selectedGpu.name} — </>
               )}
-              {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}{' '}
-              ({selectedGpu?.utilization_percent.toFixed(0) ?? 0}% utilized)
+              VRAM: {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}
+              {' — '}
+              GPU Load: {selectedGpu?.utilization_percent.toFixed(0) ?? 0}%
             </Content>
             <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
               <ResponsiveBar
@@ -268,6 +315,8 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
                 margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
                 padding={0}
                 colors={(bar) => gpuData.colors[bar.id as string] || '#ccc'}
+                defs={SLEEPING_PATTERN_DEFS}
+                fill={gpuData.fill}
                 borderRadius={4}
                 enableLabel={false}
                 enableGridY={false}
@@ -277,38 +326,100 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
                 axisBottom={null}
                 axisLeft={null}
                 theme={getTooltipTheme()}
+                onClick={(bar) => {
+                  // Find the model by display_name and call onModelClick
+                  const model = selectedGpu?.models.find((m) => m.display_name === bar.id)
+                  if (model && onModelClick) {
+                    onModelClick(model.instance_id)
+                  }
+                }}
+                onMouseEnter={(_bar, event) => {
+                  // Check if this is a clickable model bar (not Other or Free)
+                  const isClickable = selectedGpu?.models.some(
+                    (m) => m.display_name === (_bar as { id: string }).id
+                  )
+                  if (isClickable && onModelClick) {
+                    ;(event.target as HTMLElement).style.cursor = 'pointer'
+                  }
+                }}
+                onMouseLeave={(_bar, event) => {
+                  ;(event.target as HTMLElement).style.cursor = 'default'
+                }}
               />
             </div>
-            <Flex gap={{ default: 'gapSm' }} flexWrap={{ default: 'wrap' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
+            <Flex
+              flexWrap={{ default: 'wrap' }}
+              style={{
+                marginTop: 'var(--pf-t--global--spacer--xs)',
+                columnGap: 'var(--pf-t--global--spacer--md)',
+                rowGap: 'var(--pf-t--global--spacer--xs)',
+              }}
+            >
               {selectedGpu?.models.map((model) => (
                 <FlexItem key={`${model.instance_id}-${model.model_path}`}>
-                  <span style={{ color: model.color }}>●</span>{' '}
-                  <Content component="small">{model.display_name} ({formatGb(model.gpu_memory_gb)})</Content>
+                  <span
+                    onClick={() => onModelClick?.(model.instance_id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onModelClick?.(model.instance_id)
+                      }
+                    }}
+                    role={onModelClick ? 'button' : undefined}
+                    tabIndex={onModelClick ? 0 : undefined}
+                    aria-label={onModelClick ? `Go to ${model.display_name}` : undefined}
+                    style={{
+                      cursor: onModelClick ? 'pointer' : 'default',
+                      fontSize: 'var(--pf-t--global--font--size--sm)',
+                      opacity: model.is_sleeping ? 0.7 : 1,
+                    }}
+                  >
+                    <span style={{ color: model.color }}>●</span> {model.display_name}
+                    {model.is_sleeping && (
+                      <MoonIcon
+                        style={{
+                          marginLeft: '4px',
+                          fontSize: 'var(--pf-t--global--font--size--xs)',
+                          color: 'var(--pf-t--global--text--color--subtle)',
+                        }}
+                      />
+                    )}{' '}
+                    ({formatGb(model.gpu_memory_gb)})
+                  </span>
                 </FlexItem>
               ))}
               {gpuData.keys.includes('Other') && (
                 <FlexItem>
-                  <span style={{ color: '#8B8D8F' }}>●</span>{' '}
-                  <Content component="small">Other</Content>
+                  <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
+                    <span style={{ color: '#8B8D8F' }}>●</span> Other
+                  </span>
                 </FlexItem>
               )}
               <FlexItem>
-                <span style={{ color: FREE_COLOR }}>●</span>{' '}
-                <Content component="small">Free ({formatGb(selectedGpu?.free_gb ?? 0)})</Content>
+                <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
+                  <span style={{ color: FREE_COLOR }}>●</span> Free (
+                  {formatGb(selectedGpu?.free_gb ?? 0)})
+                </span>
               </FlexItem>
             </Flex>
           </FlexItem>
 
           {/* KVCache Memory Bar - Column 2 (Per-GPU) */}
           <FlexItem flex={{ default: 'flex_1' }}>
-            <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
+            <Content
+              component="small"
+              style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
+            >
               {memoryData && memoryData.gpus.length > 1 && `GPU ${selectedGpu?.gpu_index} `}
               KVCache Memory —{' '}
-              {selectedGpu?.kvcache && selectedGpu.kvcache.total_gb > 0
+              {selectedGpu?.kvcache &&
+              selectedGpu.kvcache.total_gb > 0 &&
+              selectedGpu.models.length > 0
                 ? `${formatGb(selectedGpu.kvcache.used_gb)} / ${formatGb(selectedGpu.kvcache.total_gb)}`
                 : 'No KVCache active'}
             </Content>
-            {selectedGpu?.kvcache && selectedGpu.kvcache.total_gb > 0 ? (
+            {selectedGpu?.kvcache &&
+            selectedGpu.kvcache.total_gb > 0 &&
+            selectedGpu.models.length > 0 ? (
               <>
                 <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
                   <ResponsiveBar
@@ -318,7 +429,9 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
                     layout="horizontal"
                     margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
                     padding={0}
-                    colors={(bar) => KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'}
+                    colors={(bar) =>
+                      KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'
+                    }
                     borderRadius={4}
                     enableLabel={false}
                     enableGridY={false}
@@ -330,24 +443,43 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
                     theme={getTooltipTheme()}
                   />
                 </div>
-                <Flex gap={{ default: 'gapSm' }} style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}>
+                <Flex
+                  gap={{ default: 'gapSm' }}
+                  style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}
+                >
                   <FlexItem>
                     <span style={{ color: KVCACHE_COLORS.Prealloc }}>●</span>{' '}
-                    <Content component="small">Prealloc ({formatGb(selectedGpu.kvcache.prealloc_gb)})</Content>
+                    <Content component="small">
+                      Prealloc ({formatGb(selectedGpu.kvcache.prealloc_gb)})
+                    </Content>
                   </FlexItem>
                   <FlexItem>
                     <span style={{ color: KVCACHE_COLORS.Used }}>●</span>{' '}
-                    <Content component="small">Used ({formatGb(selectedGpu.kvcache.used_gb)})</Content>
+                    <Content component="small">
+                      Used ({formatGb(selectedGpu.kvcache.used_gb)})
+                    </Content>
                   </FlexItem>
                   <FlexItem>
                     <span style={{ color: KVCACHE_COLORS.Free }}>●</span>{' '}
-                    <Content component="small">Free ({formatGb(selectedGpu.kvcache.free_gb)})</Content>
+                    <Content component="small">
+                      Free ({formatGb(selectedGpu.kvcache.free_gb)})
+                    </Content>
                   </FlexItem>
                 </Flex>
               </>
             ) : (
-              <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)', display: 'flex', alignItems: 'center' }}>
-                <Content component="small" style={{ fontStyle: 'italic', color: 'var(--pf-t--global--text--color--subtle)' }}>
+              <div
+                style={{
+                  height: '40px',
+                  marginTop: 'var(--pf-t--global--spacer--xs)',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Content
+                  component="small"
+                  style={{ fontStyle: 'italic', color: 'var(--pf-t--global--text--color--subtle)' }}
+                >
                   No models with kvcached enabled on this GPU
                 </Content>
               </div>
@@ -357,9 +489,19 @@ export function GpuMemoryPanel({ defaultRefreshInterval = 5000 }: GpuMemoryPanel
 
         {/* Total system memory summary for multi-GPU */}
         {memoryData && memoryData.gpus.length > 1 && (
-          <div style={{ marginTop: 'var(--pf-t--global--spacer--md)', paddingTop: 'var(--pf-t--global--spacer--sm)', borderTop: '1px solid var(--pf-t--global--border--color--default)' }}>
-            <Content component="small" style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-              Total system free GPU memory: {formatGb(memoryData.total_system_free_gb)} across {memoryData.gpus.length} GPUs
+          <div
+            style={{
+              marginTop: 'var(--pf-t--global--spacer--md)',
+              paddingTop: 'var(--pf-t--global--spacer--sm)',
+              borderTop: '1px solid var(--pf-t--global--border--color--default)',
+            }}
+          >
+            <Content
+              component="small"
+              style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
+            >
+              Total system free GPU memory: {formatGb(memoryData.total_system_free_gb)} across{' '}
+              {memoryData.gpus.length} GPUs
             </Content>
           </div>
         )}

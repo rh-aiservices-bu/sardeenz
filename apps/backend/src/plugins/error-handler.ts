@@ -15,7 +15,7 @@ function sanitizeBody(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body
 
   const sensitiveKeys = ['password', 'token', 'secret', 'apiKey', 'api_key', 'authorization']
-  const sanitized = { ...body as Record<string, unknown> }
+  const sanitized = { ...(body as Record<string, unknown>) }
 
   for (const key of sensitiveKeys) {
     if (key in sanitized) {

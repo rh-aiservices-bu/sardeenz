@@ -192,17 +192,12 @@ describe('Memory Monitoring Routes', () => {
       expect(body.new_limit_gb).toBe(6.0)
 
       // Verify MemoryMonitor was called with correct arguments
-      expect(mockSetMemoryLimits).toHaveBeenCalledWith(
-        'meta-llama/Llama-3.2-1B',
-        6.0
-      )
+      expect(mockSetMemoryLimits).toHaveBeenCalledWith('meta-llama/Llama-3.2-1B', 6.0)
     })
 
     it('should return 500 when model is not found', async () => {
       // Mock error from MemoryMonitor
-      mockSetMemoryLimits.mockRejectedValueOnce(
-        new Error('Model non-existent-model not found')
-      )
+      mockSetMemoryLimits.mockRejectedValueOnce(new Error('Model non-existent-model not found'))
 
       const response = await app.inject({
         method: 'POST',
@@ -235,9 +230,7 @@ describe('Memory Monitoring Routes', () => {
       modelStore.set('meta-llama/Llama-3.2-1B', instance)
 
       // Mock failed kvctl limit command
-      mockSetMemoryLimits.mockRejectedValueOnce(
-        new Error('kvctl limit failed: segment not found')
-      )
+      mockSetMemoryLimits.mockRejectedValueOnce(new Error('kvctl limit failed: segment not found'))
 
       const response = await app.inject({
         method: 'POST',

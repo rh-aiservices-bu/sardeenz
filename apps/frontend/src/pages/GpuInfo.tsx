@@ -182,8 +182,7 @@ function ProcessTable({ processes }: { processes: GpuProcess[] }) {
           <Tbody>
             {processes.map((proc, index) => {
               const isVllm =
-                proc.processName.toLowerCase().includes('vllm') ||
-                proc.processName.includes('VLLM')
+                proc.processName.toLowerCase().includes('vllm') || proc.processName.includes('VLLM')
 
               return (
                 <Tr key={`${proc.pid}-${index}`}>
@@ -295,7 +294,11 @@ function GpuInfo() {
   if (error && !gpuInfo) {
     return (
       <PageSection>
-        <EmptyState titleText="Failed to load GPU info" icon={ExclamationCircleIcon} status="danger">
+        <EmptyState
+          titleText="Failed to load GPU info"
+          icon={ExclamationCircleIcon}
+          status="danger"
+        >
           <EmptyStateBody>{error}</EmptyStateBody>
         </EmptyState>
       </PageSection>
@@ -316,7 +319,10 @@ function GpuInfo() {
             <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapMd' }}>
               {gpuInfo && (
                 <FlexItem>
-                  <Content component="small" style={{ color: 'var(--pf-t--global--color--nonstatus--gray--default)' }}>
+                  <Content
+                    component="small"
+                    style={{ color: 'var(--pf-t--global--color--nonstatus--gray--default)' }}
+                  >
                     Last updated: {secondsSinceUpdate}s ago
                   </Content>
                 </FlexItem>

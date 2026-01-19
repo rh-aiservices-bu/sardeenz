@@ -1,0 +1,87 @@
+# =============================================================================
+# Sardeenz RBAC Configuration
+# =============================================================================
+# This file contains the RBAC resources needed for sardeenz OAuth authentication.
+#
+# Included:
+# - sardeenz-admin Role: Marker permission for full admin access
+# - sardeenz-admin-readonly Role: Marker permission for read-only access
+# - sardeenz-auth-reviewer Role: Allows ServiceAccount to check user permissions
+# - sardeenz-auth-reviewer RoleBinding: Binds the ServiceAccount to the reviewer role
+#
+# NOT included (must be created separately):
+# - RoleBindings for users/groups to sardeenz-admin or sardeenz-admin-readonly
+#   See docs/rbac-setup.md for examples
+# =============================================================================
+
+---
+# Role: sardeenz-admin
+# Grants full admin access to sardeenz (load/unload models, run benchmarks, etc.)
+# This is a "marker" role - the resource doesn't actually exist, it's only used
+# for authorization checks via LocalSubjectAccessReview.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sardeenz-admin
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
+    resources: ["admin"]
+    verbs: ["get"]
+
+---
+# Role: sardeenz-admin-readonly
+# Grants read-only access to sardeenz (view models, benchmarks, settings)
+# This is a "marker" role - the resource doesn't actually exist, it's only used
+# for authorization checks via LocalSubjectAccessReview.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sardeenz-admin-readonly
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
+    resources: ["admin-readonly"]
+    verbs: ["get"]
+
+---
+# Role: sardeenz-auth-reviewer
+# Allows the sardeenz ServiceAccount to create LocalSubjectAccessReviews
+# This is required for checking user permissions via the Kubernetes API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sardeenz-auth-reviewer
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["localsubjectaccessreviews"]
+    verbs: ["create"]
+
+---
+# RoleBinding: sardeenz-auth-reviewer
+# Binds the sardeenz ServiceAccount to the auth-reviewer role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sardeenz-auth-reviewer
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sardeenz-auth-reviewer
+subjects:
+  - kind: ServiceAccount
+    name: sardeenz

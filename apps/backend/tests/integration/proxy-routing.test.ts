@@ -163,9 +163,7 @@ describe('Proxy Routing', () => {
         url: '/v1/chat/completions',
         payload: {
           model: 'meta-llama/Llama-3.2-1B',
-          messages: [
-            { role: 'user', content: 'Hello!' },
-          ],
+          messages: [{ role: 'user', content: 'Hello!' }],
         },
       })
 

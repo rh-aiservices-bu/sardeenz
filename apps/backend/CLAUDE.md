@@ -14,7 +14,7 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 
 | Route File                           | Purpose                                                                        |
 | ------------------------------------ | ------------------------------------------------------------------------------ |
-| `src/routes/models.ts`               | Model CRUD: load, unload, list, get, health check, logs                        |
+| `src/routes/models.ts`               | Model CRUD: load, unload, list, get, health check, logs, sleep, wake           |
 | `src/routes/model-configurations.ts` | Configuration CRUD: save, load, list, delete model presets                     |
 | `src/routes/events.ts`               | SSE event streaming endpoint                                                   |
 | `src/routes/health.ts`               | Backend health checks (`/api/health`, `/api/health/ready`, `/api/health/live`) |
@@ -28,6 +28,12 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | `src/routes/settings.ts`             | Application settings (HF token)                                                |
 | `src/routes/auth.ts`                 | Authentication endpoints: info, login, callback, logout, me                    |
 | `src/plugins/inference-auth.ts`      | Inference API key auth (separate from admin JWT)                               |
+
+**Sleep Mode Endpoints** (in `src/routes/models.ts`):
+
+- `POST /api/models/instances/:instance_id/sleep` - Put model to sleep (frees ~90% GPU memory)
+- `POST /api/models/instances/:instance_id/wake` - Wake sleeping model
+- `GET /api/models/instances/:instance_id/sleep-status` - Check sleep status
 
 ## Stores
 

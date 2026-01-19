@@ -36,7 +36,6 @@ PatternFly 6 development with Vite can present various challenges ranging from s
    ```
 
 2. **Reinstall Node.js**:
-
    - Download from [https://nodejs.org/](https://nodejs.org/)
    - Choose LTS version for stability
    - Restart terminal after installation
@@ -218,9 +217,9 @@ Module not found: Can't resolve '@patternfly/react-core'
 
    ```jsx
    // Correct imports
-   import { Button, Card } from '@patternfly/react-core';
-   import { Table, Thead, Tbody } from '@patternfly/react-table';
-   import { UserIcon } from '@patternfly/react-icons';
+   import { Button, Card } from '@patternfly/react-core'
+   import { Table, Thead, Tbody } from '@patternfly/react-table'
+   import { UserIcon } from '@patternfly/react-icons'
    ```
 
 3. **Verify package.json dependencies**:
@@ -253,7 +252,7 @@ Module not found: Can't resolve '@patternfly/react-charts/victory'
 
    ```jsx
    // Correct chart imports
-   import { ChartDonut, ChartLine } from '@patternfly/react-charts/victory';
+   import { ChartDonut, ChartLine } from '@patternfly/react-charts/victory'
    ```
 
 3. **Clear cache and reinstall**:
@@ -280,12 +279,12 @@ Module not found: Can't resolve '@patternfly/chatbot/dist/dynamic/Chatbot'
 2. **Import CSS**:
 
    ```jsx
-   import '@patternfly/chatbot/dist/css/main.css';
+   import '@patternfly/chatbot/dist/css/main.css'
    ```
 
 3. **Use correct import paths**:
    ```jsx
-   import { Chatbot } from '@patternfly/chatbot/dist/dynamic/Chatbot';
+   import { Chatbot } from '@patternfly/chatbot/dist/dynamic/Chatbot'
    ```
 
 ## Styling Issues
@@ -304,15 +303,15 @@ Module not found: Can't resolve '@patternfly/chatbot/dist/dynamic/Chatbot'
 
    ```jsx
    // In your main App.js or index.js
-   import '@patternfly/react-core/dist/styles/base.css';
+   import '@patternfly/react-core/dist/styles/base.css'
    ```
 
 2. **Check CSS import order**:
 
    ```jsx
    // PatternFly CSS should be imported before custom CSS
-   import '@patternfly/react-core/dist/styles/base.css';
-   import './custom-styles.css';
+   import '@patternfly/react-core/dist/styles/base.css'
+   import './custom-styles.css'
    ```
 
 3. **Verify webpack CSS handling**:
@@ -327,7 +326,7 @@ Module not found: Can't resolve '@patternfly/chatbot/dist/dynamic/Chatbot'
          },
        ],
      },
-   };
+   }
    ```
 
 #### Issue: Wrong PatternFly version classes
@@ -359,8 +358,8 @@ Module not found: Can't resolve '@patternfly/chatbot/dist/dynamic/Chatbot'
 3. **Use PatternFly components instead**:
    ```jsx
    // Instead of manual classes, use components
-   import { Button } from '@patternfly/react-core';
-   <Button variant="primary">Click me</Button>;
+   import { Button } from '@patternfly/react-core'
+   ;<Button variant="primary">Click me</Button>
    ```
 
 ### Layout and Responsive Issues
@@ -391,20 +390,20 @@ Module not found: Can't resolve '@patternfly/chatbot/dist/dynamic/Chatbot'
 3. **Use container-based sizing**:
 
    ```jsx
-   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
    useEffect(() => {
      const updateDimensions = () => {
        if (containerRef.current) {
-         const { width, height } = containerRef.current.getBoundingClientRect();
-         setDimensions({ width, height });
+         const { width, height } = containerRef.current.getBoundingClientRect()
+         setDimensions({ width, height })
        }
-     };
+     }
 
-     updateDimensions();
-     window.addEventListener('resize', updateDimensions);
-     return () => window.removeEventListener('resize', updateDimensions);
-   }, []);
+     updateDimensions()
+     window.addEventListener('resize', updateDimensions)
+     return () => window.removeEventListener('resize', updateDimensions)
+   }, [])
    ```
 
 ## PatternFly 6 Deprecated Components
@@ -417,30 +416,30 @@ These components are no longer supported and require migration:
 
 ```jsx
 // ❌ Deprecated
-import { Select, SelectOption } from '@patternfly/react-core/deprecated';
+import { Select, SelectOption } from '@patternfly/react-core/deprecated'
 
 // ✅ Use new Select
-import { Select, SelectOption } from '@patternfly/react-core';
+import { Select, SelectOption } from '@patternfly/react-core'
 ```
 
 #### Old Dropdown Component
 
 ```jsx
 // ❌ Deprecated
-import { Dropdown, DropdownToggle } from '@patternfly/react-core/deprecated';
+import { Dropdown, DropdownToggle } from '@patternfly/react-core/deprecated'
 
 // ✅ Use new Dropdown
-import { Dropdown, DropdownList, DropdownItem } from '@patternfly/react-core';
+import { Dropdown, DropdownList, DropdownItem } from '@patternfly/react-core'
 ```
 
 #### Old Wizard Component
 
 ```jsx
 // ❌ Deprecated
-import { Wizard } from '@patternfly/react-core/deprecated';
+import { Wizard } from '@patternfly/react-core/deprecated'
 
 // ✅ Use new Wizard
-import { Wizard, WizardStep } from '@patternfly/react-core';
+import { Wizard, WizardStep } from '@patternfly/react-core'
 ```
 
 #### Old Table Component
@@ -449,7 +448,7 @@ import { Wizard, WizardStep } from '@patternfly/react-core';
 // ❌ Deprecated non-composable table
 
 // ✅ Use composable table
-import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
 ```
 
 ### Component API Changes
@@ -468,12 +467,12 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 
 ```jsx
 // ❌ Old
-import { Text } from '@patternfly/react-core';
-<Text component="h1">Title</Text>;
+import { Text } from '@patternfly/react-core'
+;<Text component="h1">Title</Text>
 
 // ✅ New
-import { Content } from '@patternfly/react-core';
-<Content component="h1">Title</Content>;
+import { Content } from '@patternfly/react-core'
+;<Content component="h1">Title</Content>
 ```
 
 #### PageHeader Removed
@@ -536,11 +535,11 @@ import { Content } from '@patternfly/react-core';
 1. **Implement pagination**:
 
    ```jsx
-   import { Pagination } from '@patternfly/react-core';
+   import { Pagination } from '@patternfly/react-core'
 
-   const [page, setPage] = useState(1);
-   const [perPage, setPerPage] = useState(20);
-   const paginatedData = data.slice((page - 1) * perPage, page * perPage);
+   const [page, setPage] = useState(1)
+   const [perPage, setPerPage] = useState(20)
+   const paginatedData = data.slice((page - 1) * perPage, page * perPage)
    ```
 
 2. **Use virtualization**:
@@ -561,7 +560,7 @@ import { Content } from '@patternfly/react-core';
        <Td>{item.name}</Td>
        <Td>{item.email}</Td>
      </Tr>
-   ));
+   ))
    ```
 
 ## Vite-Specific Issues
@@ -588,7 +587,7 @@ import { Content } from '@patternfly/react-core';
    // vite.config.ts
    server: {
      hmr: {
-       overlay: true;
+       overlay: true
      }
    }
    ```
@@ -597,7 +596,7 @@ import { Content } from '@patternfly/react-core';
    ```typescript
    server: {
      watch: {
-       usePolling: true;
+       usePolling: true
      }
    }
    ```
@@ -627,7 +626,7 @@ import { Content } from '@patternfly/react-core';
 2. **Use environment variables**:
    ```typescript
    // Use VITE_API_URL for API calls
-   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8081'
    ```
 
 ## Frontend Build Issues
@@ -683,11 +682,11 @@ Error: [vite]: Rollup failed to resolve import
 
    ```jsx
    // Vite handles dynamic imports automatically
-   const LazyComponent = React.lazy(() => import('./HeavyComponent'));
+   const LazyComponent = React.lazy(() => import('./HeavyComponent'))
 
-   <Suspense fallback={<Spinner />}>
+   ;<Suspense fallback={<Spinner />}>
      <LazyComponent />
-   </Suspense>;
+   </Suspense>
    ```
 
 3. **Optimize imports**:
@@ -725,7 +724,7 @@ Error: [vite]: Rollup failed to resolve import
      build: {
        target: 'es2015',
      },
-   });
+   })
    ```
 
 2. **Add polyfills if needed**:
@@ -736,13 +735,13 @@ Error: [vite]: Rollup failed to resolve import
 
    ```typescript
    // vite.config.ts
-   import legacy from '@vitejs/plugin-legacy';
+   import legacy from '@vitejs/plugin-legacy'
 
    plugins: [
      legacy({
        targets: ['defaults', 'not IE 11'],
      }),
-   ];
+   ]
    ```
 
 3. **Test across browsers**:

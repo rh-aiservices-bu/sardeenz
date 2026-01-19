@@ -19,7 +19,7 @@ RUN microdnf -y update \
 # =============================================================================
 FROM vllm-base AS kvcached-builder
 
-ARG KVCACHED_VERSION=main
+ARG KVCACHED_VERSION=v0.1.3
 
 ENV NV_CUDA_LIB_VERSION=12.8.1-1
 ENV NV_CUDA_CUDART_DEV_VERSION=12.8.90-1

@@ -92,10 +92,10 @@ For accessible and user-friendly navigation on long pages, PatternFly provides t
 
 ```jsx
 // ✅ Correct: Use SkipToContent and BackToTop together
-import { Page, PageSection, SkipToContent, BackToTop } from '@patternfly/react-core';
+import { Page, PageSection, SkipToContent, BackToTop } from '@patternfly/react-core'
 
 const AppLayout = () => {
-  const mainContentId = 'main-content';
+  const mainContentId = 'main-content'
 
   return (
     <Page
@@ -105,8 +105,8 @@ const AppLayout = () => {
     >
       <PageSection>{/* ... long content that requires scrolling ... */}</PageSection>
     </Page>
-  );
-};
+  )
+}
 ```
 
 **Reference Documentation**:

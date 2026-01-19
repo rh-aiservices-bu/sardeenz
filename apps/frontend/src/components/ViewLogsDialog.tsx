@@ -32,12 +32,7 @@ interface ViewLogsDialogProps {
  * Modal dialog for viewing historical loading logs for a model instance.
  * Fetches logs from the API when opened and displays them in a code block.
  */
-export function ViewLogsDialog({
-  isOpen,
-  onClose,
-  instanceId,
-  modelPath,
-}: ViewLogsDialogProps) {
+export function ViewLogsDialog({ isOpen, onClose, instanceId, modelPath }: ViewLogsDialogProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<string>('')
@@ -124,7 +119,6 @@ export function ViewLogsDialog({
                     <CodeBlockAction>
                       <ClipboardCopyButton
                         id="copy-logs-button"
-                        textId="logs-code"
                         aria-label="Copy logs to clipboard"
                         onClick={handleCopy}
                         variant="plain"
