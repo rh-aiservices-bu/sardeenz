@@ -11,7 +11,12 @@ import { moveStore } from '../stores/move-store.js'
 import { metricsStore } from '../stores/metrics-store.js'
 import { getModelManager, type ModelManager } from './model-manager.js'
 import { getGpuSelector, type GpuSelector } from './gpu-selector.js'
-import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors.js'
+import {
+  NotFoundError,
+  ConflictError,
+  BadRequestError,
+  InsufficientMemoryError,
+} from '../utils/errors.js'
 import { processLogBuffer } from './process-log-buffer.js'
 import { LoadProgressTracker } from '../utils/load-progress-tracker.js'
 
@@ -97,14 +102,24 @@ export class ModelMover {
       )
     }
 
-    // 5. Check target GPU memory (pre-flight)
+    // 5. Check target GPU memory (pre-flight) with detailed error info
     // Use source's memory baseline as estimate
     const requiredMemoryGb = source.memoryBaselineByGpu
       ? Math.max(...Object.values(source.memoryBaselineByGpu))
       : (source.memoryMetrics?.totalGpuMemoryGiB ?? 8) // Fallback estimate
 
-    const memoryCheck = await this.gpuSelector.checkMemoryAvailability(targetGpuIds, requiredMemoryGb)
+    const memoryCheck = await this.gpuSelector.checkMemoryAvailabilityDetailed(
+      targetGpuIds,
+      requiredMemoryGb,
+      source
+    )
     if (!memoryCheck.available) {
+      if (memoryCheck.details) {
+        throw new InsufficientMemoryError(
+          memoryCheck.message ?? 'Insufficient GPU memory',
+          memoryCheck.details
+        )
+      }
       throw new BadRequestError(`Insufficient GPU memory: ${memoryCheck.message}`)
     }
 

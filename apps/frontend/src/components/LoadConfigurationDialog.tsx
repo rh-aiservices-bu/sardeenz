@@ -32,12 +32,18 @@ import {
   type SavedModelConfigurationResponse,
 } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
-import { useOperations } from '../contexts/OperationsContext'
+
+export interface ConfigLoadStartedInfo {
+  message: string
+  configurationId: string
+  configurationName: string
+  expectedModelCount: number
+}
 
 interface LoadConfigurationDialogProps {
   isOpen: boolean
   onClose: () => void
-  onLoadStarted: (message: string) => void
+  onLoadStarted: (info: ConfigLoadStartedInfo) => void
   currentModelCount: number
 }
 
@@ -52,7 +58,6 @@ export function LoadConfigurationDialog({
   currentModelCount,
 }: LoadConfigurationDialogProps) {
   const { canWrite } = useAuth()
-  const { startOperation, endOperation } = useOperations()
   const [configurations, setConfigurations] = useState<SavedModelConfigurationResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedConfig, setSelectedConfig] = useState<SavedModelConfigurationResponse | null>(null)
@@ -114,19 +119,19 @@ export function LoadConfigurationDialog({
     if (!selectedConfig) return
     setIsLoadingConfig(true)
     setError(null)
-    const opId = startOperation({
-      type: 'load-config',
-      label: `Loading configuration: ${selectedConfig.name}`,
-    })
     try {
       const response = await apiClient.loadConfiguration(selectedConfig.id)
-      onLoadStarted(response.message)
+      onLoadStarted({
+        message: response.message,
+        configurationId: response.configuration_id,
+        configurationName: response.configuration_name,
+        expectedModelCount: selectedConfig.entries?.length ?? 0,
+      })
       onClose()
     } catch (err) {
       setError(extractErrorMessage(err))
     } finally {
       setIsLoadingConfig(false)
-      endOperation(opId)
     }
   }
 

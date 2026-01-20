@@ -37,7 +37,7 @@ export interface ListModelsResponse {
 
 /** Memory metrics in API response (snake_case) */
 export interface ModelMemoryMetricsDTO {
-  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  /** Total actual GPU memory consumed by the model process in GiB (from NVML) */
   total_gpu_memory_gib: number
   weights_memory_gib: number
   cuda_graph_memory_gib: number
@@ -94,7 +94,7 @@ export interface KVCacheMetrics {
   free_gb: number // Available for new allocations
 }
 
-/** GPU memory metrics from nvidia-smi */
+/** GPU memory metrics from NVML */
 export interface GpuMetrics {
   total_gb: number
   used_gb: number // Total used by all processes
@@ -315,6 +315,7 @@ export interface ErrorResponse {
     message: string
     type: string
     code?: string
+    details?: unknown
   }
 }
 

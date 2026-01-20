@@ -277,11 +277,13 @@ interface RetryableRequestConfig extends InternalAxiosRequestConfig {
 }
 
 /**
- * Error details with optional status code
+ * Error details with optional status code and structured details
  */
 export interface ErrorDetails {
   statusCode?: number
   message: string
+  code?: string
+  details?: unknown
 }
 
 /**
@@ -294,10 +296,15 @@ export function extractErrorDetails(error: unknown): ErrorDetails {
     const data = error.response?.data
 
     let message = error.message
+    let code: string | undefined
+    let details: unknown
+
     if (data) {
-      // vLLM/OpenAI error format: { error: { message: "..." } }
+      // vLLM/OpenAI error format: { error: { message: "...", code?: "...", details?: {...} } }
       if (typeof data.error?.message === 'string') {
         message = data.error.message
+        code = data.error.code
+        details = data.error.details
       } else if (typeof data.message === 'string') {
         // Alternative format: { message: "..." }
         message = data.message
@@ -310,7 +317,7 @@ export function extractErrorDetails(error: unknown): ErrorDetails {
     // Clean up vLLM artifacts (sometimes appends Python's "None" to messages)
     message = message.replace(/\s+None\s*$/, '').trim()
 
-    return { statusCode, message }
+    return { statusCode, message, code, details }
   }
   if (error instanceof Error) {
     return { message: error.message }

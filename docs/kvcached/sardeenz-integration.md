@@ -846,7 +846,7 @@ When a model transitions to 'running' status, the backend captures its memory ba
 
 - **`memoryBaselineByGpu: Record<number, number>`** - Memory footprint per GPU in GB
 - This represents the idle memory consumption before any inference requests
-- Captured from nvidia-smi using the EngineCore PID
+- Captured from NVML using the EngineCore PID
 - For tensor-parallel models, baselines are captured on each GPU
 
 **Purpose:** The memory baseline is used for accurate KVCache total calculation:

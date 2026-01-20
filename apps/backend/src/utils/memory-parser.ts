@@ -153,7 +153,7 @@ export function calculateGpuUtilization(memoryInfo: VllmMemoryInfo, gpuTotalGB: 
  *
  * @param logs - Array of log entries from the process buffer
  * @param fallbackMaxTokens - Fallback max tokens value if not found in logs
- * @param actualGpuMemoryGiB - Actual GPU memory from nvidia-smi (optional, used for total and overhead)
+ * @param actualGpuMemoryGiB - Actual GPU memory from NVML (optional, used for total and overhead)
  * @returns Parsed memory metrics or null if insufficient data
  */
 export function parseMemoryMetrics(
@@ -236,7 +236,7 @@ export function parseMemoryMetrics(
   }
 
   // Calculate total and overhead
-  // If actualGpuMemoryGiB is provided (from nvidia-smi), use it as the source of truth
+  // If actualGpuMemoryGiB is provided (from NVML), use it as the source of truth
   // Otherwise, fallback to sum of weights + CUDA graphs (underestimate)
   const totalGpuMemoryGiB = actualGpuMemoryGiB ?? weightsMemoryGiB + cudaGraphMemoryGiB
   const overheadMemoryGiB =

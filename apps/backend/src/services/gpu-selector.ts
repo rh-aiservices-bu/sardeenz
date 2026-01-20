@@ -5,8 +5,14 @@
 
 import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 import { modelStore } from '../stores/model-store.js'
-import type { GpuAvailabilityResponse, GpuRecommendation, GpuInfo } from '@sardeenz/types'
+import type {
+  GpuAvailabilityResponse,
+  GpuRecommendation,
+  GpuInfo,
+  ModelInstance,
+} from '@sardeenz/types'
 import type { Logger } from '@sardeenz/utils'
+import type { GpuMemoryErrorDetails } from '../utils/errors.js'
 
 export interface GpuValidationResult {
   valid: boolean
@@ -259,6 +265,123 @@ export class GpuSelector {
     this.logger.debug(
       { gpuIds, requiredMemoryGb, totalFreeMemory },
       'Memory availability check passed'
+    )
+
+    return {
+      available: true,
+      freeMemoryGb: totalFreeMemory,
+    }
+  }
+
+  /**
+   * Check GPU memory availability with detailed information for error messages.
+   * Used for model move operations where rich error context is needed.
+   *
+   * @param gpuIds Target GPU indices
+   * @param requiredMemoryGb Required memory per GPU in GB
+   * @param sourceInstance Source model instance (for memory breakdown in error)
+   * @returns Detailed result with per-GPU breakdown and loaded models info
+   */
+  async checkMemoryAvailabilityDetailed(
+    gpuIds: number[],
+    requiredMemoryGb: number,
+    sourceInstance?: ModelInstance
+  ): Promise<{
+    available: boolean
+    freeMemoryGb: number
+    message?: string
+    details?: GpuMemoryErrorDetails
+  }> {
+    const nvidiaSmi = await getNvidiaSmiInfo()
+    const gpuMap = new Map(nvidiaSmi.gpus.map((g) => [g.index, g]))
+    const allModels = modelStore.getAll()
+
+    let totalFreeMemory = 0
+    const gpuDetails: GpuMemoryErrorDetails['gpus'] = []
+    let hasInsufficientMemory = false
+
+    for (const gpuId of gpuIds) {
+      const gpu = gpuMap.get(gpuId)
+      if (!gpu) {
+        return {
+          available: false,
+          freeMemoryGb: 0,
+          message: `GPU ${gpuId} not found`,
+        }
+      }
+
+      const freeGb = (gpu.memoryTotalMB - gpu.memoryUsedMB) / 1024
+      const totalGb = gpu.memoryTotalMB / 1024
+      totalFreeMemory += freeGb
+
+      // Find models loaded on this GPU (exclude the source model being moved)
+      const modelsOnGpu = allModels
+        .filter(
+          (m) =>
+            m.gpuIds.includes(gpuId) &&
+            m.status === 'running' &&
+            (!sourceInstance || m.id !== sourceInstance.id)
+        )
+        .map((m) => ({
+          instanceId: m.id,
+          modelName: m.modelName,
+          memoryGb: m.memoryBaselineByGpu?.[gpuId] ?? m.memoryMetrics?.totalGpuMemoryGiB ?? 0,
+        }))
+
+      const shortfallGb = Math.max(0, requiredMemoryGb - freeGb)
+
+      if (freeGb < requiredMemoryGb) {
+        hasInsufficientMemory = true
+      }
+
+      gpuDetails.push({
+        index: gpuId,
+        name: gpu.name,
+        totalGb,
+        freeGb,
+        requiredGb: requiredMemoryGb,
+        shortfallGb,
+        loadedModels: modelsOnGpu,
+      })
+    }
+
+    if (hasInsufficientMemory) {
+      // Build human-readable message with GPU names and shortfall
+      const gpuMessages = gpuDetails
+        .filter((g) => g.shortfallGb > 0)
+        .map(
+          (g) =>
+            `GPU ${g.index} (${g.name}): ${g.freeGb.toFixed(1)} GB free, ` +
+            `need ${g.requiredGb.toFixed(1)} GB (short ${g.shortfallGb.toFixed(1)} GB)`
+        )
+
+      // Build source model details if available
+      let sourceModelDetails: GpuMemoryErrorDetails['sourceModel'] | undefined
+      if (sourceInstance) {
+        sourceModelDetails = {
+          instanceId: sourceInstance.id,
+          modelName: sourceInstance.modelName,
+          weightsGb: sourceInstance.memoryMetrics?.weightsMemoryGiB,
+          cudaGraphsGb: sourceInstance.memoryMetrics?.cudaGraphMemoryGiB,
+          overheadGb: sourceInstance.memoryMetrics?.overheadMemoryGiB,
+          totalGb: sourceInstance.memoryMetrics?.totalGpuMemoryGiB ?? requiredMemoryGb,
+        }
+      }
+
+      return {
+        available: false,
+        freeMemoryGb: totalFreeMemory,
+        message: `Insufficient GPU memory: ${gpuMessages.join('; ')}`,
+        details: {
+          gpus: gpuDetails,
+          sourceModel: sourceModelDetails,
+        },
+      }
+    }
+
+    this.logger.debug(
+      { gpuIds, requiredMemoryGb, totalFreeMemory },
+      'Detailed memory availability check passed'
     )
 
     return {

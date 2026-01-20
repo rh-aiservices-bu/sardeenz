@@ -224,7 +224,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
         const gpuName = gpuInfo.name
         const gpuTotalMemoryGib = gpuInfo.totalMemoryGB
 
-        // Get live GPU memory from nvidia-smi (same source as bar chart and details modal)
+        // Get live GPU memory from NVML (same source as bar chart and details modal)
         let liveGpuMemoryGib: number | undefined
         try {
           const memoryUsage = await memoryMonitor.getMemoryUsage()

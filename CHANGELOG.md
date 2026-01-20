@@ -43,7 +43,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Memory overhead calculation now uses actual GPU memory from nvidia-smi
+- Memory overhead calculation now uses actual GPU memory from NVML
 - KVCache metrics no longer show stale values when models are unloaded
 - Pinned kvcached version at 0.1.3 for stability
 
