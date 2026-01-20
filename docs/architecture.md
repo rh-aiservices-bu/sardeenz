@@ -537,7 +537,7 @@ kvctl delete kvcached_vllm_GPU0_GPU1  # For tensor-parallel segments
 
 ### GPU Memory Allocation Strategy
 
-1. **Query available GPU memory** via `nvidia-smi`
+1. **Query available GPU memory** via NVML
 2. **Reserve 2GB for CUDA overhead**
 3. **Divide remaining memory** among requested models
 4. **Set per-model limits** via `--gpu-memory-utilization`

@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-01-20
+
+### Blue-Green Model Migration
+
+- **Model move between GPUs**: New blue-green deployment pattern for zero-downtime model migration
+  - Load model on target GPU before unloading from source
+  - Automatic traffic switchover via proxy router
+  - Rollback capability if target load fails
+  - New `POST /api/models/:instanceId/move` endpoint with target GPU selection
+- **Move progress tracking**: Real-time SSE events for migration status
+  - States: pending, loading-target, switching, unloading-source, completed, failed, rolled-back
+  - Progress percentage and phase descriptions
+- **Move history**: Persistent storage of migration operations with timestamps and outcomes
+- **Frontend move dialog**: New `MoveModelDialog` component with GPU selection and progress visualization
+- **Operations indicator**: Header component showing active operations across the platform
+
+### NVML Library Integration
+
+- **Direct NVML bindings**: Replaced nvidia-smi subprocess calls with Python NVML library
+  - Faster GPU queries with lower overhead
+  - More reliable process-to-GPU memory mapping
+  - Better error handling for GPU unavailability
+- **Enhanced GPU info service**: Refactored `gpu-info.ts` for NVML-based queries
+- **Improved unit tests**: Expanded test coverage for GPU information utilities
+
+### Documentation
+
+- Updated RBAC roles documentation
+
 ## [0.4.0] - 2026-01-18
 
 ### Chatbot Playground
@@ -43,7 +72,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Memory overhead calculation now uses actual GPU memory from nvidia-smi
+- Memory overhead calculation now uses actual GPU memory from NVML
 - KVCache metrics no longer show stale values when models are unloaded
 - Pinned kvcached version at 0.1.3 for stability
 

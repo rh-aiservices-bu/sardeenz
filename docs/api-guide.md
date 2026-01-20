@@ -2032,6 +2032,242 @@ Unloads all current models and loads models from the saved configuration.
 
 ---
 
+## Model Move API
+
+The Model Move API enables moving a running model from one GPU to another without dropping requests. It uses a blue-green deployment pattern: spawn a new instance on the target GPU, wait for it to be ready, update routing, gracefully drain the source, then unload it.
+
+### Key Concepts
+
+- **Blue-green deployment**: Target instance spins up while source continues serving
+- **Graceful drain**: Existing requests complete before source unload
+- **Automatic rollback**: If target fails to start, source continues unchanged
+- **Concurrent limit**: Only 1 move operation can run system-wide at a time
+
+### Move Phases
+
+```
+VALIDATING  → Pre-flight checks (GPU memory, tensor parallelism)
+SPAWNING    → Loading model on target GPU (progress 0-100%)
+SWITCHING   → Updating routing table (new requests go to target)
+DRAINING    → Waiting for source connections to complete
+COMPLETING  → Unloading source instance
+COMPLETED   → Move finished successfully
+FAILED      → Error occurred (automatic rollback to source)
+```
+
+### Move Model
+
+**Endpoint:** `POST /api/models/instances/{instance_id}/move`
+
+Initiates a move operation for the specified model instance.
+
+**Request Body:**
+
+```json
+{
+  "target_gpu_ids": [1],
+  "drain_timeout_ms": 60000
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target_gpu_ids` | `number[]` | Yes | Target GPU index(es). Must match source tensor parallelism. |
+| `drain_timeout_ms` | `number` | No | Max time (ms) to wait for source connections to complete. Default: 60000 (60s). |
+
+**Response (202 Accepted):**
+
+```json
+{
+  "move_id": "move-uuid",
+  "source_instance_id": "instance-uuid",
+  "target_gpu_ids": [1]
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid request (same GPU, wrong tensor parallelism, insufficient memory) |
+| 404 | Instance not found |
+| 409 | Another move operation is already in progress |
+
+**Example (curl):**
+
+```bash
+curl -X POST http://localhost:3000/api/models/instances/abc123/move \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "target_gpu_ids": [1],
+    "drain_timeout_ms": 60000
+  }'
+```
+
+**Example (JavaScript):**
+
+```javascript
+const response = await fetch(
+  `${baseUrl}/api/models/instances/${instanceId}/move`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      target_gpu_ids: [1],
+      drain_timeout_ms: 60000,
+    }),
+  }
+)
+const { move_id } = await response.json()
+```
+
+**Example (Python):**
+
+```python
+import requests
+
+response = requests.post(
+    f"{base_url}/api/models/instances/{instance_id}/move",
+    headers={"Authorization": f"Bearer {token}"},
+    json={
+        "target_gpu_ids": [1],
+        "drain_timeout_ms": 60000
+    }
+)
+move_id = response.json()["move_id"]
+```
+
+### Subscribe to Move Events
+
+**Endpoint:** `GET /api/models/moves/{move_id}/events`
+
+Server-Sent Events (SSE) stream for real-time move progress updates.
+
+**Event Format:**
+
+```
+event: move_progress
+data: {"move_id":"move-uuid","phase":"spawning","message":"Loading model on GPU 1...","progress":45}
+```
+
+**Event Data Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `move_id` | `string` | Move operation ID |
+| `phase` | `string` | Current phase (validating, spawning, switching, draining, completing, completed, failed) |
+| `message` | `string` | Human-readable progress message |
+| `progress` | `number` | Progress percentage (0-100, only during spawning phase) |
+| `error` | `string` | Error message (only when phase is "failed") |
+
+**Example (JavaScript):**
+
+```javascript
+const eventSource = new EventSource(
+  `${baseUrl}/api/models/moves/${moveId}/events?token=${token}`
+)
+
+eventSource.addEventListener('move_progress', (event) => {
+  const data = JSON.parse(event.data)
+  console.log(`Phase: ${data.phase}, Progress: ${data.progress}%`)
+
+  if (data.phase === 'completed' || data.phase === 'failed') {
+    eventSource.close()
+  }
+})
+
+eventSource.onerror = (error) => {
+  console.error('SSE connection error:', error)
+  eventSource.close()
+}
+```
+
+**Example (Python):**
+
+```python
+import sseclient
+import requests
+
+response = requests.get(
+    f"{base_url}/api/models/moves/{move_id}/events",
+    headers={"Authorization": f"Bearer {token}"},
+    stream=True
+)
+client = sseclient.SSEClient(response)
+
+for event in client.events():
+    if event.event == 'move_progress':
+        data = json.loads(event.data)
+        print(f"Phase: {data['phase']}, Message: {data['message']}")
+        if data['phase'] in ('completed', 'failed'):
+            break
+```
+
+### Cancel Move
+
+**Endpoint:** `DELETE /api/models/moves/{move_id}`
+
+Cancels an in-progress move operation.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `force` | `boolean` | `false` | If `false`, reverts to source (graceful). If `true`, force completes (may drop connections). |
+
+**Behavior by Phase:**
+
+| Phase | Graceful (force=false) | Force (force=true) |
+|-------|------------------------|-------------------|
+| VALIDATING | Abort immediately | Abort immediately |
+| SPAWNING | Kill target, keep source | Kill target, keep source |
+| SWITCHING | Revert routing to source, unload target | Force complete, unload source |
+| DRAINING | Revert routing to source, unload target | Force complete, unload source (may drop connections) |
+| COMPLETING | Too late to cancel | Too late to cancel |
+
+**Response (204 No Content):** Success
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Move operation not found |
+| 409 | Cannot cancel (already completed or failed) |
+
+**Example (curl):**
+
+```bash
+# Graceful cancel (revert to source)
+curl -X DELETE http://localhost:3000/api/models/moves/move-uuid \
+  -H "Authorization: Bearer $TOKEN"
+
+# Force cancel (complete immediately, may drop connections)
+curl -X DELETE "http://localhost:3000/api/models/moves/move-uuid?force=true" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Validation Rules
+
+- **Source status**: Model must be `running` or `sleeping`
+- **Target GPUs**: Must be different from source GPUs
+- **Tensor parallelism**: Target must have same number of GPUs as source
+- **Memory**: Target GPU(s) must have sufficient free memory
+- **Concurrent moves**: Only 1 move operation can run at a time
+
+### Sleeping Models
+
+Moving sleeping models is supported:
+
+- Source stays in `sleeping` state during move
+- Target loads fresh (does not inherit sleep state)
+- After move completes, target is in `running` state
+
+---
+
 **See Also:**
 
 - [Architecture](./architecture.md) - System architecture details

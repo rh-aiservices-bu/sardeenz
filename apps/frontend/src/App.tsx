@@ -62,6 +62,7 @@ import { useConnection } from './contexts/ConnectionContext'
 import { useAuth } from './contexts/AuthContext'
 import { NotificationDrawer, NotificationBadgeButton } from './components/NotificationDrawer'
 import { AlertToastGroup } from './components/AlertToastGroup'
+import { OperationsIndicator } from './components/OperationsIndicator'
 import Login from './pages/Login'
 import OAuthCallback from './pages/OAuthCallback'
 import AccessDenied from './pages/AccessDenied'
@@ -148,6 +149,11 @@ function App() {
                 onChange={() => setIsDarkTheme(true)}
               />
             </ToggleGroup>
+          </ToolbarItem>
+
+          {/* Operations Indicator */}
+          <ToolbarItem>
+            <OperationsIndicator />
           </ToolbarItem>
 
           {/* Notification Badge */}

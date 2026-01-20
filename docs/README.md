@@ -93,6 +93,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 **Loading and using models?**
 
 - [API Guide: Controller API](./api-guide.md#controller-api) - Load/unload models
+- [API Guide: Model Move API](./api-guide.md#model-move-api) - Move models between GPUs without downtime
 - [API Guide: Proxy API](./api-guide.md#proxy-api) - Inference requests (OpenAI-compatible)
 - [kvcached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
 - [Architecture: Memory Management](./architecture.md#memory-management) - GPU allocation strategy
@@ -135,7 +136,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document                                                         | Topics Covered                                                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [api-guide.md](./api-guide.md)                                   | Controller API (load/unload models), Proxy API (inference), authentication, error handling, code examples (Python, JavaScript, curl) |
+| [api-guide.md](./api-guide.md)                                   | Controller API (load/unload/move models), Proxy API (inference), authentication, error handling, code examples (Python, JavaScript, curl) |
 | [specs/contracts/](../specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available)                                                                                          |
 
 ### Deployment & Operations

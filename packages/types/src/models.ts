@@ -25,13 +25,14 @@ export enum OperationType {
   Load = 'load',
   Unload = 'unload',
   Restart = 'restart',
+  Move = 'move',
 }
 
 // Memory metrics parsed from vLLM logs
 
 /** Memory metrics parsed from vLLM logs after model loading */
 export interface ModelMemoryMetrics {
-  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  /** Total actual GPU memory consumed by the model process in GiB (from NVML) */
   totalGpuMemoryGiB: number
   /** Model weights memory in GiB */
   weightsMemoryGiB: number
@@ -95,6 +96,38 @@ export interface ModelInstance {
   sleepLevel?: 1 | 2
   /** Timestamp when model went to sleep */
   sleptAt?: Date
+  /** Whether this instance should receive inference traffic (false during move operations) */
+  routable: boolean
+}
+
+/** Phase of a model move operation */
+export type MoveOperationPhase =
+  | 'validating'
+  | 'spawning'
+  | 'switching'
+  | 'draining'
+  | 'completing'
+  | 'failed'
+  | 'completed'
+
+/** Tracks a model move operation (relocating a model to different GPU(s)) */
+export interface MoveOperation {
+  /** Unique identifier for this move operation */
+  id: string
+  /** Instance ID of the model being moved (source) */
+  sourceInstanceId: string
+  /** Instance ID of the newly spawned model on target GPU(s) */
+  targetInstanceId: string
+  /** Target GPU indices for the move */
+  targetGpuIds: number[]
+  /** Timeout in ms to wait for in-flight requests to drain */
+  drainTimeoutMs: number
+  /** Current phase of the move operation */
+  phase: MoveOperationPhase
+  /** When the move operation started */
+  startedAt: Date
+  /** Error message if phase is 'failed' */
+  error?: string
 }
 
 export interface InferenceRequest {

@@ -332,6 +332,12 @@ Check that sardeenz has the correct `K8S_API_URL` configured and can reach the K
 
 Ensure the `NAMESPACE` environment variable in sardeenz matches where the Roles and RoleBindings are created.
 
+### Cluster-admins have automatic access
+
+Cluster-admins automatically have sardeenz admin access without needing a RoleBinding. This is expected Kubernetes RBAC behavior—cluster-admin has wildcard permissions on all resources, including sardeenz marker roles (`sardeenz.rh-aiservices-bu.io/admin`).
+
+This is by design. If you need to restrict sardeenz access for cluster-admins, you would need to decouple sardeenz authorization from Kubernetes RBAC.
+
 ## Configuration Reference
 
 | Environment Variable    | Default    | Description                                                                        |

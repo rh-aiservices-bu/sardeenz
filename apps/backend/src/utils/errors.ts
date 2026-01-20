@@ -44,6 +44,61 @@ export class BadRequestError extends AppError {
   }
 }
 
+/** Details about a model loaded on a GPU */
+export interface LoadedModelInfo {
+  instanceId: string
+  modelName: string
+  memoryGb: number
+}
+
+/** Per-GPU memory breakdown for error responses */
+export interface GpuMemoryDetail {
+  index: number
+  name: string
+  totalGb: number
+  freeGb: number
+  requiredGb: number
+  shortfallGb: number
+  loadedModels: LoadedModelInfo[]
+}
+
+/** Source model memory composition */
+export interface SourceModelDetail {
+  instanceId: string
+  modelName: string
+  weightsGb?: number
+  cudaGraphsGb?: number
+  overheadGb?: number
+  totalGb: number
+}
+
+/** Structured details for GPU memory errors */
+export interface GpuMemoryErrorDetails {
+  gpus: GpuMemoryDetail[]
+  sourceModel?: SourceModelDetail
+}
+
+export class InsufficientMemoryError extends BadRequestError {
+  constructor(
+    message: string,
+    public details: GpuMemoryErrorDetails
+  ) {
+    super(message, 'INSUFFICIENT_GPU_MEMORY')
+    this.name = 'InsufficientMemoryError'
+  }
+
+  toJSON(): ErrorResponse {
+    return {
+      error: {
+        message: this.message,
+        type: this.type,
+        code: this.code,
+        details: this.details,
+      },
+    }
+  }
+}
+
 export class InternalError extends AppError {
   constructor(message: string, code?: string) {
     super(message, 500, 'internal_error', code)

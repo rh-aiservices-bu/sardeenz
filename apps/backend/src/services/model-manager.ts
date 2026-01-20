@@ -15,6 +15,7 @@ import {
 import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
 import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
+import { LoadProgressTracker } from '../utils/load-progress-tracker.js'
 import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 import type { Logger } from '@sardeenz/utils'
 import { processLogBuffer } from './process-log-buffer.js'
@@ -71,8 +72,13 @@ function hasArg(args: string[], argName: string): boolean {
  * Build IPC segment name for kvcached based on GPU(s)
  * Single GPU: kvcached_vllm_GPU0
  * Multi-GPU (tensor parallel): kvcached_vllm_GPU0_GPU1
+ * Virtual GPU mode: always uses kvcached_vllm_GPU0 (all vGPUs map to physical GPU 0)
  */
 function buildIpcSegmentName(gpuIds: number[]): string {
+  if (config.virtualGpuCount > 0) {
+    // In virtual GPU mode, all GPUs map to physical GPU 0
+    return 'kvcached_vllm_GPU0'
+  }
   const sortedIds = [...gpuIds].sort((a, b) => a - b)
   return `kvcached_vllm_GPU${sortedIds.join('_GPU')}`
 }
@@ -155,6 +161,7 @@ export class ModelManager extends EventEmitter {
       kvcachedEnabled: enableKvcached,
       memoryBaselineByGpu: {}, // Will be populated when model becomes ready
       sleepModeEnabled: enableSleepMode,
+      routable: true, // Default to routable; set to false during move operations
     }
 
     try {
@@ -198,8 +205,17 @@ export class ModelManager extends EventEmitter {
       // Single GPU: kvcached_vllm_GPU0, Multi-GPU: kvcached_vllm_GPU0_GPU1
       const kvcachedIpcName = enableKvcached ? buildIpcSegmentName(targetGpuIds) : undefined
 
+      // In virtual GPU mode, all vGPUs map to physical GPU 0
+      const cudaVisibleDevices = config.virtualGpuCount > 0 ? '0' : targetGpuIds.join(',')
+      if (config.virtualGpuCount > 0) {
+        this.logger.info(
+          { virtualGpuIds: targetGpuIds, physicalGpu: 0 },
+          'Virtual GPU mode: mapping to physical GPU 0'
+        )
+      }
+
       // Build and store the full launch command for debugging/reproduction
-      const envVars = [`CUDA_VISIBLE_DEVICES=${targetGpuIds.join(',')}`]
+      const envVars = [`CUDA_VISIBLE_DEVICES=${cudaVisibleDevices}`]
       if (kvcachedIpcName) {
         envVars.push(`KVCACHED_IPC_NAME=${kvcachedIpcName}`)
       }
@@ -209,7 +225,7 @@ export class ModelManager extends EventEmitter {
         env: {
           ...process.env,
           SARDEENZ_INSTANCE_ID: instanceId, // Marker for process cleanup on unload
-          CUDA_VISIBLE_DEVICES: targetGpuIds.join(','), // GPU restriction
+          CUDA_VISIBLE_DEVICES: cudaVisibleDevices, // GPU restriction (physical GPU in vGPU mode)
           ENABLE_KVCACHED: enableKvcached ? 'true' : 'false',
           KVCACHED_AUTOPATCH: config.kvcachedAutopatch && enableKvcached ? '1' : '0',
           ...(kvcachedIpcName ? { KVCACHED_IPC_NAME: kvcachedIpcName } : {}), // Per-GPU IPC segment
@@ -342,9 +358,51 @@ export class ModelManager extends EventEmitter {
     port: number,
     modelPath: string
   ): Promise<void> {
+    // Set up progress tracking before waiting for ready
+    const progressTracker = new LoadProgressTracker()
+    let lastProgress = 0
+
+    // Emit initial progress event
+    eventBus.emitEvent(
+      eventBus.createProgressEvent(instanceId, 'loading', 0, 'Initializing model load...')
+    )
+
+    // Subscribe to log events for real-time milestone detection
+    const unsubscribe = processLogBuffer.onLog(instanceId, (entry) => {
+      const milestoneProgress = progressTracker.processLogLine(entry.content)
+      if (milestoneProgress !== undefined && milestoneProgress > lastProgress) {
+        const message = LoadProgressTracker.getProgressMessage(milestoneProgress)
+        eventBus.emitEvent(
+          eventBus.createProgressEvent(instanceId, 'loading', milestoneProgress, message)
+        )
+        lastProgress = milestoneProgress
+      }
+    })
+
+    // Process existing log buffer to catch milestones that already fired
+    const existingLogs = processLogBuffer.getBuffer(instanceId)
+    if (existingLogs.length > 0) {
+      const catchUpProgress = progressTracker.processExistingLogs(existingLogs)
+      if (catchUpProgress !== undefined && catchUpProgress > lastProgress) {
+        const message = LoadProgressTracker.getProgressMessage(catchUpProgress)
+        eventBus.emitEvent(
+          eventBus.createProgressEvent(instanceId, 'loading', catchUpProgress, message)
+        )
+        lastProgress = catchUpProgress
+      }
+    }
+
     try {
       // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
       await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
+
+      // Emit final progress event for ready state
+      eventBus.emitEvent(
+        eventBus.createProgressEvent(instanceId, 'ready', 100, 'Model ready for inference')
+      )
+
+      // Clean up progress subscription
+      unsubscribe()
 
       // Get current instance state
       const instance = modelStore.get(instanceId)
@@ -376,7 +434,7 @@ export class ModelManager extends EventEmitter {
         )
       }
 
-      // Get actual GPU memory usage from nvidia-smi FIRST
+      // Get actual GPU memory usage from NVML FIRST
       // This is the source of truth for total GPU memory consumption
       let actualGpuMemoryGiB: number | undefined
       try {
@@ -421,7 +479,7 @@ export class ModelManager extends EventEmitter {
               gpuTotalMB,
               gpuUtilization: instance.gpuMemoryUtilization,
             },
-            'Got actual GPU memory usage from nvidia-smi'
+            'Got actual GPU memory usage from NVML'
           )
         } else {
           this.logger.warn(
@@ -432,7 +490,7 @@ export class ModelManager extends EventEmitter {
               processId: instance.processId,
               searchedPids: Array.from(allPids),
             },
-            'No matching processes found in nvidia-smi output'
+            'No matching processes found in NVML output'
           )
         }
         // Capture memory baseline per GPU for KVCache calculation
@@ -449,7 +507,7 @@ export class ModelManager extends EventEmitter {
           'Captured memory baseline per GPU'
         )
       } catch (err) {
-        this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
+        this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from NVML')
       }
 
       // Parse memory metrics from logs, passing actual GPU memory for total/overhead calculation
@@ -524,6 +582,9 @@ export class ModelManager extends EventEmitter {
       this.logger.info({ modelPath, port, instanceId }, 'Model loaded successfully')
       this.emit('model:loaded', instance)
     } catch (err) {
+      // Clean up progress subscription
+      unsubscribe()
+
       // Model failed to become ready
       const instance = modelStore.get(instanceId)
       if (!instance) {

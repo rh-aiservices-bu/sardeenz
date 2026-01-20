@@ -1,6 +1,13 @@
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
-import type { SSEEvent, SSEEventType, LogEvent, StatusEvent, ModelStatus } from '@sardeenz/types'
+import type {
+  SSEEvent,
+  SSEEventType,
+  LogEvent,
+  StatusEvent,
+  ProgressEvent,
+  ModelStatus,
+} from '@sardeenz/types'
 import type { LogEntry } from './process-log-buffer.js'
 
 /**
@@ -119,6 +126,28 @@ export class EventBus extends EventEmitter {
         currentStatus,
         message,
         errorMessage,
+      },
+    }
+  }
+
+  /**
+   * Create a ProgressEvent for model loading progress
+   */
+  createProgressEvent(
+    instanceId: string,
+    phase: ProgressEvent['data']['phase'],
+    progress: number | undefined,
+    message: string
+  ): ProgressEvent {
+    return {
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+      instanceId,
+      eventType: 'progress',
+      data: {
+        phase,
+        progress,
+        message,
       },
     }
   }

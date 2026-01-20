@@ -33,10 +33,17 @@ import {
 } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
+export interface ConfigLoadStartedInfo {
+  message: string
+  configurationId: string
+  configurationName: string
+  expectedModelCount: number
+}
+
 interface LoadConfigurationDialogProps {
   isOpen: boolean
   onClose: () => void
-  onLoadStarted: (message: string) => void
+  onLoadStarted: (info: ConfigLoadStartedInfo) => void
   currentModelCount: number
 }
 
@@ -114,7 +121,12 @@ export function LoadConfigurationDialog({
     setError(null)
     try {
       const response = await apiClient.loadConfiguration(selectedConfig.id)
-      onLoadStarted(response.message)
+      onLoadStarted({
+        message: response.message,
+        configurationId: response.configuration_id,
+        configurationName: response.configuration_name,
+        expectedModelCount: selectedConfig.entries?.length ?? 0,
+      })
       onClose()
     } catch (err) {
       setError(extractErrorMessage(err))

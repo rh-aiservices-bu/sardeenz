@@ -176,6 +176,55 @@ SQLite-backed store for model configuration presets:
 - **CRUD operations**: Create, read, update, delete configurations
 - **Entry management**: Each configuration contains multiple model entries
 
+### ModelMover (`src/services/model-mover.ts`)
+
+Orchestrates moving models between GPUs using a blue-green deployment pattern:
+
+- **Zero-downtime moves**: Target instance spins up while source continues serving
+- **Graceful drain**: Waits for in-flight requests to complete before unloading source
+- **Automatic rollback**: On failure, restores source to routable state
+- **Concurrent limit**: Only 1 move operation can run system-wide at a time
+
+**Move Phases:**
+
+| Phase | Description |
+|-------|-------------|
+| VALIDATING | Pre-flight checks (GPU memory, tensor parallelism, source status) |
+| SPAWNING | Loading model on target GPU with progress tracking (0-100%) |
+| SWITCHING | Removing source from routing table (target now receives requests) |
+| DRAINING | Waiting for active connections on source to complete |
+| COMPLETING | Unloading source instance |
+| COMPLETED/FAILED | Terminal states |
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `moveModel(request)` | Initiates move operation, returns move ID for tracking |
+| `cancelMove(moveId, force)` | Cancels in-progress move (graceful or forced) |
+| `waitForDrain(instanceId, timeout)` | Polls for connection drain with configurable timeout |
+
+**Integration Points:**
+
+- **ModelManager**: Launches target instance, unloads source
+- **ModelStore**: Controls `routable` flag to exclude source from routing
+- **MetricsStore**: Tracks per-instance connection counts for drain monitoring
+- **GpuSelector**: Pre-flight memory availability check
+- **EventBus**: SSE progress events to frontend
+
+**Routing Control:**
+
+During a move, the source instance's `routable` flag is set to `false`. The `getRunningByName()` method filters out non-routable instances, ensuring new requests go only to the target while existing connections on the source complete naturally.
+
+### MoveStore (`src/stores/move-store.ts`)
+
+In-memory store for tracking move operations:
+
+- **Concurrent move limiting**: Singleton lock ensures max 1 move at a time
+- **Operation tracking**: CRUD operations for move records
+- **Lookup methods**: Find moves by source or target instance ID
+- **Auto-pruning**: Keeps only last 10 completed operations
+
 ## Model Loading Flow
 
 ```
@@ -197,7 +246,7 @@ POST /api/models/load
       ├─► Success (health returns 200):
       │     ├─► Parse logs for EngineCore PID (GPU memory process)
       │     ├─► Parse memory metrics from logs
-      │     ├─► Query nvidia-smi using EngineCore PID
+      │     ├─► Query NVML using EngineCore PID
       │     ├─► Update status to 'active'
       │     └─► Emit SSE status event
       │
@@ -275,7 +324,7 @@ vLLM Process Architecture:
 
 **Why this matters:**
 
-- `nvidia-smi` shows GPU memory by PID
+- NVML shows GPU memory by PID
 - Looking up memory by the API Server PID returns 0
 - The EngineCore PID must be extracted from logs for accurate memory tracking
 
@@ -283,7 +332,7 @@ vLLM Process Architecture:
 
 1. Parse vLLM logs for `EngineCore_DP0 pid=N` pattern
 2. Store in `ModelInstance.engineCorePid`
-3. Use `engineCorePid` (falling back to `processId`) for nvidia-smi lookups
+3. Use `engineCorePid` (falling back to `processId`) for NVML lookups
 4. Per-model memory breakdown in dashboard uses this PID for accurate reporting
 
 ### Memory Baseline Tracking
@@ -292,7 +341,7 @@ When a model transitions to 'running' status, the backend captures its memory ba
 
 - **`memoryBaselineByGpu: Record<number, number>`** - Memory footprint per GPU in GB
 - This represents the idle memory consumption before any inference requests
-- Captured from nvidia-smi using the EngineCore PID
+- Captured from NVML using the EngineCore PID
 - For tensor-parallel models, baselines are captured on each GPU
 
 **Purpose:** The memory baseline is used for accurate KVCache total calculation:

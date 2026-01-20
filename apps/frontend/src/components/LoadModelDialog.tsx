@@ -109,10 +109,10 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
   const [instanceId, setInstanceId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // SSE connection for live logs - only active during loading phase
-  const { isConnected, logs, reconnect } = useInstanceEvents({
+  // SSE connection for live logs and progress - only active during loading phase
+  const { isConnected, logs, progress, progressMessage, reconnect } = useInstanceEvents({
     instanceId: phase === 'loading' ? instanceId : null,
-    eventTypes: ['log', 'status'],
+    eventTypes: ['log', 'status', 'progress'],
     replayLogs: true,
     onStatusChange: (status) => {
       if (status.data.currentStatus === ('running' as ModelStatus)) {
@@ -323,7 +323,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
     setLocalModels([])
     setCurrentSubpath('')
     setLocalModelsBasePath('')
-    setEnableSleepMode(false)
+    setEnableSleepMode(true)
     onClose()
   }, [onClose])
 
@@ -841,11 +841,23 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
           <>
             <Progress
               aria-label="Model loading progress"
-              value={phase === 'failed' ? 100 : undefined}
+              value={phase === 'failed' ? 100 : (progress ?? undefined)}
               measureLocation={ProgressMeasureLocation.none}
               variant={phase === 'failed' ? 'danger' : undefined}
-              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+              style={{ marginBottom: 'var(--pf-t--global--spacer--sm)' }}
             />
+
+            {phase === 'loading' && progressMessage && (
+              <div
+                style={{
+                  marginBottom: 'var(--pf-t--global--spacer--md)',
+                  color: 'var(--pf-t--global--text--color--subtle)',
+                  fontSize: 'var(--pf-t--global--font--size--sm)',
+                }}
+              >
+                {progressMessage}
+              </div>
+            )}
 
             {phase === 'failed' && errorMessage && (
               <Alert

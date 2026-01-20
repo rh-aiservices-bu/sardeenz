@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DndContext, DragEndEvent, pointerWithin } from '@dnd-kit/core'
 import {
   PageSection,
   Content,
@@ -34,9 +35,11 @@ import {
   ModelToolbar,
   GpuGroupSection,
   ModelTable,
+  MoveModelDialog,
 } from '../components'
-import type { ViewMode, FilterState, SortField, SortDirection } from '../components'
+import type { ViewMode, FilterState, SortField, SortDirection, ConfigLoadStartedInfo } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
+import { useOperations } from '../contexts/OperationsContext'
 
 // Helper to determine GPU group key
 function getGpuGroupKey(model: ModelInstanceDTO): string {
@@ -86,7 +89,23 @@ function ModelManagement() {
   const [expandedGpuGroups, setExpandedGpuGroups] = useState<Set<string>>(new Set())
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
 
+  // Move modal state
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
+  const [moveModalModel, setMoveModalModel] = useState<ModelInstanceDTO | null>(null)
+  const [moveTargetGpuIds, setMoveTargetGpuIds] = useState<number[]>([])
+  // State for GPU memory data needed by move modal
+  const [gpuMemoryData, setGpuMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
+
+  // Configuration loading tracking state
+  const [configLoadingInfo, setConfigLoadingInfo] = useState<{
+    operationId: string
+    expectedModelCount: number
+    configurationName: string
+  } | null>(null)
+  const configLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const { addNotification } = useNotifications()
+  const { startOperation, endOperation } = useOperations()
 
   // Trigger GPU memory panel refresh
   const triggerGpuRefresh = useCallback(() => {
@@ -95,6 +114,7 @@ function ModelManagement() {
 
   // Handle memory data updates from GpuMemoryPanel
   const handleMemoryDataChange = useCallback((data: MultiGpuMemoryUsageResponse) => {
+    setGpuMemoryData(data) // Store for move modal
     const kvCacheMap: Record<number, number> = {}
     const memoryMap: Record<string, number> = {}
 
@@ -122,8 +142,8 @@ function ModelManagement() {
 
   const inferenceUrl = useMemo(() => `${window.location.origin}/v1`, [])
 
-  // Get available GPUs from loaded models
-  const availableGpus = useMemo(() => {
+  // Get available GPUs from loaded models (for filtering)
+  const availableGpusFromModels = useMemo(() => {
     const gpuSet = new Set<string>()
     models.forEach((model) => {
       gpuSet.add(getGpuGroupKey(model))
@@ -136,12 +156,23 @@ function ModelManagement() {
     })
   }, [models])
 
-  // Initialize expanded GPU groups when models load
-  useEffect(() => {
-    if (models.length > 0 && expandedGpuGroups.size === 0) {
-      setExpandedGpuGroups(new Set(availableGpus))
+  // Get all available GPUs from hardware (includes empty GPUs for drag-drop targets)
+  const allAvailableGpus = useMemo(() => {
+    if (!gpuMemoryData?.gpus) {
+      // Fall back to model-derived GPUs if no memory data yet
+      return availableGpusFromModels
     }
-  }, [models, availableGpus, expandedGpuGroups.size])
+    const gpuKeys = gpuMemoryData.gpus.map((gpu) => `gpu-${gpu.gpu_index}`)
+    // Add multi-gpu if any models use multiple GPUs
+    if (models.some((m) => m.gpu_ids.length > 1)) {
+      gpuKeys.push('multi-gpu')
+    }
+    return gpuKeys.sort((a, b) => {
+      if (a === 'multi-gpu') return 1
+      if (b === 'multi-gpu') return -1
+      return a.localeCompare(b)
+    })
+  }, [gpuMemoryData, models, availableGpusFromModels])
 
   // Filter and sort models
   const filteredModels = useMemo(() => {
@@ -200,14 +231,58 @@ function ModelManagement() {
     return groups
   }, [filteredModels])
 
-  // Get ordered GPU keys for rendering
+  // Initialize expanded GPU groups when GPUs are available (only expand non-empty groups)
+  useEffect(() => {
+    if (allAvailableGpus.length > 0 && expandedGpuGroups.size === 0) {
+      // Only expand groups that have models
+      const nonEmptyGroups = allAvailableGpus.filter((gpuKey) => {
+        const modelsInGroup = groupedModels[gpuKey]
+        return modelsInGroup && modelsInGroup.length > 0
+      })
+      setExpandedGpuGroups(new Set(nonEmptyGroups))
+    }
+  }, [allAvailableGpus, expandedGpuGroups.size, groupedModels])
+
+  // Auto-collapse empty groups and auto-expand groups that receive models
+  useEffect(() => {
+    setExpandedGpuGroups((prev) => {
+      const next = new Set(prev)
+      let changed = false
+
+      // Collapse groups that became empty
+      for (const gpuKey of prev) {
+        const modelsInGroup = groupedModels[gpuKey]
+        if (!modelsInGroup || modelsInGroup.length === 0) {
+          next.delete(gpuKey)
+          changed = true
+        }
+      }
+
+      // Expand groups that have models but are not expanded
+      for (const gpuKey of Object.keys(groupedModels)) {
+        const modelsInGroup = groupedModels[gpuKey]
+        if (modelsInGroup && modelsInGroup.length > 0 && !prev.has(gpuKey)) {
+          next.add(gpuKey)
+          changed = true
+        }
+      }
+
+      return changed ? next : prev
+    })
+  }, [groupedModels])
+
+  // Get ordered GPU keys for rendering (includes empty GPUs for drag-drop targets)
   const orderedGpuKeys = useMemo(() => {
-    return Object.keys(groupedModels).sort((a, b) => {
+    // Start with all available GPUs from hardware
+    const keys = new Set(allAvailableGpus)
+    // Add any additional keys from grouped models (e.g., multi-gpu)
+    Object.keys(groupedModels).forEach((k) => keys.add(k))
+    return Array.from(keys).sort((a, b) => {
       if (a === 'multi-gpu') return 1
       if (b === 'multi-gpu') return -1
       return a.localeCompare(b)
     })
-  }, [groupedModels])
+  }, [allAvailableGpus, groupedModels])
 
   const fetchModels = useCallback(async () => {
     try {
@@ -232,6 +307,51 @@ function ModelManagement() {
     return () => clearInterval(interval)
   }, [fetchModels])
 
+  // Check if configuration loading is complete
+  useEffect(() => {
+    if (!configLoadingInfo) return
+
+    // Count models that are running or failed
+    const runningCount = models.filter((m) => m.status === 'running').length
+    const failedCount = models.filter((m) => m.status === 'failed').length
+    const terminalCount = runningCount + failedCount
+
+    // Check if we've reached the expected count
+    if (terminalCount >= configLoadingInfo.expectedModelCount) {
+      // Clear timeout
+      if (configLoadTimeoutRef.current) {
+        clearTimeout(configLoadTimeoutRef.current)
+        configLoadTimeoutRef.current = null
+      }
+
+      endOperation(configLoadingInfo.operationId)
+      setConfigLoadingInfo(null)
+
+      if (failedCount > 0) {
+        addNotification({
+          title: 'Configuration partially loaded',
+          description: `${runningCount} models loaded, ${failedCount} failed`,
+          variant: 'warning',
+        })
+      } else {
+        addNotification({
+          title: 'Configuration loaded',
+          description: `${configLoadingInfo.configurationName} loaded successfully`,
+          variant: 'success',
+        })
+      }
+    }
+  }, [models, configLoadingInfo, endOperation, addNotification])
+
+  // Cleanup config loading timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (configLoadTimeoutRef.current) {
+        clearTimeout(configLoadTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleLoadModel = async (request: LoadModelRequest) => {
     // Start the load and return instance_id for SSE subscription
     const result = await apiClient.loadModel(request)
@@ -250,6 +370,11 @@ function ModelManagement() {
 
   const handleUnloadModel = async (instanceId: string, modelPath: string, isFailed: boolean) => {
     setUnloadingInstanceId(instanceId)
+    const opId = startOperation({
+      type: 'unload',
+      label: `Unloading ${modelPath}`,
+      targetId: instanceId,
+    })
     try {
       await apiClient.unloadModelByInstanceId(instanceId)
       addNotification({
@@ -269,6 +394,7 @@ function ModelManagement() {
       })
     } finally {
       setUnloadingInstanceId(null)
+      endOperation(opId)
     }
   }
 
@@ -277,6 +403,11 @@ function ModelManagement() {
     if (!model) return
 
     setSleepingInstanceId(instanceId)
+    const opId = startOperation({
+      type: 'sleep',
+      label: `Sleeping ${model.model_path}`,
+      targetId: instanceId,
+    })
     try {
       await apiClient.sleepModel(instanceId)
       addNotification({
@@ -294,6 +425,7 @@ function ModelManagement() {
       })
     } finally {
       setSleepingInstanceId(null)
+      endOperation(opId)
     }
   }
 
@@ -302,6 +434,11 @@ function ModelManagement() {
     if (!model) return
 
     setWakingInstanceId(instanceId)
+    const opId = startOperation({
+      type: 'wake',
+      label: `Waking ${model.model_path}`,
+      targetId: instanceId,
+    })
     try {
       await apiClient.wakeModel(instanceId)
       addNotification({
@@ -319,6 +456,7 @@ function ModelManagement() {
       })
     } finally {
       setWakingInstanceId(null)
+      endOperation(opId)
     }
   }
 
@@ -330,20 +468,51 @@ function ModelManagement() {
     })
   }
 
-  const handleConfigLoadStarted = (message: string) => {
+  const handleConfigLoadStarted = (info: ConfigLoadStartedInfo) => {
+    // Start the operation (will be ended when models are loaded)
+    const opId = startOperation({
+      type: 'load-config',
+      label: `Loading configuration: ${info.configurationName}`,
+    })
+
+    setConfigLoadingInfo({
+      operationId: opId,
+      expectedModelCount: info.expectedModelCount,
+      configurationName: info.configurationName,
+    })
+
     addNotification({
       title: 'Loading configuration',
-      description: message,
+      description: info.message,
       variant: 'info',
     })
-    setTimeout(() => {
-      fetchModels()
-      triggerGpuRefresh()
-    }, 2000)
+
+    // Set timeout (5 minutes) to prevent infinite loading state
+    configLoadTimeoutRef.current = setTimeout(() => {
+      setConfigLoadingInfo((current) => {
+        if (current) {
+          endOperation(current.operationId)
+          addNotification({
+            title: 'Configuration load timeout',
+            description: 'Some models may not have loaded successfully',
+            variant: 'warning',
+          })
+        }
+        return null
+      })
+    }, 5 * 60 * 1000)
+
+    // Trigger immediate refresh
+    fetchModels()
+    triggerGpuRefresh()
   }
 
   const handleUnloadAll = async () => {
     setIsUnloadingAll(true)
+    const opId = startOperation({
+      type: 'unload-all',
+      label: `Unloading all models (${models.length})`,
+    })
     try {
       for (const model of models) {
         try {
@@ -372,8 +541,45 @@ function ModelManagement() {
     } finally {
       setIsUnloadingAll(false)
       setIsUnloadAllModalOpen(false)
+      endOperation(opId)
     }
   }
+
+  // Drag-and-drop handler
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over) return
+
+    const model = active.data?.current?.model as ModelInstanceDTO | undefined
+    if (!model) return
+
+    // Extract target GPU from drop zone id (e.g., "gpu-drop-0" -> 0)
+    const targetGpuId = over.data?.current?.gpuIndex as number | undefined
+    if (targetGpuId === undefined || targetGpuId === -1) return
+
+    // Don't open modal if dropping on same GPU
+    if (model.gpu_ids.includes(targetGpuId)) return
+
+    // Open move modal with preselected target GPU
+    setMoveModalModel(model)
+    setMoveTargetGpuIds([targetGpuId])
+    setMoveModalOpen(true)
+  }, [])
+
+  // Move handlers (for menu item in ModelCardCompact)
+  const handleMoveModel = useCallback((model: ModelInstanceDTO) => {
+    setMoveModalModel(model)
+    setMoveTargetGpuIds([])
+    setMoveModalOpen(true)
+  }, [])
+
+  const handleMoveComplete = useCallback(() => {
+    fetchModels()
+    triggerGpuRefresh()
+    setMoveModalOpen(false)
+    setMoveModalModel(null)
+    setMoveTargetGpuIds([])
+  }, [fetchModels, triggerGpuRefresh])
 
   // Toolbar handlers
   const handleFiltersChange = (newFilters: FilterState) => {
@@ -465,7 +671,7 @@ function ModelManagement() {
   }
 
   return (
-    <>
+    <DndContext onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
       <PageSection>
         <Flex
           justifyContent={{ default: 'justifyContentSpaceBetween' }}
@@ -569,7 +775,7 @@ function ModelManagement() {
                 onSortChange={handleSortChange}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                availableGpus={availableGpus}
+                availableGpus={allAvailableGpus}
                 onClearAllFilters={handleClearAllFilters}
               />
             </div>
@@ -599,12 +805,14 @@ function ModelManagement() {
                       key={gpuKey}
                       gpuKey={gpuKey}
                       gpuLabel={formatGpuLabel(gpuKey)}
-                      models={groupedModels[gpuKey]}
+                      gpuIndex={gpuKey === 'multi-gpu' ? -1 : parseInt(gpuKey.replace('gpu-', ''), 10)}
+                      models={groupedModels[gpuKey] || []}
                       isExpanded={expandedGpuGroups.has(gpuKey)}
                       onToggle={handleGpuGroupToggle}
                       onUnload={handleUnloadModel}
                       onSleep={handleSleepModel}
                       onWake={handleWakeModel}
+                      onMove={handleMoveModel}
                       unloadingInstanceId={unloadingInstanceId}
                       sleepingInstanceId={sleepingInstanceId}
                       wakingInstanceId={wakingInstanceId}
@@ -688,7 +896,20 @@ function ModelManagement() {
           </Button>
         </ModalFooter>
       </Modal>
-    </>
+
+      <MoveModelDialog
+        isOpen={moveModalOpen}
+        onClose={() => {
+          setMoveModalOpen(false)
+          setMoveModalModel(null)
+          setMoveTargetGpuIds([])
+        }}
+        model={moveModalModel}
+        preselectedGpuIds={moveTargetGpuIds}
+        gpuMemoryData={gpuMemoryData}
+        onMoveComplete={handleMoveComplete}
+      />
+    </DndContext>
   )
 }
 

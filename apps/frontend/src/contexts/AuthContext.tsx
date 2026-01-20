@@ -46,6 +46,8 @@ interface AuthProviderProps {
 
 // Session storage key for OAuth callback token
 const OAUTH_TOKEN_KEY = 'sardeenz_oauth_token'
+// Session storage key for auth token persistence
+const AUTH_TOKEN_KEY = 'sardeenz_auth_token'
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const { isConnected } = useConnection()
@@ -75,6 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Set token and update state
   const setAuthState = useCallback(
     async (token: string) => {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token)
       apiClient.setAuthToken(token)
       const userInfo = parseJwt(token)
       setUser(userInfo)
@@ -171,6 +174,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return
         }
 
+        // Check for persisted auth token
+        const persistedToken = sessionStorage.getItem(AUTH_TOKEN_KEY)
+        if (persistedToken) {
+          setAuthState(persistedToken)
+          setIsLoading(false)
+          return
+        }
+
         // Check for auth error in URL
         const urlParams = new URLSearchParams(window.location.search)
         const authError = urlParams.get('auth_error')
@@ -201,6 +212,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Listen for unauthorized events from API client
   useEffect(() => {
     const handleUnauthorized = () => {
+      sessionStorage.removeItem(AUTH_TOKEN_KEY)
       setIsAuthenticated(false)
       setUser(null)
       apiClient.setAuthToken(null)
@@ -217,6 +229,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null)
     try {
       const response = await apiClient.login(credentials)
+      sessionStorage.setItem(AUTH_TOKEN_KEY, response.token)
       apiClient.setAuthToken(response.token)
       setUser(response.user)
       setIsAuthenticated(true)
@@ -256,6 +269,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch {
       // Ignore logout errors
     }
+    sessionStorage.removeItem(AUTH_TOKEN_KEY)
     apiClient.setAuthToken(null)
     apiClient.setInferenceApiKey(null)
     setUser(null)

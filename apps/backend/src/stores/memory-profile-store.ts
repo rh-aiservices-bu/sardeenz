@@ -15,7 +15,7 @@ interface MemoryProfileRow {
   profile_name: string
   model_path: string
   max_tokens: number
-  total_gpu_memory_gib: number | null // Actual GPU memory from nvidia-smi
+  total_gpu_memory_gib: number | null // Actual GPU memory from NVML
   weights_memory_gib: number
   cuda_graphs_gib: number
   overhead_memory_gib: number | null // Total - weights - CUDA graphs
@@ -59,7 +59,7 @@ export interface CreateProfileData {
   profileName: string
   modelPath: string
   maxTokens: number
-  /** Actual GPU memory from nvidia-smi */
+  /** Actual GPU memory from NVML */
   totalGpuMemoryGib: number
   weightsMemoryGib: number
   cudaGraphsGib: number

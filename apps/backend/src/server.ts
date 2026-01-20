@@ -5,7 +5,7 @@ import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { config } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
-import { detectGpuInfo } from './utils/gpu-info.js'
+import { detectGpuInfo, initializeNvml, shutdownNvml } from './utils/gpu-info.js'
 import { initializeDatabase, closeDb } from './db/index.js'
 
 // Create logger
@@ -217,9 +217,9 @@ if (config.nodeEnv === 'production') {
       // If same host, return a user-friendly error (shouldn't happen with proper config)
       return {
         error: 'Access Denied',
-        message: decodeURIComponent(authError || 'You are not a member of any authorized groups'),
+        message: decodeURIComponent(authError || 'You do not have access to sardeenz'),
         resolution:
-          'Please contact your administrator to be added to sardeenz-admins or sardeenz-admins-readonly groups',
+          'Please contact your administrator to create a RoleBinding for sardeenz-admin or sardeenz-admin-readonly',
       }
     }
 
@@ -240,6 +240,9 @@ async function start() {
     initializeDatabase()
     logger.info('Database initialized')
 
+    // Initialize NVML library for GPU operations
+    initializeNvml()
+
     // Detect GPU info at startup (cache result for later use)
     const gpuInfo = await detectGpuInfo()
     if (gpuInfo.length > 0) {
@@ -248,7 +251,7 @@ async function start() {
         `Detected ${gpuInfo.length} GPU(s)`
       )
     } else {
-      logger.warn('No GPU detected via nvidia-smi, using default GPU memory values')
+      logger.warn('No GPU detected via NVML, using default GPU memory values')
     }
 
     await fastify.listen({
@@ -272,6 +275,7 @@ async function shutdown() {
   logger.info('Shutting down server...')
   await fastify.close()
   closeDb()
+  shutdownNvml()
   logger.info('Server shut down')
   process.exit(0)
 }
