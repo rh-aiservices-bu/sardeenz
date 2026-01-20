@@ -54,14 +54,14 @@ export default async function gpuRoutes(fastify: FastifyInstance) {
   const gpuSelector = new GpuSelector(fastify.log)
 
   /**
-   * GET /api/gpu/info - Get complete nvidia-smi information
+   * GET /api/gpu/info - Get complete GPU information
    */
   fastify.get(
     '/api/gpu/info',
     {
       schema: {
         tags: ['gpu'],
-        description: 'Get complete GPU information from nvidia-smi',
+        description: 'Get complete GPU information from NVML',
         response: {
           200: NvidiaSmiInfoSchema,
           500: ErrorResponseSchema,

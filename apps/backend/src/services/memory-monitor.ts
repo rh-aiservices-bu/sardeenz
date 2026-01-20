@@ -70,14 +70,14 @@ export class MemoryMonitor {
   async getMemoryUsage(): Promise<MemoryUsageResponse> {
     try {
       // Get KVCache segments from Python script (reads /dev/shm like kvtop)
-      // and GPU info from nvidia-smi in parallel
+      // and GPU info from NVML in parallel
       const [kvcacheSegments, gpuInfo, nvidiaSmiInfo] = await Promise.all([
         this.runKvcacheStats(),
         getPrimaryGpuInfo(),
         getNvidiaSmiInfo(),
       ])
 
-      // Get GPU metrics from nvidia-smi (needed for KVCache calculation)
+      // Get GPU metrics from NVML (needed for KVCache calculation)
       const primaryGpu = nvidiaSmiInfo.gpus[0]
       const gpuUsedMB = primaryGpu?.memoryUsedMB ?? 0
       const gpuTotalMB = primaryGpu?.memoryTotalMB ?? gpuInfo.totalMemoryMB
@@ -106,13 +106,13 @@ export class MemoryMonitor {
         free_gb: kvcacheFreeBytes / 1024 ** 3,
       }
 
-      // Build map of PID -> GPU memory from nvidia-smi processes
+      // Build map of PID -> GPU memory from NVML processes
       const processMemoryByPid = new Map<number, number>()
       for (const proc of nvidiaSmiInfo.processes) {
         processMemoryByPid.set(proc.pid, proc.gpuMemoryMB)
       }
 
-      // Build per-model GPU memory breakdown using actual nvidia-smi process memory
+      // Build per-model GPU memory breakdown using actual NVML process memory
       const allInstances = modelStore.getAll()
       const runningInstances = allInstances.filter((instance) => instance.status === 'running')
 
@@ -159,13 +159,13 @@ export class MemoryMonitor {
    */
   async getMultiGpuMemoryUsage(): Promise<MultiGpuMemoryUsageResponse> {
     try {
-      // Get KVCache segments and GPU info from nvidia-smi in parallel
+      // Get KVCache segments and GPU info from NVML in parallel
       const [kvcacheSegments, nvidiaSmiInfo] = await Promise.all([
         this.runKvcacheStats(),
         getNvidiaSmiInfo(),
       ])
 
-      // Build PID -> (GPU index, memory) mapping from nvidia-smi processes
+      // Build PID -> (GPU index, memory) mapping from NVML processes
       const pidToGpuMemory = new Map<number, { gpuIndex: number; memoryMB: number }>()
       for (const proc of nvidiaSmiInfo.processes) {
         pidToGpuMemory.set(proc.pid, { gpuIndex: proc.gpu, memoryMB: proc.gpuMemoryMB })
@@ -191,7 +191,7 @@ export class MemoryMonitor {
 
         // For tensor parallel models, distribute across their GPUs
         if (instance.tensorParallelSize > 1 && instance.gpuIds.length > 1) {
-          // Get total memory from nvidia-smi processes for this model
+          // Get total memory from NVML processes for this model
           // Sum up memory from all GPUs the model uses
           let totalMemoryMB = 0
           for (const gpuId of instance.gpuIds) {
@@ -222,7 +222,7 @@ export class MemoryMonitor {
           // Single GPU model
           const gpuInfo = pidToGpuMemory.get(gpuPid)
 
-          // In virtual GPU mode, use model's assigned GPU ID (not nvidia-smi process info)
+          // In virtual GPU mode, use model's assigned GPU ID (not NVML process info)
           // because all processes appear on physical GPU 0
           const gpuIndex =
             config.virtualGpuCount > 0

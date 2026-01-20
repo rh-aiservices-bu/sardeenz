@@ -32,7 +32,7 @@ export enum OperationType {
 
 /** Memory metrics parsed from vLLM logs after model loading */
 export interface ModelMemoryMetrics {
-  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  /** Total actual GPU memory consumed by the model process in GiB (from NVML) */
   totalGpuMemoryGiB: number
   /** Model weights memory in GiB */
   weightsMemoryGiB: number

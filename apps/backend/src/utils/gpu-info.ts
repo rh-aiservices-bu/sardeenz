@@ -1,13 +1,10 @@
 /**
- * Utility for detecting GPU information using nvidia-smi
+ * Utility for detecting GPU information using NVML (via ts-nvml bindings)
  */
 
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { Nvml, unwrapOr, NvmlComputeMode, NvmlPState } from 'ts-nvml'
 
 import { config } from '../config.js'
-
-const execAsync = promisify(exec)
 
 export interface GpuInfo {
   index: number
@@ -16,7 +13,7 @@ export interface GpuInfo {
   totalMemoryGB: number
 }
 
-/** Full GPU status information from nvidia-smi */
+/** Full GPU status information */
 export interface GpuStatus {
   index: number
   name: string
@@ -57,7 +54,7 @@ export interface DriverInfo {
   cudaVersion: string
 }
 
-/** Complete nvidia-smi output */
+/** Complete GPU system information */
 export interface NvidiaSmiInfo {
   timestamp: string
   driver: DriverInfo
@@ -72,7 +69,42 @@ let cachedGpuInfo: GpuInfo[] | null = null
 let initializationPromise: Promise<GpuInfo[]> | null = null
 
 /**
- * Detect GPU information using nvidia-smi
+ * Initialize NVML library
+ * Must be called once at application startup before any GPU operations
+ */
+export function initializeNvml(): void {
+  if (Nvml.isInitialized()) {
+    return
+  }
+
+  try {
+    Nvml.init()
+    console.info('[gpu-info] NVML initialized successfully')
+  } catch (error) {
+    console.error('[gpu-info] Failed to initialize NVML:', error)
+    // Don't throw - allow graceful degradation with defaults
+  }
+}
+
+/**
+ * Shutdown NVML library
+ * Should be called at application shutdown for clean resource release
+ */
+export function shutdownNvml(): void {
+  if (!Nvml.isInitialized()) {
+    return
+  }
+
+  try {
+    Nvml.shutdown()
+    console.info('[gpu-info] NVML shutdown complete')
+  } catch (error) {
+    console.error('[gpu-info] Error during NVML shutdown:', error)
+  }
+}
+
+/**
+ * Detect GPU information using NVML
  * Returns cached result after first call
  */
 export async function detectGpuInfo(): Promise<GpuInfo[]> {
@@ -99,7 +131,7 @@ export async function detectGpuInfo(): Promise<GpuInfo[]> {
 
 /**
  * Get the primary GPU info (first GPU, index 0)
- * Returns default values if nvidia-smi fails
+ * Returns default values if NVML fails
  */
 export async function getPrimaryGpuInfo(): Promise<GpuInfo> {
   const gpus = await detectGpuInfo()
@@ -140,43 +172,34 @@ export function getCachedPrimaryGpuInfo(): GpuInfo {
 }
 
 /**
- * Internal function to detect real GPU info from nvidia-smi
+ * Internal function to detect real GPU info from NVML
  */
-async function detectRealGpuInfo(): Promise<GpuInfo[]> {
+function detectRealGpuInfo(): GpuInfo[] {
+  if (!Nvml.isInitialized()) {
+    return []
+  }
+
   try {
-    // Query nvidia-smi for GPU information
-    // Format: index, name, memory.total (in MiB)
-    const { stdout } = await execAsync(
-      'nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader,nounits',
-      { timeout: 5000 }
-    )
+    const devices = Nvml.getAllDevices()
+    return devices.map((device) => {
+      const name = unwrapOr(device.getName(), 'Unknown GPU')
+      const memInfo = unwrapOr(device.getMemoryInfo(), {
+        total: BigInt(0),
+        used: BigInt(0),
+        free: BigInt(0),
+      })
+      // Memory is in bytes (bigint), convert to MiB
+      const totalMemoryMB = Number(memInfo.total / BigInt(1024 * 1024))
 
-    const gpus: GpuInfo[] = []
-
-    for (const line of stdout.trim().split('\n')) {
-      if (!line.trim()) continue
-
-      const parts = line.split(',').map((p) => p.trim())
-      if (parts.length >= 3) {
-        const index = parseInt(parts[0], 10)
-        const name = parts[1]
-        const totalMemoryMB = parseInt(parts[2], 10)
-
-        if (!isNaN(index) && !isNaN(totalMemoryMB)) {
-          gpus.push({
-            index,
-            name,
-            totalMemoryMB,
-            totalMemoryGB: totalMemoryMB / 1024,
-          })
-        }
+      return {
+        index: device.index,
+        name,
+        totalMemoryMB,
+        totalMemoryGB: totalMemoryMB / 1024,
       }
-    }
-
-    return gpus
+    })
   } catch {
-    // nvidia-smi not available or failed
-    // Return empty array, caller should use default
+    // NVML error - return empty array, caller should use default
     return []
   }
 }
@@ -186,7 +209,7 @@ async function detectRealGpuInfo(): Promise<GpuInfo[]> {
  */
 async function doDetectGpuInfo(): Promise<GpuInfo[]> {
   // Get real GPU info first
-  const realGpus = await detectRealGpuInfo()
+  const realGpus = detectRealGpuInfo()
 
   // If virtual GPUs enabled and we have at least one real GPU
   if (config.virtualGpuCount > 0 && realGpus.length > 0) {
@@ -214,19 +237,19 @@ export function resetGpuInfoCache(): void {
 }
 
 /**
- * Get complete nvidia-smi information (not cached - for real-time monitoring)
+ * Get complete GPU system information (not cached - for real-time monitoring)
  */
 export async function getNvidiaSmiInfo(): Promise<NvidiaSmiInfo> {
   const timestamp = new Date().toISOString()
 
   // Get driver info
-  const driver = await getDriverInfo()
+  const driver = getDriverInfo()
 
   // Get real GPU status
-  const realGpus = await getGpuStatus()
+  const realGpus = getGpuStatus()
 
   // Get process list
-  const processes = await getGpuProcesses()
+  const processes = getGpuProcesses()
 
   // If virtual GPUs enabled, create virtual GPU status entries
   let gpus: GpuStatus[]
@@ -253,107 +276,68 @@ export async function getNvidiaSmiInfo(): Promise<NvidiaSmiInfo> {
 /**
  * Get driver and CUDA version information
  */
-async function getDriverInfo(): Promise<DriverInfo> {
-  try {
-    const { stdout } = await execAsync(
-      'nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits',
-      { timeout: 5000 }
-    )
-    const driverVersion = stdout.trim().split('\n')[0]?.trim() || 'Unknown'
-
-    // Get nvidia-smi version and CUDA version from the header output
-    await execAsync('nvidia-smi --version 2>/dev/null || nvidia-smi | head -1', {
-      timeout: 5000,
-    })
-
-    // Parse CUDA version from nvidia-smi output
-    const { stdout: cudaOutput } = await execAsync(
-      "nvidia-smi | grep -oP 'CUDA Version: \\K[0-9.]+'",
-      { timeout: 5000 }
-    )
-    const cudaVersion = cudaOutput.trim() || 'Unknown'
-
-    // Parse nvidia-smi version
-    const { stdout: smiVersionOutput } = await execAsync(
-      "nvidia-smi | grep -oP 'NVIDIA-SMI \\K[0-9.]+'",
-      { timeout: 5000 }
-    )
-    const nvidiaSmiVersion = smiVersionOutput.trim() || 'Unknown'
-
-    return {
-      nvidiaSmiVersion,
-      driverVersion,
-      cudaVersion,
-    }
-  } catch {
+function getDriverInfo(): DriverInfo {
+  if (!Nvml.isInitialized()) {
     return {
       nvidiaSmiVersion: 'Unknown',
       driverVersion: 'Unknown',
       cudaVersion: 'Unknown',
     }
   }
+
+  const result = Nvml.getDriverInfo()
+  if (!result.ok) {
+    return {
+      nvidiaSmiVersion: 'Unknown',
+      driverVersion: 'Unknown',
+      cudaVersion: 'Unknown',
+    }
+  }
+
+  return {
+    nvidiaSmiVersion: result.value.nvmlVersion,
+    driverVersion: result.value.driverVersion,
+    cudaVersion: result.value.cudaVersion,
+  }
 }
 
 /**
  * Get full GPU status for all GPUs
  */
-async function getGpuStatus(): Promise<GpuStatus[]> {
+function getGpuStatus(): GpuStatus[] {
+  if (!Nvml.isInitialized()) {
+    return []
+  }
+
   try {
-    const fields = [
-      'index',
-      'name',
-      'persistence_mode',
-      'pci.bus_id',
-      'display_active',
-      'ecc.errors.corrected.volatile.total',
-      'fan.speed',
-      'temperature.gpu',
-      'pstate',
-      'power.draw',
-      'power.limit',
-      'memory.used',
-      'memory.total',
-      'utilization.gpu',
-      'compute_mode',
-      'mig.mode.current',
-    ].join(',')
-
-    const { stdout } = await execAsync(
-      `nvidia-smi --query-gpu=${fields} --format=csv,noheader,nounits`,
-      { timeout: 5000 }
-    )
-
+    const devices = Nvml.getAllDevices()
     const gpus: GpuStatus[] = []
 
-    for (const line of stdout.trim().split('\n')) {
-      if (!line.trim()) continue
+    for (const device of devices) {
+      const status = unwrapOr(device.getStatus(), null)
+      if (!status) continue
 
-      const parts = line.split(',').map((p) => p.trim())
-      if (parts.length >= 16) {
-        const memoryUsedMB = parseInt(parts[11], 10) || 0
-        const memoryTotalMB = parseInt(parts[12], 10) || 0
-
-        gpus.push({
-          index: parseInt(parts[0], 10) || 0,
-          name: parts[1],
-          persistenceMode: parts[2],
-          busId: parts[3],
-          displayActive: parts[4],
-          eccErrors: parts[5] === '[N/A]' || parts[5] === 'N/A' ? null : parts[5],
-          fan: parts[6] === '[N/A]' || parts[6] === 'N/A' ? 'N/A' : `${parts[6]}%`,
-          temperature: `${parts[7]}C`,
-          performanceState: parts[8],
-          powerUsage: `${parts[9]}W`,
-          powerCap: `${parts[10]}W`,
-          memoryUsed: `${memoryUsedMB}MiB`,
-          memoryTotal: `${memoryTotalMB}MiB`,
-          memoryUsedMB,
-          memoryTotalMB,
-          gpuUtilization: `${parts[13]}%`,
-          computeMode: parts[14],
-          migMode: parts[15] === '[N/A]' || parts[15] === 'N/A' ? null : parts[15],
-        })
-      }
+      gpus.push({
+        index: status.index,
+        name: status.name,
+        persistenceMode: status.persistenceMode ? 'Enabled' : 'Disabled',
+        busId: status.pciBusId,
+        displayActive: status.displayActive ? 'Enabled' : 'Disabled',
+        eccErrors:
+          status.eccErrorsCorrected !== null ? String(status.eccErrorsCorrected) : null,
+        fan: status.fanSpeed !== null ? `${status.fanSpeed}%` : 'N/A',
+        temperature: `${status.temperature}C`,
+        performanceState: NvmlPState[status.pstate],
+        powerUsage: `${Math.round(status.powerDraw)}W`,
+        powerCap: `${Math.round(status.powerLimit)}W`,
+        memoryUsed: `${status.memoryUsedMiB}MiB`,
+        memoryTotal: `${status.memoryTotalMiB}MiB`,
+        memoryUsedMB: status.memoryUsedMiB,
+        memoryTotalMB: status.memoryTotalMiB,
+        gpuUtilization: `${status.utilizationGpu}%`,
+        computeMode: NvmlComputeMode[status.computeMode],
+        migMode: status.migMode !== null ? (status.migMode ? 'Enabled' : 'Disabled') : null,
+      })
     }
 
     return gpus
@@ -363,73 +347,37 @@ async function getGpuStatus(): Promise<GpuStatus[]> {
 }
 
 /**
- * Get list of ALL processes using GPU memory (including idle processes)
- * Parses standard nvidia-smi text output to capture all processes with GPU memory allocated
+ * Get list of all processes using GPU memory
  */
-async function getGpuProcesses(): Promise<GpuProcess[]> {
-  try {
-    // Run standard nvidia-smi and parse the Processes section
-    // This captures ALL processes with GPU memory, not just active ones
-    const { stdout } = await execAsync('nvidia-smi', { timeout: 5000 })
-    return parseNvidiaSmiProcesses(stdout)
-  } catch {
+function getGpuProcesses(): GpuProcess[] {
+  if (!Nvml.isInitialized()) {
     return []
   }
-}
 
-/**
- * Parse the Processes section from nvidia-smi text output
- * Example line: |    0   N/A  N/A   5082   G   /usr/libexec/Xorg   300MiB |
- */
-function parseNvidiaSmiProcesses(output: string): GpuProcess[] {
-  const processes: GpuProcess[] = []
-  const lines = output.split('\n')
-  let inProcessSection = false
+  try {
+    const devices = Nvml.getAllDevices()
+    const allProcesses: GpuProcess[] = []
 
-  for (const line of lines) {
-    // Detect start of process table (header line contains "GPU   GI   CI")
-    if (line.includes('GPU   GI   CI')) {
-      inProcessSection = true
-      continue
-    }
+    for (const device of devices) {
+      const procs = unwrapOr(device.getProcesses(), [])
 
-    // Skip separator lines
-    if (line.includes('|=') || line.includes('+-')) {
-      if (inProcessSection && line.includes('+-')) {
-        // End of process section
-        break
-      }
-      continue
-    }
-
-    if (inProcessSection && line.includes('|')) {
-      // Parse process line: |    0   N/A  N/A            5082      G   /usr/libexec/Xorg   300MiB |
-      // Regex breakdown:
-      // \|\s* - starting pipe and whitespace
-      // (\d+)\s+ - GPU index
-      // (\S+)\s+ - GI ID (N/A or number)
-      // (\S+)\s+ - CI ID (N/A or number)
-      // (\d+)\s+ - PID
-      // (\w+)\s+ - Type (C or G)
-      // (.+?)\s+ - Process name (non-greedy to stop before memory)
-      // (\d+)MiB - GPU memory in MiB
-      const match = line.match(/\|\s*(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\w+)\s+(.+?)\s+(\d+)MiB\s*\|/)
-      if (match) {
-        processes.push({
-          gpu: parseInt(match[1], 10),
-          gi: match[2],
-          ci: match[3],
-          pid: parseInt(match[4], 10),
-          type: match[5],
-          processName: match[6].trim(),
-          gpuMemory: `${match[7]}MiB`,
-          gpuMemoryMB: parseInt(match[7], 10),
+      for (const proc of procs) {
+        allProcesses.push({
+          gpu: device.index,
+          gi: 'N/A', // MIG instance - not tracked in basic NVML
+          ci: 'N/A', // Compute instance - not tracked in basic NVML
+          pid: proc.pid,
+          type: 'C', // Compute type - ts-nvml returns compute processes
+          processName: proc.processName,
+          gpuMemory: `${proc.usedMemoryMiB}MiB`,
+          gpuMemoryMB: proc.usedMemoryMiB,
         })
       }
     }
-  }
 
-  // Sort by GPU memory descending
-  processes.sort((a, b) => b.gpuMemoryMB - a.gpuMemoryMB)
-  return processes
+    // Sort by GPU memory descending (preserve current behavior)
+    return allProcesses.sort((a, b) => b.gpuMemoryMB - a.gpuMemoryMB)
+  } catch {
+    return []
+  }
 }

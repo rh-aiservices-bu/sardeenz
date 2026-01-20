@@ -31,7 +31,7 @@ export interface MemoryProfile {
   maxTokens: number
 
   // Memory metrics
-  /** Total actual GPU memory consumed by the model process in GiB (from nvidia-smi) */
+  /** Total actual GPU memory consumed by the model process in GiB (from NVML) */
   totalGpuMemoryGib: number
   /** Model weights memory in GiB */
   weightsMemoryGib: number

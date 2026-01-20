@@ -2,7 +2,7 @@
 -- Created: 2024-12-01
 --
 -- Previously, memory profiles only stored weights + CUDA graphs from vLLM logs.
--- Now we store actual GPU memory consumption from nvidia-smi as the source of truth.
+-- Now we store actual GPU memory consumption from NVML as the source of truth.
 
 -- Add new columns for actual GPU memory tracking
 ALTER TABLE memory_profiles ADD COLUMN total_gpu_memory_gib REAL;

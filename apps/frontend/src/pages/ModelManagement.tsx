@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DndContext, DragEndEvent, pointerWithin } from '@dnd-kit/core'
 import {
   PageSection,
@@ -37,7 +37,7 @@ import {
   ModelTable,
   MoveModelDialog,
 } from '../components'
-import type { ViewMode, FilterState, SortField, SortDirection } from '../components'
+import type { ViewMode, FilterState, SortField, SortDirection, ConfigLoadStartedInfo } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useOperations } from '../contexts/OperationsContext'
 
@@ -95,6 +95,14 @@ function ModelManagement() {
   const [moveTargetGpuIds, setMoveTargetGpuIds] = useState<number[]>([])
   // State for GPU memory data needed by move modal
   const [gpuMemoryData, setGpuMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
+
+  // Configuration loading tracking state
+  const [configLoadingInfo, setConfigLoadingInfo] = useState<{
+    operationId: string
+    expectedModelCount: number
+    configurationName: string
+  } | null>(null)
+  const configLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { addNotification } = useNotifications()
   const { startOperation, endOperation } = useOperations()
@@ -299,6 +307,51 @@ function ModelManagement() {
     return () => clearInterval(interval)
   }, [fetchModels])
 
+  // Check if configuration loading is complete
+  useEffect(() => {
+    if (!configLoadingInfo) return
+
+    // Count models that are running or failed
+    const runningCount = models.filter((m) => m.status === 'running').length
+    const failedCount = models.filter((m) => m.status === 'failed').length
+    const terminalCount = runningCount + failedCount
+
+    // Check if we've reached the expected count
+    if (terminalCount >= configLoadingInfo.expectedModelCount) {
+      // Clear timeout
+      if (configLoadTimeoutRef.current) {
+        clearTimeout(configLoadTimeoutRef.current)
+        configLoadTimeoutRef.current = null
+      }
+
+      endOperation(configLoadingInfo.operationId)
+      setConfigLoadingInfo(null)
+
+      if (failedCount > 0) {
+        addNotification({
+          title: 'Configuration partially loaded',
+          description: `${runningCount} models loaded, ${failedCount} failed`,
+          variant: 'warning',
+        })
+      } else {
+        addNotification({
+          title: 'Configuration loaded',
+          description: `${configLoadingInfo.configurationName} loaded successfully`,
+          variant: 'success',
+        })
+      }
+    }
+  }, [models, configLoadingInfo, endOperation, addNotification])
+
+  // Cleanup config loading timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (configLoadTimeoutRef.current) {
+        clearTimeout(configLoadTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleLoadModel = async (request: LoadModelRequest) => {
     // Start the load and return instance_id for SSE subscription
     const result = await apiClient.loadModel(request)
@@ -415,16 +468,43 @@ function ModelManagement() {
     })
   }
 
-  const handleConfigLoadStarted = (message: string) => {
+  const handleConfigLoadStarted = (info: ConfigLoadStartedInfo) => {
+    // Start the operation (will be ended when models are loaded)
+    const opId = startOperation({
+      type: 'load-config',
+      label: `Loading configuration: ${info.configurationName}`,
+    })
+
+    setConfigLoadingInfo({
+      operationId: opId,
+      expectedModelCount: info.expectedModelCount,
+      configurationName: info.configurationName,
+    })
+
     addNotification({
       title: 'Loading configuration',
-      description: message,
+      description: info.message,
       variant: 'info',
     })
-    setTimeout(() => {
-      fetchModels()
-      triggerGpuRefresh()
-    }, 2000)
+
+    // Set timeout (5 minutes) to prevent infinite loading state
+    configLoadTimeoutRef.current = setTimeout(() => {
+      setConfigLoadingInfo((current) => {
+        if (current) {
+          endOperation(current.operationId)
+          addNotification({
+            title: 'Configuration load timeout',
+            description: 'Some models may not have loaded successfully',
+            variant: 'warning',
+          })
+        }
+        return null
+      })
+    }, 5 * 60 * 1000)
+
+    // Trigger immediate refresh
+    fetchModels()
+    triggerGpuRefresh()
   }
 
   const handleUnloadAll = async () => {

@@ -23,9 +23,34 @@ import {
   Spinner,
 } from '@patternfly/react-core'
 import type { ModelInstanceDTO, MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
-import { apiClient } from '../services/api'
+import { apiClient, extractErrorDetails, type ErrorDetails } from '../services/api'
 import { useMoveEvents } from '../hooks/useMoveEvents'
 import { useNotifications } from '../contexts/NotificationContext'
+
+/** GPU memory error details from backend */
+interface GpuMemoryErrorDetails {
+  gpus: Array<{
+    index: number
+    name: string
+    totalGb: number
+    freeGb: number
+    requiredGb: number
+    shortfallGb: number
+    loadedModels: Array<{
+      instanceId: string
+      modelName: string
+      memoryGb: number
+    }>
+  }>
+  sourceModel?: {
+    instanceId: string
+    modelName: string
+    weightsGb?: number
+    cudaGraphsGb?: number
+    overheadGb?: number
+    totalGb: number
+  }
+}
 
 interface MoveModelDialogProps {
   isOpen: boolean
@@ -49,7 +74,7 @@ export function MoveModelDialog({
   const [drainTimeoutSeconds, setDrainTimeoutSeconds] = useState(60)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [moveId, setMoveId] = useState<string | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<ErrorDetails | null>(null)
 
   // Fresh model data fetched when modal opens
   const [freshModel, setFreshModel] = useState<ModelInstanceDTO | null>(null)
@@ -143,10 +168,65 @@ export function MoveModelDialog({
       })
       setMoveId(response.move_id)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to initiate move'
-      setSubmitError(message)
+      const errorDetails = extractErrorDetails(err)
+      setSubmitError(errorDetails)
       setIsSubmitting(false)
     }
+  }
+
+  /** Type guard for GPU memory error details */
+  const isGpuMemoryError = (
+    error: ErrorDetails | null
+  ): error is ErrorDetails & { details: GpuMemoryErrorDetails } => {
+    return error?.code === 'INSUFFICIENT_GPU_MEMORY' && error?.details != null
+  }
+
+  /** Render rich GPU memory error details */
+  const renderGpuMemoryErrorDetails = (details: GpuMemoryErrorDetails) => {
+    const gpusWithShortfall = details.gpus.filter((g) => g.shortfallGb > 0)
+
+    return (
+      <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsSm' }}>
+        {gpusWithShortfall.map((gpu) => (
+          <FlexItem key={gpu.index}>
+            <strong>
+              GPU {gpu.index} ({gpu.name}):
+            </strong>
+            <ul style={{ margin: 0, paddingLeft: 'var(--pf-t--global--spacer--md)' }}>
+              <li>
+                {gpu.freeGb.toFixed(1)} GB free / {gpu.totalGb.toFixed(1)} GB total
+              </li>
+              <li>
+                Need {gpu.requiredGb.toFixed(1)} GB (short {gpu.shortfallGb.toFixed(1)} GB)
+              </li>
+              {gpu.loadedModels.length > 0 && (
+                <li>
+                  Loaded models:{' '}
+                  {gpu.loadedModels.map((m) => `${m.modelName} (${m.memoryGb.toFixed(1)} GB)`).join(', ')}
+                </li>
+              )}
+            </ul>
+          </FlexItem>
+        ))}
+        {details.sourceModel && (
+          <FlexItem>
+            <strong>Model memory breakdown:</strong>
+            <ul style={{ margin: 0, paddingLeft: 'var(--pf-t--global--spacer--md)' }}>
+              {details.sourceModel.weightsGb != null && (
+                <li>Weights: {details.sourceModel.weightsGb.toFixed(1)} GB</li>
+              )}
+              {details.sourceModel.cudaGraphsGb != null && (
+                <li>CUDA Graphs: {details.sourceModel.cudaGraphsGb.toFixed(1)} GB</li>
+              )}
+              {details.sourceModel.overheadGb != null && (
+                <li>Overhead: {details.sourceModel.overheadGb.toFixed(1)} GB</li>
+              )}
+              <li>Total: {details.sourceModel.totalGb.toFixed(1)} GB</li>
+            </ul>
+          </FlexItem>
+        )}
+      </Flex>
+    )
   }
 
   const handleGpuToggle = (gpuId: number) => {
@@ -260,10 +340,12 @@ export function MoveModelDialog({
               <Alert
                 variant="danger"
                 isInline
-                title="Error"
+                title={isGpuMemoryError(submitError) ? 'Insufficient GPU Memory' : 'Error'}
+                isExpandable={isGpuMemoryError(submitError)}
                 style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
               >
-                {submitError}
+                <p>{submitError.message}</p>
+                {isGpuMemoryError(submitError) && renderGpuMemoryErrorDetails(submitError.details)}
               </Alert>
             )}
 

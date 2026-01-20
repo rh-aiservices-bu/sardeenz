@@ -434,7 +434,7 @@ export class ModelManager extends EventEmitter {
         )
       }
 
-      // Get actual GPU memory usage from nvidia-smi FIRST
+      // Get actual GPU memory usage from NVML FIRST
       // This is the source of truth for total GPU memory consumption
       let actualGpuMemoryGiB: number | undefined
       try {
@@ -479,7 +479,7 @@ export class ModelManager extends EventEmitter {
               gpuTotalMB,
               gpuUtilization: instance.gpuMemoryUtilization,
             },
-            'Got actual GPU memory usage from nvidia-smi'
+            'Got actual GPU memory usage from NVML'
           )
         } else {
           this.logger.warn(
@@ -490,7 +490,7 @@ export class ModelManager extends EventEmitter {
               processId: instance.processId,
               searchedPids: Array.from(allPids),
             },
-            'No matching processes found in nvidia-smi output'
+            'No matching processes found in NVML output'
           )
         }
         // Capture memory baseline per GPU for KVCache calculation
@@ -507,7 +507,7 @@ export class ModelManager extends EventEmitter {
           'Captured memory baseline per GPU'
         )
       } catch (err) {
-        this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from nvidia-smi')
+        this.logger.warn({ modelPath, instanceId, err }, 'Failed to get GPU memory from NVML')
       }
 
       // Parse memory metrics from logs, passing actual GPU memory for total/overhead calculation
