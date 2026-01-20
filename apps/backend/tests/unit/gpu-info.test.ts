@@ -47,11 +47,11 @@ const createMockDevice = (
   getEccErrorsCorrected: () => ({ ok: true, value: null }),
 })
 
-// Mock ts-nvml module
+// Mock @rh-ai-bu/ts-nvml module
 let mockIsInitialized = false
 let mockDevices: ReturnType<typeof createMockDevice>[] = []
 
-vi.mock('ts-nvml', () => ({
+vi.mock('@rh-ai-bu/ts-nvml', () => ({
   Nvml: {
     init: vi.fn(() => {
       mockIsInitialized = true
@@ -125,7 +125,7 @@ const loadModule = async () => {
   // Reset module cache to get fresh instance with mocks
   vi.resetModules()
   // Re-apply mock after reset
-  vi.mock('ts-nvml', () => ({
+  vi.mock('@rh-ai-bu/ts-nvml', () => ({
     Nvml: {
       init: vi.fn(() => {
         mockIsInitialized = true

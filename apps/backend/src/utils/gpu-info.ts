@@ -1,8 +1,8 @@
 /**
- * Utility for detecting GPU information using NVML (via ts-nvml bindings)
+ * Utility for detecting GPU information using NVML (via @rh-ai-bu/ts-nvml bindings)
  */
 
-import { Nvml, unwrapOr, NvmlComputeMode, NvmlPState } from 'ts-nvml'
+import { Nvml, unwrapOr, NvmlComputeMode, NvmlPState } from '@rh-ai-bu/ts-nvml'
 
 import { config } from '../config.js'
 
