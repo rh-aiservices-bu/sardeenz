@@ -27,6 +27,9 @@ import type {
   SleepModelResponse,
   WakeModelResponse,
   SleepStatusResponse,
+  MoveModelRequest,
+  MoveModelResponse,
+  MoveProgressEvent,
 } from '@sardeenz/types'
 
 // Memory Profile types for API responses
@@ -480,6 +483,56 @@ class ApiClient {
       `/api/models/instances/${instanceId}/sleep-status`
     )
     return response.data
+  }
+
+  // Model move endpoints
+
+  async moveModel(instanceId: string, request: MoveModelRequest): Promise<MoveModelResponse> {
+    const response = await this.client.post<MoveModelResponse>(
+      `/api/models/instances/${instanceId}/move`,
+      request
+    )
+    return response.data
+  }
+
+  /**
+   * Subscribe to move progress events via SSE.
+   * Returns an unsubscribe function to close the connection.
+   */
+  subscribeMoveEvents(
+    moveId: string,
+    onProgress: (event: MoveProgressEvent) => void,
+    onError?: (error: Event) => void
+  ): () => void {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+    const params = new URLSearchParams()
+
+    // Add auth token for SSE (EventSource can't send Authorization header)
+    const token = this.authToken
+    if (token) {
+      params.set('token', token)
+    }
+
+    const url = `${baseURL}/api/models/moves/${moveId}/events?${params}`
+    const eventSource = new EventSource(url)
+
+    eventSource.addEventListener('move_progress', (e: MessageEvent) => {
+      const event: MoveProgressEvent = JSON.parse(e.data)
+      onProgress(event)
+    })
+
+    eventSource.onerror = (e) => {
+      onError?.(e)
+    }
+
+    // Return unsubscribe function
+    return () => {
+      eventSource.close()
+    }
+  }
+
+  async cancelMove(moveId: string, force: boolean = false): Promise<void> {
+    await this.client.delete(`/api/models/moves/${moveId}${force ? '?force=true' : ''}`)
   }
 
   async listModels(): Promise<ListModelsResponse> {
@@ -983,3 +1036,6 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient()
+
+// Re-export types for convenience
+export type { MoveModelRequest, MoveModelResponse, MoveProgressEvent } from '@sardeenz/types'

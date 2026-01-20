@@ -5,6 +5,8 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
+import { config } from '../config.js'
+
 const execAsync = promisify(exec)
 
 export interface GpuInfo {
@@ -138,9 +140,9 @@ export function getCachedPrimaryGpuInfo(): GpuInfo {
 }
 
 /**
- * Internal function to detect GPU info
+ * Internal function to detect real GPU info from nvidia-smi
  */
-async function doDetectGpuInfo(): Promise<GpuInfo[]> {
+async function detectRealGpuInfo(): Promise<GpuInfo[]> {
   try {
     // Query nvidia-smi for GPU information
     // Format: index, name, memory.total (in MiB)
@@ -180,6 +182,30 @@ async function doDetectGpuInfo(): Promise<GpuInfo[]> {
 }
 
 /**
+ * Internal function to detect GPU info (real or virtual)
+ */
+async function doDetectGpuInfo(): Promise<GpuInfo[]> {
+  // Get real GPU info first
+  const realGpus = await detectRealGpuInfo()
+
+  // If virtual GPUs enabled and we have at least one real GPU
+  if (config.virtualGpuCount > 0 && realGpus.length > 0) {
+    const baseGpu = realGpus[0]
+    console.info(
+      `[gpu-info] Virtual GPU mode enabled: creating ${config.virtualGpuCount} virtual GPUs based on ${baseGpu.name}`
+    )
+    return Array.from({ length: config.virtualGpuCount }, (_, i) => ({
+      index: i,
+      name: `${baseGpu.name} (vGPU)`,
+      totalMemoryMB: baseGpu.totalMemoryMB,
+      totalMemoryGB: baseGpu.totalMemoryGB,
+    }))
+  }
+
+  return realGpus
+}
+
+/**
  * Reset cached GPU info (for testing)
  */
 export function resetGpuInfoCache(): void {
@@ -196,11 +222,25 @@ export async function getNvidiaSmiInfo(): Promise<NvidiaSmiInfo> {
   // Get driver info
   const driver = await getDriverInfo()
 
-  // Get GPU status
-  const gpus = await getGpuStatus()
+  // Get real GPU status
+  const realGpus = await getGpuStatus()
 
   // Get process list
   const processes = await getGpuProcesses()
+
+  // If virtual GPUs enabled, create virtual GPU status entries
+  let gpus: GpuStatus[]
+  if (config.virtualGpuCount > 0 && realGpus.length > 0) {
+    const baseGpu = realGpus[0]
+    gpus = Array.from({ length: config.virtualGpuCount }, (_, i) => ({
+      ...baseGpu,
+      index: i,
+      name: `${baseGpu.name} (vGPU)`,
+      busId: `vGPU${i}:${baseGpu.busId}`,
+    }))
+  } else {
+    gpus = realGpus
+  }
 
   return {
     timestamp,

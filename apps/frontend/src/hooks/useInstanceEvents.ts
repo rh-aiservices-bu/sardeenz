@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { SSEEvent, SSEEventType, LogEvent, StatusEvent } from '@sardeenz/types'
+import type { SSEEvent, SSEEventType, LogEvent, StatusEvent, ProgressEvent } from '@sardeenz/types'
 import { apiClient } from '../services/api'
 
 export interface UseInstanceEventsOptions {
@@ -26,6 +26,10 @@ export interface UseInstanceEventsReturn {
   currentStatus: StatusEvent | null
   /** Last error event */
   lastError: Event | null
+  /** Current progress value (0-100) */
+  progress: number | null
+  /** Current progress message */
+  progressMessage: string | null
   /** Manually trigger reconnection */
   reconnect: () => void
   /** Clear accumulated logs */
@@ -50,6 +54,8 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
   const [logs, setLogs] = useState<LogEvent[]>([])
   const [currentStatus, setCurrentStatus] = useState<StatusEvent | null>(null)
   const [lastError, setLastError] = useState<Event | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  const [progressMessage, setProgressMessage] = useState<string | null>(null)
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
@@ -144,7 +150,13 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     })
 
     eventSource.addEventListener('progress', (e: MessageEvent) => {
-      const event = JSON.parse(e.data)
+      const event: ProgressEvent = JSON.parse(e.data)
+      if (event.data.progress !== undefined) {
+        setProgress(event.data.progress)
+      }
+      if (event.data.message) {
+        setProgressMessage(event.data.message)
+      }
       onEventRef.current?.(event)
     })
 
@@ -162,6 +174,8 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     setLogs([])
     setCurrentStatus(null)
     setLastError(null)
+    setProgress(null)
+    setProgressMessage(null)
 
     if (instanceId) {
       connect()
@@ -195,6 +209,8 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     logs,
     currentStatus,
     lastError,
+    progress,
+    progressMessage,
     reconnect,
     clearLogs,
   }

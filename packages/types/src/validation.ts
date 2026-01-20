@@ -276,6 +276,7 @@ export const MultiGpuMemoryUsageResponseSchema = Type.Object({
   gpus: Type.Array(PerGpuMetricsSchema),
   kvcache: KVCacheMetricsSchema,
   total_system_free_gb: Type.Number(),
+  is_virtual_gpu_mode: Type.Boolean(),
 })
 
 export const GpuInfoSchema = Type.Object({

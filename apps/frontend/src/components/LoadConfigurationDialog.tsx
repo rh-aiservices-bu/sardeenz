@@ -32,6 +32,7 @@ import {
   type SavedModelConfigurationResponse,
 } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useOperations } from '../contexts/OperationsContext'
 
 interface LoadConfigurationDialogProps {
   isOpen: boolean
@@ -51,6 +52,7 @@ export function LoadConfigurationDialog({
   currentModelCount,
 }: LoadConfigurationDialogProps) {
   const { canWrite } = useAuth()
+  const { startOperation, endOperation } = useOperations()
   const [configurations, setConfigurations] = useState<SavedModelConfigurationResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedConfig, setSelectedConfig] = useState<SavedModelConfigurationResponse | null>(null)
@@ -112,6 +114,10 @@ export function LoadConfigurationDialog({
     if (!selectedConfig) return
     setIsLoadingConfig(true)
     setError(null)
+    const opId = startOperation({
+      type: 'load-config',
+      label: `Loading configuration: ${selectedConfig.name}`,
+    })
     try {
       const response = await apiClient.loadConfiguration(selectedConfig.id)
       onLoadStarted(response.message)
@@ -120,6 +126,7 @@ export function LoadConfigurationDialog({
       setError(extractErrorMessage(err))
     } finally {
       setIsLoadingConfig(false)
+      endOperation(opId)
     }
   }
 

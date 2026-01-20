@@ -105,10 +105,13 @@ class ModelStore {
   }
 
   /**
-   * Get all running instances for a model path
+   * Get all running and routable instances for a model path
+   * Excludes instances marked as non-routable (e.g., during move operations)
    */
   getRunningByPath(modelPath: string): ModelInstance[] {
-    return this.getAllByPath(modelPath).filter((i) => i.status === 'running')
+    return this.getAllByPath(modelPath).filter(
+      (i) => i.status === 'running' && i.routable !== false
+    )
   }
 
   /**
@@ -124,11 +127,43 @@ class ModelStore {
   }
 
   /**
-   * Get all running instances for a model name
+   * Get all running and routable instances for a model name
+   * Excludes instances marked as non-routable (e.g., during move operations)
    */
   getRunningByName(modelName: string): ModelInstance[] {
-    return this.getAllByName(modelName).filter((i) => i.status === 'running')
+    return this.getAllByName(modelName).filter(
+      (i) => i.status === 'running' && i.routable !== false
+    )
   }
+
+  // ============ Routable Status ============
+
+  /**
+   * Set whether an instance is routable (available for request routing)
+   * Used during move operations to drain connections from an instance
+   * @param instanceId - The instance ID
+   * @param routable - Whether the instance should receive new requests
+   * @returns true if instance exists and status was set, false otherwise
+   */
+  setRoutable(instanceId: string, routable: boolean): boolean {
+    const instance = this.instances.get(instanceId)
+    if (!instance) return false
+    instance.routable = routable
+    return true
+  }
+
+  /**
+   * Check if an instance is routable (available for request routing)
+   * Defaults to true if instance routable property is not explicitly false
+   * @param instanceId - The instance ID
+   * @returns true if instance is routable, false if explicitly set to non-routable or instance doesn't exist
+   */
+  isRoutable(instanceId: string): boolean {
+    const instance = this.instances.get(instanceId)
+    return instance?.routable !== false
+  }
+
+  // ============ Existence Checks ============
 
   /**
    * Check if a model path has any instances

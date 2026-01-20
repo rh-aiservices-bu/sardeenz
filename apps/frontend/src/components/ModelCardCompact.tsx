@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { useDraggable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import {
   Card,
   CardHeader,
@@ -37,6 +39,8 @@ import {
   OutlinedClockIcon,
   MoonIcon,
   SunIcon,
+  ArrowRightIcon,
+  GripVerticalIcon,
 } from '@patternfly/react-icons'
 import type { ModelInstanceDTO, ModelStatus } from '@sardeenz/types'
 import { ModelStatusBadge } from './ModelStatusBadge'
@@ -50,6 +54,7 @@ interface ModelCardCompactProps {
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
   onSleep?: (instanceId: string) => void
   onWake?: (instanceId: string) => void
+  onMove?: (model: ModelInstanceDTO) => void
   isUnloading?: boolean
   isSleeping?: boolean
   isWaking?: boolean
@@ -81,6 +86,7 @@ export function ModelCardCompact({
   onUnload,
   onSleep,
   onWake,
+  onMove,
   isUnloading = false,
   isSleeping = false,
   isWaking = false,
@@ -100,6 +106,22 @@ export function ModelCardCompact({
   const [copied, setCopied] = useState(false)
 
   const isFailed = model.status === 'failed'
+
+  // Draggable setup - only for single-GPU running models
+  const isDraggable = model.status === 'running' && model.gpu_ids.length === 1
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `model-${model.id}`,
+    data: { model },
+    disabled: !isDraggable,
+  })
+
+  const dragStyle = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.7 : 1,
+        zIndex: isDragging ? 1000 : undefined,
+      }
+    : undefined
 
   // Use live memory data if available, fallback to model DTO value
   const currentMemoryUtilization = memoryUtilization ?? model.gpu_memory_utilization
@@ -188,11 +210,14 @@ export function ModelCardCompact({
   return (
     <Card
       id={id}
+      ref={setNodeRef}
       isExpanded={isExpanded}
       isCompact
       style={{
         borderLeft: `4px solid ${borderColor}`,
+        ...dragStyle,
       }}
+      {...attributes}
     >
       <CardHeader
         onExpand={onToggle}
@@ -244,6 +269,16 @@ export function ModelCardCompact({
                     Memory details
                   </DropdownItem>
                 )}
+                {model.status === 'running' && model.gpu_ids.length === 1 && onMove && (
+                  <DropdownItem
+                    key="move"
+                    icon={<ArrowRightIcon />}
+                    onClick={() => onMove(model)}
+                    isDisabled={!canWrite}
+                  >
+                    Move to GPU
+                  </DropdownItem>
+                )}
                 {model.status === 'running' && model.sleep_mode_enabled && onSleep && (
                   <DropdownItem
                     key="sleep"
@@ -288,8 +323,28 @@ export function ModelCardCompact({
         }}
       >
         {/* Three-row layout for better readability */}
-        <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsXs' }}>
-          {/* Row 1: Model name */}
+        <Flex alignItems={{ default: 'alignItemsFlexStart' }} spaceItems={{ default: 'spaceItemsSm' }}>
+          {/* Drag handle - only visible for draggable cards */}
+          {isDraggable && (
+            <FlexItem>
+              <span
+                {...listeners}
+                style={{
+                  cursor: 'grab',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 'var(--pf-t--global--spacer--xs)',
+                  color: 'var(--pf-t--global--icon--color--subtle)',
+                }}
+                title="Drag to move to another GPU"
+              >
+                <GripVerticalIcon />
+              </span>
+            </FlexItem>
+          )}
+          <FlexItem style={{ flex: 1 }}>
+            <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsXs' }}>
+              {/* Row 1: Model name */}
           <FlexItem>
             <Tooltip content={model.model_path}>
               <CardTitle
@@ -370,6 +425,8 @@ export function ModelCardCompact({
                   </Tooltip>
                 </FlexItem>
               )}
+            </Flex>
+          </FlexItem>
             </Flex>
           </FlexItem>
         </Flex>

@@ -209,6 +209,63 @@ export class GpuSelector {
       recommendation,
     }
   }
+
+  /**
+   * Check if target GPU(s) have sufficient free memory for a model.
+   * Used for pre-flight validation before model move operations.
+   *
+   * @param gpuIds Target GPU indices
+   * @param requiredMemoryGb Required memory per GPU in GB
+   * @returns Object with availability status, actual free memory, and optional message
+   */
+  async checkMemoryAvailability(
+    gpuIds: number[],
+    requiredMemoryGb: number
+  ): Promise<{ available: boolean; freeMemoryGb: number; message?: string }> {
+    const nvidiaSmi = await getNvidiaSmiInfo()
+    const gpuMap = new Map(nvidiaSmi.gpus.map((g) => [g.index, g]))
+
+    let totalFreeMemory = 0
+    const unavailableGpus: string[] = []
+
+    for (const gpuId of gpuIds) {
+      const gpu = gpuMap.get(gpuId)
+      if (!gpu) {
+        return {
+          available: false,
+          freeMemoryGb: 0,
+          message: `GPU ${gpuId} not found`,
+        }
+      }
+
+      const freeGb = (gpu.memoryTotalMB - gpu.memoryUsedMB) / 1024
+      totalFreeMemory += freeGb
+
+      if (freeGb < requiredMemoryGb) {
+        unavailableGpus.push(
+          `GPU ${gpuId}: ${freeGb.toFixed(1)} GB free, need ${requiredMemoryGb.toFixed(1)} GB`
+        )
+      }
+    }
+
+    if (unavailableGpus.length > 0) {
+      return {
+        available: false,
+        freeMemoryGb: totalFreeMemory,
+        message: `Insufficient memory: ${unavailableGpus.join('; ')}`,
+      }
+    }
+
+    this.logger.debug(
+      { gpuIds, requiredMemoryGb, totalFreeMemory },
+      'Memory availability check passed'
+    )
+
+    return {
+      available: true,
+      freeMemoryGb: totalFreeMemory,
+    }
+  }
 }
 
 // Singleton instance for easy access

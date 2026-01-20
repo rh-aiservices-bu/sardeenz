@@ -1,16 +1,31 @@
-import { ExpandableSection, Grid, GridItem, Label, Flex, FlexItem } from '@patternfly/react-core'
+import { useEffect } from 'react'
+import { useDroppable } from '@dnd-kit/core'
+import {
+  ExpandableSection,
+  Grid,
+  GridItem,
+  Label,
+  Flex,
+  FlexItem,
+  EmptyState,
+  EmptyStateBody,
+} from '@patternfly/react-core'
+import { CubesIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO } from '@sardeenz/types'
 import { ModelCardCompact } from './ModelCardCompact'
 
 interface GpuGroupSectionProps {
   gpuKey: string
   gpuLabel: string
+  /** GPU index for this section (for drop target identification). Use -1 for multi-gpu. */
+  gpuIndex: number
   models: ModelInstanceDTO[]
   isExpanded: boolean
   onToggle: (gpuKey: string) => void
   onUnload: (instanceId: string, modelPath: string, isFailed: boolean) => void
   onSleep?: (instanceId: string) => void
   onWake?: (instanceId: string) => void
+  onMove?: (model: ModelInstanceDTO) => void
   unloadingInstanceId: string | null
   sleepingInstanceId?: string | null
   wakingInstanceId?: string | null
@@ -29,12 +44,14 @@ interface GpuGroupSectionProps {
 export function GpuGroupSection({
   gpuKey,
   gpuLabel,
+  gpuIndex,
   models,
   isExpanded,
   onToggle,
   onUnload,
   onSleep,
   onWake,
+  onMove,
   unloadingInstanceId,
   sleepingInstanceId,
   wakingInstanceId,
@@ -43,6 +60,25 @@ export function GpuGroupSection({
   kvCacheTotalByGpu,
   memoryUtilizationByInstance,
 }: GpuGroupSectionProps) {
+  // Droppable setup for drag-and-drop model move
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: `gpu-drop-${gpuIndex}`,
+    data: { gpuIndex },
+    disabled: gpuIndex === -1, // Disable dropping on multi-gpu section
+  })
+
+  // Check if we're dragging a model that's already on this GPU
+  const isDraggedModelFromThisGpu = active?.data?.current?.model?.gpu_ids?.includes(gpuIndex)
+  const showDropIndicator = isOver && !isDraggedModelFromThisGpu
+
+  // Auto-expand collapsed sections immediately when hovering during drag
+  useEffect(() => {
+    // Expand if: dragging, hovering over this section, section is collapsed, not from this GPU
+    if (active && isOver && !isExpanded && !isDraggedModelFromThisGpu) {
+      onToggle(gpuKey)
+    }
+  }, [active, isOver, isExpanded, isDraggedModelFromThisGpu, onToggle, gpuKey])
+
   // Count models by status for summary
   const statusCounts = {
     running: models.filter((m) => m.status === 'running').length,
@@ -105,34 +141,58 @@ export function GpuGroupSection({
   )
 
   return (
-    <ExpandableSection
-      toggleContent={toggleContent}
-      isExpanded={isExpanded}
-      onToggle={handleToggle}
-      displaySize="lg"
-      style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+    <div
+      ref={setNodeRef}
+      style={{
+        marginBottom: 'var(--pf-t--global--spacer--md)',
+        padding: 'var(--pf-t--global--spacer--sm)',
+        borderRadius: 'var(--pf-t--global--border--radius--medium)',
+        border: showDropIndicator
+          ? '2px dashed var(--pf-t--global--color--status--success--default)'
+          : '2px dashed transparent',
+        backgroundColor: showDropIndicator
+          ? 'var(--pf-t--global--background--color--success--default)'
+          : undefined,
+        transition: 'border-color 0.2s, background-color 0.2s',
+      }}
     >
-      <Grid hasGutter style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}>
-        {models.map((model) => (
-          <GridItem key={model.id} span={12} lg={6} xl={4}>
-            <ModelCardCompact
-              id={`model-card-${model.id}`}
-              model={model}
-              onUnload={onUnload}
-              onSleep={onSleep}
-              onWake={onWake}
-              isUnloading={unloadingInstanceId === model.id}
-              isSleeping={sleepingInstanceId === model.id}
-              isWaking={wakingInstanceId === model.id}
-              isExpanded={expandedCards.has(model.id)}
-              onToggle={() => onCardToggle(model.id)}
-              kvCacheTotalGb={kvCacheTotalByGpu?.[model.gpu_ids[0]]}
-              memoryUtilization={memoryUtilizationByInstance?.[model.id]}
-            />
-          </GridItem>
-        ))}
-      </Grid>
-    </ExpandableSection>
+      <ExpandableSection
+        toggleContent={toggleContent}
+        isExpanded={isExpanded}
+        onToggle={handleToggle}
+        displaySize="lg"
+      >
+        {models.length === 0 ? (
+          <EmptyState variant="xs" icon={CubesIcon}>
+            <EmptyStateBody>
+              No models on this GPU. Drag a model here to move it.
+            </EmptyStateBody>
+          </EmptyState>
+        ) : (
+          <Grid hasGutter style={{ marginTop: 'var(--pf-t--global--spacer--sm)' }}>
+            {models.map((model) => (
+              <GridItem key={model.id} span={12} lg={6} xl={4}>
+                <ModelCardCompact
+                  id={`model-card-${model.id}`}
+                  model={model}
+                  onUnload={onUnload}
+                  onSleep={onSleep}
+                  onWake={onWake}
+                  onMove={onMove}
+                  isUnloading={unloadingInstanceId === model.id}
+                  isSleeping={sleepingInstanceId === model.id}
+                  isWaking={wakingInstanceId === model.id}
+                  isExpanded={expandedCards.has(model.id)}
+                  onToggle={() => onCardToggle(model.id)}
+                  kvCacheTotalGb={kvCacheTotalByGpu?.[model.gpu_ids[0]]}
+                  memoryUtilization={memoryUtilizationByInstance?.[model.id]}
+                />
+              </GridItem>
+            ))}
+          </Grid>
+        )}
+      </ExpandableSection>
+    </div>
   )
 }
 
