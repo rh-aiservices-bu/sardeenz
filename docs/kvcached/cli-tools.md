@@ -743,7 +743,7 @@ manager.cleanup_model("llama-3.2-1b")
 - Verify `ENABLE_KVCACHED=true` environment variable is set
 - Verify `KVCACHED_AUTOPATCH=1` is set
 - Check model logs for kvcached initialization errors
-- Ensure vLLM v0.11.0 is being used
+- Ensure vLLM v0.14.1 is being used
 
 ### Memory Limit Not Enforced
 

@@ -67,7 +67,7 @@ podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.1.0-base-ubuntu22.04 
 
 The unified container image includes:
 
-- **Base:** `quay.io/vllm/vllm-cuda:0.11.0` (CUDA 12.x + Python 3.12 + vLLM)
+- **Base:** `quay.io/vllm/vllm-cuda:0.14.1_rhai0` (CUDA 12.x + Python 3.12 + vLLM)
 - **Node.js 22.x** (added layer)
 - **Backend** (Fastify TypeScript app)
 - **Frontend** (React + PatternFly built static assets)
@@ -90,7 +90,7 @@ podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
 
 ```bash
 podman build \
-  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.12.0 \
+  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.14.1_rhai0 \
   -f docker/Containerfile \
   -t sardeenz:custom .
 ```
@@ -121,7 +121,7 @@ COPY packages packages
 RUN npm run build -w apps/backend
 
 # Stage 3: Final image
-FROM quay.io/vllm/vllm-cuda:0.11.0
+FROM quay.io/vllm/vllm-cuda:0.14.1_rhai0
 
 # Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \

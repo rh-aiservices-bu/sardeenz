@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-03-05
+
+### vLLM 0.14.1 Upgrade
+
+- **vLLM upgraded to 0.14.1**: Updated base container image to `quay.io/vllm/vllm-cuda:0.14.1_rhai0`, bringing broader model support and improved inference performance
+- **kvcached upgraded to 0.1.4**: Updated kvcached to match vLLM 0.14.1 compatibility
+
 ## [0.5.0] - 2026-01-20
 
 ### Blue-Green Model Migration
