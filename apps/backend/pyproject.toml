@@ -5,9 +5,9 @@ description = "Python dependencies for sardeenz backend (vLLM, kvcached)"
 requires-python = ">=3.12"
 
 # Base dependencies - installed in ALL environments (dev + Docker)
-# Docker base image (quay.io/vllm/vllm-cuda:0.11.0) already includes vLLM
+# Docker base image (quay.io/vllm/vllm-cuda:0.14.1_rhai0) already includes vLLM
 dependencies = [
-    "kvcached==0.1.3",
+    "kvcached==0.1.4",
     "nvitop==1.6.0",
 ]
 
@@ -15,7 +15,7 @@ dependencies = [
 # Development-only dependencies
 # vLLM is here because the Docker base image already includes it
 dev = [
-    "vllm==0.11.0",
+    "vllm==0.14.1",
 ]
 
 [tool.uv]
