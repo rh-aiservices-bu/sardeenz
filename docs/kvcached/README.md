@@ -69,7 +69,7 @@ The kvcached Controller provides additional features that sardeenz does **not** 
 ### Prerequisites
 
 - Python 3.9-3.12
-- vLLM v0.11.0 (tested version)
+- vLLM v0.14.1 (tested version)
 - CUDA-capable GPU
 
 ### Installation
@@ -240,12 +240,12 @@ See **[sardeenz-integration.md](./sardeenz-integration.md)** for:
 ## References
 
 - **GitHub Repository**: https://github.com/ovg-project/kvcached
-- **Tested vLLM Version**: v0.11.0
+- **Tested vLLM Version**: v0.14.1
 - **Python Support**: 3.9-3.12
 
 ## Limitations and Considerations
 
 - **No Prefix Caching Support**: Must disable prefix caching when using kvcached
-- **vLLM Version**: Tested with v0.11.0; compatibility with other versions not guaranteed
+- **vLLM Version**: Tested with v0.14.1; compatibility with other versions not guaranteed
 - **Memory Management**: Requires careful configuration for optimal performance
 - **GPU Requirements**: Designed for NVIDIA GPUs (future support for other hardware planned)

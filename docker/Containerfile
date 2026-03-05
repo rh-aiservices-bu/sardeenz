@@ -6,7 +6,7 @@
 # =============================================================================
 # Stage 0: vLLM Base
 # =============================================================================
-FROM quay.io/vllm/vllm-cuda:0.11.0.4 AS vllm-base
+FROM quay.io/vllm/vllm-cuda:0.14.1_rhai0 AS vllm-base
 
 USER 0
 
@@ -19,33 +19,37 @@ RUN microdnf -y update \
 # =============================================================================
 FROM vllm-base AS kvcached-builder
 
-ARG KVCACHED_VERSION=v0.1.3
+ARG KVCACHED_VERSION=v0.1.4
 
-ENV NV_CUDA_LIB_VERSION=12.8.1-1
-ENV NV_CUDA_CUDART_DEV_VERSION=12.8.90-1
-ENV NV_NVML_DEV_VERSION=12.8.90-1
-ENV NV_LIBCUBLAS_DEV_VERSION=12.8.4.1-1
-ENV NV_LIBNPP_DEV_VERSION=12.3.3.100-1
-ENV NV_LIBNCCL_DEV_PACKAGE=libnccl-devel-2.25.1-1+cuda12.8
-ENV NV_CUDA_NSIGHT_COMPUTE_VERSION=12.8.1-1
+ENV NV_CUDA_LIB_VERSION=12.9.0-1
+ENV NV_CUDA_CUDART_DEV_VERSION=12.9.79-1
+ENV NV_NVML_DEV_VERSION=12.9.40-1
+ENV NV_LIBCUBLAS_DEV_VERSION=12.9.0.13-1
+ENV NV_LIBNPP_DEV_VERSION=12.4.0.27-1
+ENV NV_LIBNCCL_PACKAGE=libnccl-2.29.7-1+cuda12.9
+ENV NV_LIBNCCL_DEV_PACKAGE=libnccl-devel-2.29.7-1+cuda12.9
+ENV NV_CUDA_NSIGHT_COMPUTE_VERSION=12.9.0-1
 
 # Install CUDA build dependencies (minimal set for wheel compilation)
 RUN microdnf install -y \
     git \
-    cuda-command-line-tools-12-8-${NV_CUDA_LIB_VERSION} \
-    cuda-libraries-devel-12-8-${NV_CUDA_LIB_VERSION} \
-    cuda-minimal-build-12-8-${NV_CUDA_LIB_VERSION} \
-    cuda-cudart-devel-12-8-${NV_CUDA_CUDART_DEV_VERSION} \
-    cuda-nvml-devel-12-8-${NV_NVML_DEV_VERSION} \
-    libcublas-devel-12-8-${NV_LIBCUBLAS_DEV_VERSION} \
-    libnpp-devel-12-8-${NV_LIBNPP_DEV_VERSION} \
+    cuda-command-line-tools-12-9-${NV_CUDA_LIB_VERSION} \
+    cuda-libraries-devel-12-9-${NV_CUDA_LIB_VERSION} \
+    cuda-minimal-build-12-9-${NV_CUDA_LIB_VERSION} \
+    cuda-cudart-devel-12-9-${NV_CUDA_CUDART_DEV_VERSION} \
+    cuda-nvml-devel-12-9-${NV_NVML_DEV_VERSION} \
+    libcublas-devel-12-9-${NV_LIBCUBLAS_DEV_VERSION} \
+    libnpp-devel-12-9-${NV_LIBNPP_DEV_VERSION} \
+    ${NV_LIBNCCL_PACKAGE} \
     ${NV_LIBNCCL_DEV_PACKAGE} \
-    cuda-nsight-compute-12-8-${NV_CUDA_NSIGHT_COMPUTE_VERSION} \
+    cuda-nsight-compute-12-9-${NV_CUDA_NSIGHT_COMPUTE_VERSION} \
     && microdnf clean all \
     && rm -rf /var/cache/yum/*
 
 # Clone and build kvcached from source (supports branch or tag)
+# LIBRARY_PATH includes CUDA stubs so the linker can find libcuda.so at build time
 WORKDIR /build
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}
 RUN git clone --depth 1 --branch ${KVCACHED_VERSION} \
         https://github.com/ovg-project/kvcached.git \
     && cd kvcached \
