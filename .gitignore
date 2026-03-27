@@ -1,5 +1,5 @@
 # Project-specific
-.claude
+.claude/*local*
 .specify/scripts
 .specify/templates
 

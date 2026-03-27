@@ -92,6 +92,14 @@ make push VERSION=x.y.z            # Push to registry
 - [`docs/kvcached/`](./docs/kvcached/) - kvcached GPU memory sharing
 - [`CHANGELOG.md`](./CHANGELOG.md) - Project change history
 
+## Releases
+
+- When bumping versions for releases, default to minor version bumps (e.g., 0.5.0 → 0.6.0) unless explicitly told to use a patch bump.
+
+## Container Builds & Dependencies
+
+- When updating CUDA-related dependencies (vLLM, kvcached, container builds), always verify exact package versions available in the target CUDA repo before editing. Use `WebFetch` or `Bash` to confirm versions exist before committing changes.
+
 ## Active Technologies
 
 - TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target
