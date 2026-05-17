@@ -206,19 +206,86 @@ npm run dev -w apps/frontend
 5. Verify the move completes through all phases
 6. Model now appears on vGPU 1 in the UI
 
-## Running Without GPU
+## GPU-Free Development (Inference Simulator)
 
-If you don't have a GPU but want to develop the frontend or test the API:
+If you don't have a GPU, you can use the **inference simulator** — a lightweight Go binary ([llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim)) that mimics vLLM without requiring GPU hardware or NVML drivers. It provides OpenAI-compatible endpoints, simulated model loading, and realistic timing behavior.
+
+### Installing the Simulator Binary
+
+**Build from source** (requires Go 1.22+):
 
 ```bash
-# Skip the vLLM setup, run server directly
-npm run dev:server -w apps/backend
-
-# Or run frontend only
-npm run dev -w apps/frontend
+git clone https://github.com/llm-d/llm-d-inference-sim.git
+cd llm-d-inference-sim
+make build
+sudo cp bin/llm-d-inference-sim /usr/local/bin/
 ```
 
-The backend will start but model loading will fail without GPU/vLLM.
+Or download a pre-built release from the [GitHub releases page](https://github.com/llm-d/llm-d-inference-sim/releases).
+
+Verify the installation:
+
+```bash
+llm-d-inference-sim --help
+```
+
+### Quick Start
+
+A convenience script runs both backend and frontend with simulator defaults:
+
+```bash
+npm run dev:sim
+```
+
+This uses the preset in `apps/backend/.env.sim` (4 simulated GPUs, 24 GB each). Edit that file to adjust the configuration.
+
+You can also set variables inline:
+
+```bash
+# Single GPU with 48 GB
+INFERENCE_BACKEND=inference-sim DEV_VIRTUAL_GPU_COUNT=1 SIM_GPU_MEMORY_GB=48 npm run dev
+```
+
+### Configuration Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INFERENCE_BACKEND` | `vllm` | Set to `inference-sim` to enable the simulator |
+| `DEV_VIRTUAL_GPU_COUNT` | `0` (→ 1 in sim mode) | Number of simulated GPUs |
+| `SIM_GPU_MEMORY_GB` | `24` | VRAM per simulated GPU (GB) |
+| `SIM_MODEL_MEMORY_GB` | `4` | Default model memory estimate when size can't be detected (GB) |
+| `SIM_STARTUP_DURATION` | `3s` | Simulated model loading time (Go duration format) |
+| `INFERENCE_SIM_BINARY` | `llm-d-inference-sim` | Path to the binary (if not in PATH) |
+
+### How Model Memory Estimation Works
+
+The simulator estimates GPU memory usage from the model name:
+
+- Names containing a size like `7B` or `1.5B` → estimated as `params × 2` GB (fp16) for models ≤30B, or `params × 0.5 + 2` GB (quantized) for larger models
+- Names without a recognizable size (e.g., `SmolLM2-360M-Instruct`) → falls back to `SIM_MODEL_MEMORY_GB` (default 4 GB)
+
+### What Works in Simulator Mode
+
+| Feature | Supported |
+|---------|-----------|
+| Model load / unload | Yes |
+| Multi-GPU assignment | Yes |
+| Sleep / wake | Yes |
+| GPU memory tracking | Yes (simulated) |
+| Model move between GPUs | Yes |
+| Inference requests | Yes (echo responses) |
+| Dashboard & all UI features | Yes |
+| Real inference output | No (responses echo the input) |
+| Actual GPU memory pressure | No |
+| kvcached memory sharing | No |
+
+### Frontend-Only Development
+
+If you only need the frontend (no backend at all):
+
+```bash
+npm run dev -w apps/frontend
+```
 
 ## Developing with OAuth Authentication
 

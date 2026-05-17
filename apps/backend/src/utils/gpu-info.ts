@@ -4,7 +4,8 @@
 
 import { Nvml, unwrapOr, NvmlComputeMode, NvmlPState } from '@rh-ai-bu/ts-nvml'
 
-import { config } from '../config.js'
+import { config, isInferenceSimMode } from '../config.js'
+import { simGpuTracker } from './sim-gpu-tracker.js'
 
 export interface GpuInfo {
   index: number
@@ -205,9 +206,13 @@ function detectRealGpuInfo(): GpuInfo[] {
 }
 
 /**
- * Internal function to detect GPU info (real or virtual)
+ * Internal function to detect GPU info (real, virtual, or simulated)
  */
 async function doDetectGpuInfo(): Promise<GpuInfo[]> {
+  if (isInferenceSimMode()) {
+    return simGpuTracker.getGpuInfo()
+  }
+
   // Get real GPU info first
   const realGpus = detectRealGpuInfo()
 
@@ -240,6 +245,10 @@ export function resetGpuInfoCache(): void {
  * Get complete GPU system information (not cached - for real-time monitoring)
  */
 export async function getNvidiaSmiInfo(): Promise<NvidiaSmiInfo> {
+  if (isInferenceSimMode()) {
+    return simGpuTracker.getNvidiaSmiInfo()
+  }
+
   const timestamp = new Date().toISOString()
 
   // Get driver info

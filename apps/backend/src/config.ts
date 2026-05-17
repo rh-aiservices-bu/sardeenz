@@ -1,7 +1,7 @@
 import { config as dotenvConfig } from 'dotenv'
 
-// Load environment variables
-dotenvConfig()
+// Load environment variables (DOTENV_CONFIG_PATH overrides the default .env)
+dotenvConfig({ path: process.env.DOTENV_CONFIG_PATH || '.env' })
 
 import type { AuthMode } from '@sardeenz/types'
 
@@ -58,6 +58,13 @@ export interface Config {
   clusterPeers: string
   clusterSecret: string
   clusterExpectedPods: number
+
+  // Inference backend configuration
+  inferenceBackend: 'vllm' | 'inference-sim'
+  simGpuMemoryGB: number
+  simModelMemoryGB: number
+  simStartupDuration: string
+  inferenceSimBinary: string
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -164,6 +171,21 @@ export const config: Config = {
   clusterPeers: getEnv('CLUSTER_PEERS', ''),
   clusterSecret: getEnv('CLUSTER_SECRET', ''),
   clusterExpectedPods: getEnvInt('CLUSTER_EXPECTED_PODS', 0),
+
+  // Inference backend configuration
+  inferenceBackend: (() => {
+    const backend = getEnv('INFERENCE_BACKEND', 'vllm')
+    if (backend !== 'vllm' && backend !== 'inference-sim') {
+      throw new Error(
+        `Invalid INFERENCE_BACKEND: '${backend}'. Must be 'vllm' or 'inference-sim'`
+      )
+    }
+    return backend
+  })(),
+  simGpuMemoryGB: getEnvInt('SIM_GPU_MEMORY_GB', 24),
+  simModelMemoryGB: getEnvInt('SIM_MODEL_MEMORY_GB', 4),
+  simStartupDuration: getEnv('SIM_STARTUP_DURATION', '3s'),
+  inferenceSimBinary: getEnv('INFERENCE_SIM_BINARY', 'llm-d-inference-sim'),
 }
 
 // Validate auth configuration
@@ -228,3 +250,7 @@ function validateClusterConfig(): void {
 }
 
 validateClusterConfig()
+
+export function isInferenceSimMode(): boolean {
+  return config.inferenceBackend === 'inference-sim'
+}
