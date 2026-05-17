@@ -2,12 +2,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import { config } from './config.js'
+import { config, isInferenceSimMode } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
 import { getClusterManager } from './services/cluster-manager.js'
 import type { ClusterManager } from './services/cluster-manager.js'
 import { detectGpuInfo, initializeNvml, shutdownNvml } from './utils/gpu-info.js'
+import { simGpuTracker } from './utils/sim-gpu-tracker.js'
 import { initializeDatabase, closeDb } from './db/index.js'
 
 // Create logger
@@ -259,8 +260,31 @@ async function start() {
     initializeDatabase()
     logger.info('Database initialized')
 
-    // Initialize NVML library for GPU operations
-    initializeNvml()
+    // Initialize GPU subsystem
+    if (isInferenceSimMode()) {
+      logger.info('Starting in inference-sim mode')
+      const gpuCount = Math.max(config.virtualGpuCount, 1)
+      simGpuTracker.initialize(gpuCount, config.simGpuMemoryGB)
+      logger.info(
+        { gpuCount, memoryPerGpuGB: config.simGpuMemoryGB },
+        `Initialized ${gpuCount} simulated GPU(s)`
+      )
+
+      // Validate inference-sim binary exists
+      try {
+        const { execSync } = await import('child_process')
+        execSync(`which ${config.inferenceSimBinary}`, { stdio: 'ignore' })
+      } catch {
+        logger.warn(
+          { binary: config.inferenceSimBinary },
+          `inference-sim binary '${config.inferenceSimBinary}' not found in PATH. ` +
+            'Install from https://github.com/llm-d/llm-d-inference-sim or set INFERENCE_SIM_BINARY'
+        )
+      }
+    } else {
+      logger.info('Starting with vLLM backend')
+      initializeNvml()
+    }
 
     // Detect GPU info at startup (cache result for later use)
     const gpuInfo = await detectGpuInfo()
@@ -270,7 +294,7 @@ async function start() {
         `Detected ${gpuInfo.length} GPU(s)`
       )
     } else {
-      logger.warn('No GPU detected via NVML, using default GPU memory values')
+      logger.warn('No GPU detected, using default GPU memory values')
     }
 
     // Initialize ClusterManager (peer discovery, leader election, heartbeat)
@@ -305,7 +329,9 @@ async function shutdown() {
   }
   await fastify.close()
   closeDb()
-  shutdownNvml()
+  if (!isInferenceSimMode()) {
+    shutdownNvml()
+  }
   logger.info('Server shut down')
   process.exit(0)
 }

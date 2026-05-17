@@ -15,7 +15,7 @@ import { modelStore } from '../stores/model-store.js'
 import type { Logger } from '@sardeenz/utils'
 import { InternalError } from '../utils/errors.js'
 import { getPrimaryGpuInfo, getNvidiaSmiInfo } from '../utils/gpu-info.js'
-import { config } from '../config.js'
+import { config, isInferenceSimMode } from '../config.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -130,10 +130,9 @@ export class MemoryMonitor {
    */
   async getMemoryUsage(): Promise<MemoryUsageResponse> {
     try {
-      // Get KVCache segments from Python script (reads /dev/shm like kvtop)
-      // and GPU info from NVML in parallel
+      // Get KVCache segments (skip in inference-sim mode) and GPU info in parallel
       const [kvcacheSegments, gpuInfo, nvidiaSmiInfo] = await Promise.all([
-        this.runKvcacheStats(),
+        isInferenceSimMode() ? Promise.resolve([]) : this.runKvcacheStats(),
         getPrimaryGpuInfo(),
         getNvidiaSmiInfo(),
       ])
@@ -182,23 +181,29 @@ export class MemoryMonitor {
       const displayNameCounts = new Map<string, number>()
 
       const models: ModelGpuMemory[] = runningInstances.map((instance, index) => {
-        // Use EngineCore PID if available (it's the process that allocates GPU VRAM)
-        // Fall back to main process ID if EngineCore PID not extracted from logs
-        let gpuPid = instance.engineCorePid ?? instance.processId
-        // If the PID isn't in nvidia-smi, try to find a GPU-using child process via /proc
-        if (!processMemoryByPid.has(gpuPid)) {
-          const childPid = findGpuChildPid(instance.processId, gpuPidSet)
-          if (childPid) {
-            instance.engineCorePid = childPid
-            gpuPid = childPid
-            this.logger.info(
-              { instanceId: instance.id, engineCorePid: childPid },
-              'Discovered EngineCore PID via /proc fallback'
-            )
+        let gpuMemoryGb: number
+
+        if (isInferenceSimMode()) {
+          // Use stored memory baseline from SimGpuTracker allocation
+          const baselineValues = Object.values(instance.memoryBaselineByGpu ?? {})
+          gpuMemoryGb = baselineValues.reduce((sum, v) => sum + v, 0)
+        } else {
+          // Use EngineCore PID if available (it's the process that allocates GPU VRAM)
+          let gpuPid = instance.engineCorePid ?? instance.processId
+          if (!processMemoryByPid.has(gpuPid)) {
+            const childPid = findGpuChildPid(instance.processId, gpuPidSet)
+            if (childPid) {
+              instance.engineCorePid = childPid
+              gpuPid = childPid
+              this.logger.info(
+                { instanceId: instance.id, engineCorePid: childPid },
+                'Discovered EngineCore PID via /proc fallback'
+              )
+            }
           }
+          const processMemoryMB = processMemoryByPid.get(gpuPid) ?? 0
+          gpuMemoryGb = processMemoryMB / 1024
         }
-        const processMemoryMB = processMemoryByPid.get(gpuPid) ?? 0
-        const gpuMemoryGb = processMemoryMB / 1024
 
         // Generate unique display name with suffix for duplicates
         const baseName = getDisplayName(instance.modelPath)
@@ -233,9 +238,9 @@ export class MemoryMonitor {
    */
   async getMultiGpuMemoryUsage(): Promise<MultiGpuMemoryUsageResponse> {
     try {
-      // Get KVCache segments and GPU info from NVML in parallel
+      // Get KVCache segments (skip in inference-sim mode) and GPU info in parallel
       const [kvcacheSegments, nvidiaSmiInfo] = await Promise.all([
-        this.runKvcacheStats(),
+        isInferenceSimMode() ? Promise.resolve([]) : this.runKvcacheStats(),
         getNvidiaSmiInfo(),
       ])
 
@@ -258,28 +263,46 @@ export class MemoryMonitor {
 
       for (let index = 0; index < activeInstances.length; index++) {
         const instance = activeInstances[index]
-        let gpuPid = instance.engineCorePid ?? instance.processId
-        // If the PID isn't in nvidia-smi, try to find a GPU-using child process via /proc
-        if (!pidToGpuMemory.has(gpuPid)) {
-          const childPid = findGpuChildPid(instance.processId, gpuPidSet)
-          if (childPid) {
-            instance.engineCorePid = childPid
-            gpuPid = childPid
-            this.logger.info(
-              { instanceId: instance.id, engineCorePid: childPid },
-              'Discovered EngineCore PID via /proc fallback'
-            )
+
+        if (!isInferenceSimMode()) {
+          let gpuPid = instance.engineCorePid ?? instance.processId
+          if (!pidToGpuMemory.has(gpuPid)) {
+            const childPid = findGpuChildPid(instance.processId, gpuPidSet)
+            if (childPid) {
+              instance.engineCorePid = childPid
+              gpuPid = childPid
+              this.logger.info(
+                { instanceId: instance.id, engineCorePid: childPid },
+                'Discovered EngineCore PID via /proc fallback'
+              )
+            }
           }
         }
+
         const baseName = getDisplayName(instance.modelPath)
         const count = (displayNameCounts.get(baseName) ?? 0) + 1
         displayNameCounts.set(baseName, count)
         const displayName = count === 1 ? baseName : `${baseName} (${count})`
 
-        // For tensor parallel models, distribute across their GPUs
-        if (instance.tensorParallelSize > 1 && instance.gpuIds.length > 1) {
-          // Get total memory from NVML processes for this model
-          // Sum up memory from all GPUs the model uses
+        if (isInferenceSimMode()) {
+          // Use stored memory baseline from SimGpuTracker allocation
+          for (const gpuId of instance.gpuIds) {
+            const memoryGb = instance.memoryBaselineByGpu?.[gpuId] ?? 0
+            if (!modelsByGpu.has(gpuId)) {
+              modelsByGpu.set(gpuId, [])
+            }
+            modelsByGpu.get(gpuId)!.push({
+              model_path: instance.modelPath,
+              instance_id: instance.id,
+              display_name:
+                instance.gpuIds.length > 1 ? `${displayName} (TP)` : displayName,
+              gpu_memory_gb: memoryGb,
+              color: getModelColor(instance.id, index),
+              is_sleeping: instance.status === 'sleeping',
+            })
+          }
+        } else if (instance.tensorParallelSize > 1 && instance.gpuIds.length > 1) {
+          // For tensor parallel models, distribute across their GPUs
           let totalMemoryMB = 0
           for (const gpuId of instance.gpuIds) {
             for (const [, info] of pidToGpuMemory) {
@@ -307,10 +330,10 @@ export class MemoryMonitor {
           }
         } else {
           // Single GPU model
+          const gpuPid = instance.engineCorePid ?? instance.processId
           const gpuInfo = pidToGpuMemory.get(gpuPid)
 
           // In virtual GPU mode, use model's assigned GPU ID (not NVML process info)
-          // because all processes appear on physical GPU 0
           const gpuIndex =
             config.virtualGpuCount > 0
               ? instance.gpuIds[0] ?? 0
@@ -398,7 +421,7 @@ export class MemoryMonitor {
         gpus,
         kvcache: globalKvcache,
         total_system_free_gb: gpus.reduce((sum, g) => sum + g.free_gb, 0),
-        is_virtual_gpu_mode: config.virtualGpuCount > 0,
+        is_virtual_gpu_mode: config.virtualGpuCount > 0 || isInferenceSimMode(),
       }
     } catch (err) {
       this.logger.error({ err }, 'Failed to get multi-GPU memory usage')

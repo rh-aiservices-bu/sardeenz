@@ -98,6 +98,11 @@ See `apps/backend/.env.example` for a complete reference.
 | `OAUTH_CLIENT_SECRET`  | (none)                    | OAuth2 client secret (required when AUTH_MODE=oauth)                                         |
 | `INFERENCE_API_KEY`    | (none)                    | API key for inference endpoints. When set, `/v1/*` and `/api/direct/*` require Bearer token. |
 | `DEV_VIRTUAL_GPU_COUNT` | 0                        | (Dev only) Create N virtual GPUs for testing multi-GPU features with single GPU hardware. |
+| `INFERENCE_BACKEND`  | `vllm`                   | Inference backend: `vllm` or `inference-sim`                                             |
+| `SIM_GPU_MEMORY_GB`  | `24`                     | Total memory per simulated GPU in GB (inference-sim only)                                |
+| `SIM_MODEL_MEMORY_GB`| `4`                      | Default model memory estimate in GB (inference-sim only)                                 |
+| `SIM_STARTUP_DURATION`| `3s`                    | Simulated model loading time (inference-sim only)                                        |
+| `INFERENCE_SIM_BINARY`| `llm-d-inference-sim`   | Path to inference-sim binary (inference-sim only)                                        |
 
 ## Testing Notes
 

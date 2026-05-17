@@ -21,6 +21,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | --------------------------------------------------------------- | ----------------------------------------------- |
 | [**Development Guide**](./development/README.md)                | Getting started with local development          |
 | [**GPU Setup**](./dev-setup.md)                                 | GPU environment setup (vLLM, kvcached, uv)      |
+| [**GPU-Free Development**](./dev-setup.md#gpu-free-development-inference-simulator) | Inference simulator for development without GPU |
 | [**PatternFly 6 Guide**](./development/pf6-guide/README.md)     | Complete UI development guide with PatternFly 6 |
 | [**Frontend API Client**](./development/frontend-api-client.md) | API client integration for the frontend         |
 
@@ -47,6 +48,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 3. **Develop Locally**
    - Follow the [Development Guide](./development/README.md)
    - See [GPU Setup](./dev-setup.md) for vLLM/kvcached configuration
+   - No GPU? Use the [Inference Simulator](./dev-setup.md#gpu-free-development-inference-simulator) for GPU-free development
 
 4. **Use the APIs**
    - Explore [api-guide.md](./api-guide.md) for API examples
@@ -276,7 +278,7 @@ Use kvcached to optimize memory sharing.
 <details>
 <summary><strong>Can I deploy this on CPU-only machines?</strong></summary>
 
-No, vLLM requires GPU acceleration. CPU-only inference is not supported.
+Production deployment requires NVIDIA GPUs (vLLM needs CUDA). However, for **development and testing**, you can use the [inference simulator](./dev-setup.md#gpu-free-development-inference-simulator) (`INFERENCE_BACKEND=inference-sim`) which runs entirely on CPU with simulated GPU memory and echo responses.
 
 </details>
 
