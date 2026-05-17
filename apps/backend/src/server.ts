@@ -5,6 +5,8 @@ import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { config } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
+import { getClusterManager } from './services/cluster-manager.js'
+import type { ClusterManager } from './services/cluster-manager.js'
 import { detectGpuInfo, initializeNvml, shutdownNvml } from './utils/gpu-info.js'
 import { initializeDatabase, closeDb } from './db/index.js'
 
@@ -50,6 +52,13 @@ await fastify.register(import('@fastify/helmet'), {
 await fastify.register(import('@fastify/rate-limit'), {
   global: false, // Don't apply globally, configure per-route
 })
+
+// Declare ClusterManager on Fastify instance
+declare module 'fastify' {
+  interface FastifyInstance {
+    clusterManager: ClusterManager
+  }
+}
 
 // Register custom request logging plugin
 await fastify.register(import('./plugins/request-logging.js'))
@@ -133,6 +142,11 @@ fastify.addHook('onRequest', async (request, reply) => {
     return
   }
 
+  // Skip internal routes - they use HMAC cluster auth (handled by cluster-auth plugin)
+  if (request.url.startsWith('/internal/')) {
+    return
+  }
+
   // Skip authentication for authorization error redirects
   // This allows authenticated-but-unauthorized users to see the AccessDenied page
   if (request.url.includes('auth_error=')) {
@@ -147,6 +161,9 @@ fastify.addHook('onRequest', async (request, reply) => {
   // Authenticate admin routes with JWT
   await fastify.authenticate(request, reply)
 })
+
+// Register leader redirect plugin (follower → leader for admin/dashboard requests)
+await fastify.register(import('./plugins/leader-redirect.js'))
 
 // Register global error handler (must be before routes)
 await fastify.register(import('./plugins/error-handler.js'))
@@ -174,6 +191,8 @@ await fastify.register(import('./routes/benchmarks.js'))
 await fastify.register(import('./routes/memory-profiles.js'))
 await fastify.register(import('./routes/local-models.js'))
 await fastify.register(import('./routes/model-configurations.js'))
+await fastify.register(import('./routes/internal.js'))
+await fastify.register(import('./routes/cluster/index.js'))
 
 // Static file serving for frontend (production only)
 if (config.nodeEnv === 'production') {
@@ -254,6 +273,10 @@ async function start() {
       logger.warn('No GPU detected via NVML, using default GPU memory values')
     }
 
+    // Initialize ClusterManager (peer discovery, leader election, heartbeat)
+    const clusterManager = getClusterManager(logger)
+    fastify.decorate('clusterManager', clusterManager)
+
     await fastify.listen({
       port: config.port,
       host: config.host,
@@ -264,6 +287,9 @@ async function start() {
     // FR-027: Perform startup orphan detection
     const orphanDetector = new OrphanDetector(logger)
     await orphanDetector.performStartupScan()
+
+    // Start cluster services (discovery, election, heartbeat) after server is listening
+    await clusterManager.start()
   } catch (err) {
     logger.error(err)
     process.exit(1)
@@ -273,6 +299,10 @@ async function start() {
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down server...')
+  // Stop cluster services before closing server
+  if (fastify.clusterManager) {
+    fastify.clusterManager.stop()
+  }
   await fastify.close()
   closeDb()
   shutdownNvml()

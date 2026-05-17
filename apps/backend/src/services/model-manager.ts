@@ -1,7 +1,8 @@
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
-import type { ModelInstance, ModelStatus } from '@sardeenz/types'
+import { hostname } from 'node:os'
+import type { ModelInstance, ModelStatus, ClusterEvent } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { config } from '../config.js'
 import {
@@ -21,7 +22,9 @@ import type { Logger } from '@sardeenz/utils'
 import { processLogBuffer } from './process-log-buffer.js'
 import { eventBus } from './event-bus.js'
 import { runtimeSettings } from '../stores/runtime-settings.js'
+import { peerStore } from '../stores/peer-store.js'
 import { GpuSelector } from './gpu-selector.js'
+import { signRequest } from './cluster-auth.js'
 
 export interface LaunchModelOptions {
   modelPath: string
@@ -93,6 +96,40 @@ export class ModelManager extends EventEmitter {
     super()
     this.logger = logger.child({ component: 'ModelManager' })
     this.gpuSelector = new GpuSelector(logger)
+  }
+
+  /**
+   * Broadcast a ClusterEvent to all peers (fire-and-forget).
+   * Only sends when in cluster mode (CLUSTER_PEERS or K8s env detected).
+   */
+  private broadcastClusterEvent(event: ClusterEvent): void {
+    const isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
+    if (!isClusterMode) return
+
+    const localPodId = hostname()
+    const peers = peerStore.getAllPeers().filter((p) => p.podId !== localPodId)
+    if (peers.length === 0) return
+
+    const path = '/internal/cluster/event'
+    const body = JSON.stringify(event)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+    if (config.clusterSecret) {
+      const { signature, timestamp } = signRequest('POST', path, body, config.clusterSecret)
+      headers['x-cluster-signature'] = signature
+      headers['x-cluster-timestamp'] = String(timestamp)
+    }
+
+    for (const peer of peers) {
+      fetch(`http://${peer.address}:${peer.port}${path}`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(5_000),
+      }).catch((err) => {
+        this.logger.debug({ err, podId: peer.podId }, 'Failed to broadcast cluster event')
+      })
+    }
   }
 
   /**
@@ -581,6 +618,15 @@ export class ModelManager extends EventEmitter {
 
       this.logger.info({ modelPath, port, instanceId }, 'Model loaded successfully')
       this.emit('model:loaded', instance)
+
+      // Broadcast cluster event to peers
+      this.broadcastClusterEvent({
+        type: 'model-loaded',
+        podId: hostname(),
+        term: 0,
+        timestamp: Date.now(),
+        payload: { instanceId, modelPath, modelName: instance.modelName, port },
+      })
     } catch (err) {
       // Clean up progress subscription
       unsubscribe()
@@ -654,6 +700,14 @@ export class ModelManager extends EventEmitter {
         'Model entry removed'
       )
       this.emit('model:unloaded', instance)
+
+      this.broadcastClusterEvent({
+        type: 'model-unloaded',
+        podId: hostname(),
+        term: 0,
+        timestamp: Date.now(),
+        payload: { instanceId: instance.id, modelPath: instance.modelPath },
+      })
       return
     }
 
@@ -726,6 +780,14 @@ export class ModelManager extends EventEmitter {
         'Model unloaded successfully'
       )
       this.emit('model:unloaded', instance)
+
+      this.broadcastClusterEvent({
+        type: 'model-unloaded',
+        podId: hostname(),
+        term: 0,
+        timestamp: Date.now(),
+        payload: { instanceId: instance.id, modelPath: instance.modelPath },
+      })
     } catch (err) {
       this.logger.error({ instanceId: instance.id, err }, 'Error unloading model')
       throw new InternalError(

@@ -101,6 +101,8 @@ make push VERSION=x.y.z            # Push to registry
 - When updating CUDA-related dependencies (vLLM, kvcached, container builds), always verify exact package versions available in the target CUDA repo before editing. Use `WebFetch` or `Bash` to confirm versions exist before committing changes.
 
 ## Active Technologies
+- TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target + Fastify 5.1+, React 18, PatternFly 6, `@kubernetes/client-node` (new), `undici` (built-in Node 22) (004-school-orchestration)
+- SQLite (better-sqlite3) for presets/profiles, in-memory Maps for cluster state and routing table (004-school-orchestration)
 
 - TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target
 - Fastify 5.1+ (backend), React 18 + PatternFly 6 (frontend)
@@ -122,3 +124,6 @@ For detailed context specific to backend or frontend development:
 - ✅ **Use `docs/development/pf6-guide/` + PatternFly.org** for Patternfly 6 components
 
 Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI development, refer to the local PF6 guide and official PatternFly.org documentation.
+
+## Recent Changes
+- 004-school-orchestration: Added TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target + Fastify 5.1+, React 18, PatternFly 6, `@kubernetes/client-node` (new), `undici` (built-in Node 22)

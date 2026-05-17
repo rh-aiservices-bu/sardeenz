@@ -1,0 +1,457 @@
+openapi: 3.1.0
+info:
+  title: Sardeenz Internal Cluster API
+  description: |
+    Inter-pod communication endpoints for the School of Sardeenz cluster.
+    All endpoints require HMAC-SHA256 authentication via X-Cluster-Signature header.
+    These routes are NOT exposed to external clients.
+  version: 0.1.0
+
+servers:
+  - url: http://{podAddress}:{port}
+    variables:
+      podAddress:
+        default: localhost
+      port:
+        default: "3000"
+
+security:
+  - clusterHmac: []
+
+paths:
+  /internal/heartbeat:
+    post:
+      operationId: sendHeartbeat
+      summary: Send heartbeat to a peer pod
+      description: |
+        Periodic heartbeat (every 5s) carrying the sender's current state.
+        Used for liveness detection, state synchronization, and routing table updates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatMessage'
+      responses:
+        '200':
+          description: Heartbeat acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatAck'
+        '401':
+          description: Invalid or missing HMAC signature
+        '409':
+          description: Stale term - sender has an older term than receiver
+
+  /internal/state:
+    get:
+      operationId: getFullState
+      summary: Get full cluster state from a peer
+      description: |
+        Returns the complete state of this pod (models, GPUs, routing table version).
+        Called when heartbeat state hash indicates drift.
+      responses:
+        '200':
+          description: Full pod state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PodFullState'
+        '401':
+          description: Invalid or missing HMAC signature
+
+  /internal/cluster/event:
+    post:
+      operationId: sendClusterEvent
+      summary: Send immediate cluster event to a peer
+      description: |
+        Immediate notification of state changes (model loaded/unloaded, leader elected, etc.)
+        without waiting for the next heartbeat cycle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterEvent'
+      responses:
+        '200':
+          description: Event received
+        '401':
+          description: Invalid or missing HMAC signature
+        '409':
+          description: Stale term
+
+  /internal/models/load:
+    post:
+      operationId: remoteLoadModel
+      summary: Request a peer pod to load a model
+      description: |
+        Sent by the leader to instruct a follower pod to load a specific model.
+        Returns the instance ID for progress tracking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoteLoadModelRequest'
+      responses:
+        '200':
+          description: Model load initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoteLoadModelResponse'
+        '400':
+          description: Invalid request (e.g., insufficient GPU memory)
+        '401':
+          description: Invalid or missing HMAC signature
+        '409':
+          description: Stale term
+
+  /internal/models/{instanceId}/unload:
+    post:
+      operationId: remoteUnloadModel
+      summary: Request a peer pod to unload a model
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model unload initiated
+        '401':
+          description: Invalid or missing HMAC signature
+        '404':
+          description: Instance not found on this pod
+        '409':
+          description: Stale term
+
+  /internal/models/{instanceId}/events:
+    get:
+      operationId: remoteModelEvents
+      summary: Subscribe to model events on a remote pod via SSE
+      description: |
+        Relays model load progress, status changes, and logs from a remote pod
+        to the leader's dashboard. Same SSE format as /api/models/instances/:id/events.
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: types
+          in: query
+          schema:
+            type: string
+            description: Comma-separated event types (log, status, progress, memory, error)
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Invalid or missing HMAC signature
+
+  /internal/memory-profiles:
+    get:
+      operationId: getMemoryProfiles
+      summary: Get all memory profiles stored on this pod
+      description: Returns all memory profiles for profile reconciliation across the cluster.
+      responses:
+        '200':
+          description: List of memory profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemoryProfileSummary'
+        '401':
+          description: Invalid or missing HMAC signature
+
+    post:
+      operationId: pushMemoryProfiles
+      summary: Push memory profiles to this pod
+      description: |
+        Pushes memory profiles from another pod (e.g., after profiling or during reconciliation).
+        Existing profiles with matching model+GPU are updated; new ones are inserted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profiles:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/MemoryProfileSummary'
+      responses:
+        '200':
+          description: Profiles stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  updated:
+                    type: integer
+                  skipped:
+                    type: integer
+        '401':
+          description: Invalid or missing HMAC signature
+
+  /internal/presets/sync:
+    post:
+      operationId: syncPresets
+      summary: Sync presets to this pod
+      description: |
+        Pushes the full preset list to a peer for replication.
+        Uses version numbers for conflict resolution (highest version wins).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                presets:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PresetSync'
+      responses:
+        '200':
+          description: Presets synced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  synced:
+                    type: integer
+                  conflicts:
+                    type: integer
+        '401':
+          description: Invalid or missing HMAC signature
+
+components:
+  securitySchemes:
+    clusterHmac:
+      type: apiKey
+      in: header
+      name: X-Cluster-Signature
+      description: HMAC-SHA256 signature over method + path + timestamp + body
+
+  schemas:
+    HeartbeatMessage:
+      type: object
+      required: [podId, role, term, timestamp, models, gpus]
+      properties:
+        podId:
+          type: string
+        role:
+          type: string
+          enum: [leader, follower]
+        term:
+          type: integer
+        timestamp:
+          type: integer
+          description: Unix milliseconds
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerModelEntry'
+        gpus:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerGpuInfo'
+        clusterVersion:
+          type: integer
+          description: Routing table version for drift detection
+
+    HeartbeatAck:
+      type: object
+      properties:
+        podId:
+          type: string
+        term:
+          type: integer
+        role:
+          type: string
+          enum: [leader, follower]
+        clusterVersion:
+          type: integer
+
+    PeerModelEntry:
+      type: object
+      required: [instanceId, modelPath, modelName, port, status, gpuIds]
+      properties:
+        instanceId:
+          type: string
+        modelPath:
+          type: string
+        modelName:
+          type: string
+        port:
+          type: integer
+        status:
+          type: string
+          enum: [starting, running, sleeping, stopping, failed]
+        gpuIds:
+          type: array
+          items:
+            type: integer
+        tensorParallelSize:
+          type: integer
+          default: 1
+
+    PeerGpuInfo:
+      type: object
+      required: [gpuId, name, totalVramMB, usedVramMB]
+      properties:
+        gpuId:
+          type: integer
+        name:
+          type: string
+        totalVramMB:
+          type: integer
+        usedVramMB:
+          type: integer
+        temperature:
+          type: integer
+        utilization:
+          type: integer
+
+    PodFullState:
+      type: object
+      properties:
+        podId:
+          type: string
+        role:
+          type: string
+        term:
+          type: integer
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerModelEntry'
+        gpus:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerGpuInfo'
+        routingTableVersion:
+          type: integer
+
+    ClusterEvent:
+      type: object
+      required: [type, podId, term, timestamp, payload]
+      properties:
+        type:
+          type: string
+          enum:
+            - model-loaded
+            - model-unloaded
+            - model-moved
+            - leader-elected
+            - pod-joined
+            - pod-left
+        podId:
+          type: string
+        term:
+          type: integer
+        timestamp:
+          type: integer
+        payload:
+          type: object
+          description: Event-specific data
+
+    RemoteLoadModelRequest:
+      type: object
+      required: [modelPath, term]
+      properties:
+        modelPath:
+          type: string
+        servedModelName:
+          type: string
+        maxTokens:
+          type: integer
+        gpuIds:
+          type: array
+          items:
+            type: integer
+        tensorParallelSize:
+          type: integer
+          default: 1
+        gpuMemoryUtilization:
+          type: number
+          default: 0.9
+        extraArgs:
+          type: object
+        sleepModeEnabled:
+          type: boolean
+          default: false
+        term:
+          type: integer
+          description: Leadership term for fencing
+
+    RemoteLoadModelResponse:
+      type: object
+      properties:
+        instanceId:
+          type: string
+        status:
+          type: string
+
+    MemoryProfileSummary:
+      type: object
+      properties:
+        modelPath:
+          type: string
+        gpuType:
+          type: string
+        gpuVramMB:
+          type: integer
+        estimatedWeightsMB:
+          type: integer
+        estimatedOverheadMB:
+          type: integer
+        estimatedKvCachePerRequestMB:
+          type: number
+        sourcePodId:
+          type: string
+        profiledAt:
+          type: string
+          format: date-time
+
+    PresetSync:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+        placementStrategy:
+          type: string
+        minKvCacheMB:
+          type: integer
+        version:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time

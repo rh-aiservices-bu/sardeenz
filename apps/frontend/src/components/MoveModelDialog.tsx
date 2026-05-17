@@ -24,6 +24,7 @@ import {
 } from '@patternfly/react-core'
 import type { ModelInstanceDTO, MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient, extractErrorDetails, type ErrorDetails } from '../services/api'
+import { PodSelector } from './PodSelector'
 import { useMoveEvents } from '../hooks/useMoveEvents'
 import { useNotifications } from '../contexts/NotificationContext'
 
@@ -59,6 +60,7 @@ interface MoveModelDialogProps {
   preselectedGpuIds?: number[]
   gpuMemoryData: MultiGpuMemoryUsageResponse | null
   onMoveComplete?: () => void
+  isClusterMode?: boolean
 }
 
 export function MoveModelDialog({
@@ -68,9 +70,11 @@ export function MoveModelDialog({
   preselectedGpuIds,
   gpuMemoryData,
   onMoveComplete,
+  isClusterMode,
 }: MoveModelDialogProps) {
   const { addNotification } = useNotifications()
   const [selectedGpuIds, setSelectedGpuIds] = useState<number[]>([])
+  const [selectedPodId, setSelectedPodId] = useState<string | undefined>(undefined)
   const [drainTimeoutSeconds, setDrainTimeoutSeconds] = useState(60)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [moveId, setMoveId] = useState<string | null>(null)
@@ -118,6 +122,7 @@ export function MoveModelDialog({
       // If preselected GPUs provided (from drag-drop), use them
       // Otherwise default to empty
       setSelectedGpuIds(preselectedGpuIds || [])
+      setSelectedPodId(undefined)
       setDrainTimeoutSeconds(60)
       setSubmitError(null)
       setMoveId(null)
@@ -162,11 +167,22 @@ export function MoveModelDialog({
     setSubmitError(null)
 
     try {
-      const response = await apiClient.moveModel(model.id, {
-        target_gpu_ids: selectedGpuIds,
-        drain_timeout_ms: drainTimeoutSeconds * 1000,
-      })
-      setMoveId(response.move_id)
+      if (isClusterMode && selectedPodId) {
+        // Cross-pod move via cluster API
+        const response = await apiClient.clusterMoveModel(model.id, {
+          targetPodId: selectedPodId,
+          targetGpuIds: selectedGpuIds,
+          drainTimeoutMs: drainTimeoutSeconds * 1000,
+        })
+        setMoveId(response.moveId)
+      } else {
+        // Intra-pod move (local)
+        const response = await apiClient.moveModel(model.id, {
+          target_gpu_ids: selectedGpuIds,
+          drain_timeout_ms: drainTimeoutSeconds * 1000,
+        })
+        setMoveId(response.move_id)
+      }
     } catch (err) {
       const errorDetails = extractErrorDetails(err)
       setSubmitError(errorDetails)
@@ -347,6 +363,23 @@ export function MoveModelDialog({
                 <p>{submitError.message}</p>
                 {isGpuMemoryError(submitError) && renderGpuMemoryErrorDetails(submitError.details)}
               </Alert>
+            )}
+
+            {isClusterMode && (
+              <FormGroup label="Target Pod" fieldId="target-pod">
+                <PodSelector
+                  selectedPodId={selectedPodId}
+                  onSelect={setSelectedPodId}
+                  isClusterMode={true}
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem>
+                      Select a pod for cross-pod move, or leave empty for local move
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
             )}
 
             <FormGroup label="Current GPU(s)" fieldId="current-gpu">

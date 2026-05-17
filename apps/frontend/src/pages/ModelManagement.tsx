@@ -36,10 +36,12 @@ import {
   GpuGroupSection,
   ModelTable,
   MoveModelDialog,
+  ClusterOverview,
 } from '../components'
 import type { ViewMode, FilterState, SortField, SortDirection, ConfigLoadStartedInfo } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useOperations } from '../contexts/OperationsContext'
+import { useClusterStatus } from '../hooks/useClusterStatus'
 
 // Helper to determine GPU group key
 function getGpuGroupKey(model: ModelInstanceDTO): string {
@@ -104,8 +106,30 @@ function ModelManagement() {
   } | null>(null)
   const configLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Cluster pod IDs for GPU memory panel tabs
+  const [clusterPodIds, setClusterPodIds] = useState<string[]>([])
+
   const { addNotification } = useNotifications()
   const { startOperation, endOperation } = useOperations()
+  const clusterData = useClusterStatus({
+    onLeaderChange: useCallback((leaderId: string, leaderAddress: string | null) => {
+      addNotification({
+        title: 'Cluster leader changed',
+        description: leaderAddress
+          ? `New leader: ${leaderId}. Redirecting to ${leaderAddress}...`
+          : `New leader: ${leaderId}. Waiting for leader address...`,
+        variant: 'info',
+      })
+    }, [addNotification]),
+  })
+
+  // Fetch cluster pod IDs for GPU memory panel tabs
+  useEffect(() => {
+    if (!clusterData.isClusterMode) return
+    apiClient.getClusterPods().then((res) => {
+      setClusterPodIds(res.pods.map((p) => p.podId))
+    }).catch(() => { /* keep stale */ })
+  }, [clusterData.isClusterMode, clusterData.clusterStatus?.podCount])
 
   // Trigger GPU memory panel refresh
   const triggerGpuRefresh = useCallback(() => {
@@ -735,20 +759,36 @@ function ModelManagement() {
           </FlexItem>
         </Flex>
 
+        {/* Cluster Overview (only shown in cluster mode) */}
+        {clusterData.isClusterMode && (
+          <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
+            <ClusterOverview clusterData={clusterData} />
+          </div>
+        )}
+
         {/* GPU Memory Overview Panel */}
         <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
           <GpuMemoryPanel
             onModelClick={handleMemoryBarClick}
             refreshTrigger={gpuRefreshTrigger}
             onMemoryDataChange={handleMemoryDataChange}
+            localPodId={clusterData.isClusterMode ? clusterData.clusterStatus?.localPodId : null}
+            clusterPodIds={clusterData.isClusterMode ? clusterPodIds : undefined}
           />
         </div>
 
         {models.length === 0 ? (
           <Card style={{ marginTop: 'var(--pf-t--global--spacer--xl)' }}>
             <CardBody>
-              <EmptyState titleText="No models started" icon={CubesIcon}>
-                <EmptyStateBody>Start a model to get started with inference.</EmptyStateBody>
+              <EmptyState
+                titleText={clusterData.isClusterMode ? 'No models on this pod' : 'No models started'}
+                icon={CubesIcon}
+              >
+                <EmptyStateBody>
+                  {clusterData.isClusterMode && clusterData.clusterStatus && clusterData.clusterStatus.totalModelsLoaded > 0
+                    ? `This pod (${clusterData.clusterStatus.localPodId}) has no models loaded. ${clusterData.clusterStatus.totalModelsLoaded} model${clusterData.clusterStatus.totalModelsLoaded !== 1 ? 's are' : ' is'} running on other pods — see Cluster Overview above.`
+                    : 'Start a model to get started with inference.'}
+                </EmptyStateBody>
                 <EmptyStateFooter>
                   <EmptyStateActions>
                     <Button
@@ -781,6 +821,11 @@ function ModelManagement() {
             </div>
 
             {/* Model List/Table */}
+            {clusterData.isClusterMode && clusterData.clusterStatus?.localPodId && (
+              <Content component="small" style={{ marginTop: 'var(--pf-t--global--spacer--md)', color: 'var(--pf-t--global--text--color--subtle)' }}>
+                Showing models on this pod ({clusterData.clusterStatus.localPodId}). See Cluster Overview above for all pods.
+              </Content>
+            )}
             <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
               {filteredModels.length === 0 ? (
                 <Card>
@@ -848,6 +893,7 @@ function ModelManagement() {
         onClose={() => setIsLoadModalOpen(false)}
         onLoad={handleLoadModel}
         onSuccess={handleLoadSuccess}
+        isClusterMode={clusterData.isClusterMode}
       />
 
       <SaveConfigurationDialog
@@ -855,6 +901,7 @@ function ModelManagement() {
         onClose={() => setIsSaveConfigOpen(false)}
         onSuccess={handleConfigSaved}
         modelCount={runningModelCount}
+        isClusterMode={clusterData.isClusterMode}
       />
 
       <LoadConfigurationDialog
@@ -908,6 +955,7 @@ function ModelManagement() {
         preselectedGpuIds={moveTargetGpuIds}
         gpuMemoryData={gpuMemoryData}
         onMoveComplete={handleMoveComplete}
+        isClusterMode={clusterData.isClusterMode}
       />
     </DndContext>
   )

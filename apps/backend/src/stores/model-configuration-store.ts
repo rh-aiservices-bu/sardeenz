@@ -6,6 +6,7 @@
 
 import type Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
+import { hostname } from 'node:os'
 import { getDb } from '../db/index.js'
 import type {
   SavedModelConfiguration,
@@ -15,6 +16,9 @@ import type {
   ModelInstance,
   ModelSourceType,
 } from '@sardeenz/types'
+import { peerStore } from './peer-store.js'
+import { signRequest } from '../services/cluster-auth.js'
+import { config } from '../config.js'
 
 // Row types for SQLite (snake_case)
 interface ConfigurationRow {
@@ -22,6 +26,9 @@ interface ConfigurationRow {
   name: string
   description: string | null
   model_count: number
+  placement_strategy: string | null
+  min_kv_cache_mb: number | null
+  version: number
   created_at: string
   updated_at: string | null
 }
@@ -38,6 +45,8 @@ interface EntryRow {
   tensor_parallel_size: number
   load_order: number
   sleep_mode_enabled: number // SQLite stores booleans as 0/1
+  gpu_type_constraint: string | null
+  min_vram_mb: number | null
 }
 
 // Convert row to domain object
@@ -47,6 +56,9 @@ function rowToConfiguration(row: ConfigurationRow): SavedModelConfiguration {
     name: row.name,
     description: row.description ?? undefined,
     modelCount: row.model_count,
+    placementStrategy: row.placement_strategy as SavedModelConfiguration['placementStrategy'],
+    minKvCacheMb: row.min_kv_cache_mb,
+    version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
   }
@@ -65,6 +77,8 @@ function rowToEntry(row: EntryRow): ModelConfigurationEntry {
     tensorParallelSize: row.tensor_parallel_size,
     loadOrder: row.load_order,
     sleepModeEnabled: row.sleep_mode_enabled === 1,
+    gpuTypeConstraint: row.gpu_type_constraint ?? undefined,
+    minVramMb: row.min_vram_mb ?? undefined,
   }
 }
 
@@ -231,6 +245,123 @@ class ModelConfigurationStore {
     if (!row) return null
 
     return this.getConfiguration(row.id)
+  }
+
+  /**
+   * T066: Sync a preset received from another pod.
+   * Uses version numbers for conflict resolution (higher version wins).
+   */
+  syncPreset(preset: SavedModelConfiguration): boolean {
+    const existing = this.getConfiguration(preset.id)
+
+    if (existing) {
+      // Conflict resolution: higher version wins
+      if ((existing.version ?? 1) >= (preset.version ?? 1)) {
+        return false // Local version is same or newer
+      }
+
+      // Update existing preset
+      const now = new Date().toISOString()
+      this.db.prepare(`
+        UPDATE model_configurations SET
+          name = ?, description = ?, model_count = ?,
+          placement_strategy = ?, min_kv_cache_mb = ?, version = ?,
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        preset.name,
+        preset.description ?? null,
+        preset.modelCount,
+        preset.placementStrategy ?? null,
+        preset.minKvCacheMb ?? null,
+        preset.version ?? 1,
+        now,
+        preset.id
+      )
+
+      // Replace entries
+      this.db.prepare('DELETE FROM model_configuration_entries WHERE config_id = ?').run(preset.id)
+    } else {
+      // Insert new preset
+      this.db.prepare(`
+        INSERT INTO model_configurations (id, name, description, model_count, placement_strategy, min_kv_cache_mb, version, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        preset.id,
+        preset.name,
+        preset.description ?? null,
+        preset.modelCount,
+        preset.placementStrategy ?? null,
+        preset.minKvCacheMb ?? null,
+        preset.version ?? 1,
+        preset.createdAt
+      )
+    }
+
+    // Insert entries
+    if (preset.entries) {
+      const insertEntry = this.db.prepare(`
+        INSERT INTO model_configuration_entries
+        (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled, gpu_type_constraint, min_vram_mb)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      for (const entry of preset.entries) {
+        insertEntry.run(
+          entry.id || randomUUID(),
+          preset.id,
+          entry.modelPath,
+          entry.servedModelName ?? null,
+          entry.maxTokens,
+          entry.sourceType,
+          entry.extraArgs ? JSON.stringify(entry.extraArgs) : null,
+          entry.gpuIds ? JSON.stringify(entry.gpuIds) : null,
+          entry.tensorParallelSize,
+          entry.loadOrder,
+          entry.sleepModeEnabled ? 1 : 0,
+          entry.gpuTypeConstraint ?? null,
+          entry.minVramMb ?? null
+        )
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * T066: Replicate a preset to all healthy peers via POST /internal/presets/sync.
+   * Fire-and-forget to avoid blocking on unreachable peers.
+   */
+  replicateToAllPeers(presetId: string): void {
+    const preset = this.getConfiguration(presetId)
+    if (!preset) return
+
+    const peers = peerStore.getHealthyPeers()
+    const localPodId = hostname()
+
+    for (const peer of peers) {
+      if (peer.podId === localPodId) continue
+
+      const internalPath = '/internal/presets/sync'
+      const body = JSON.stringify(preset)
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+      if (config.clusterSecret) {
+        const { signature, timestamp } = signRequest('POST', internalPath, body, config.clusterSecret)
+        headers['x-cluster-signature'] = signature
+        headers['x-cluster-timestamp'] = String(timestamp)
+      }
+
+      // Fire-and-forget
+      fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => {
+        // Ignore replication failures — peers will sync on next heartbeat cycle
+      })
+    }
   }
 }
 

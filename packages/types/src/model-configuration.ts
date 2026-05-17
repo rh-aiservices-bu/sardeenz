@@ -21,6 +21,8 @@ export interface ModelConfigurationEntry {
   tensorParallelSize: number
   loadOrder: number
   sleepModeEnabled?: boolean
+  gpuTypeConstraint?: string
+  minVramMb?: number
 }
 
 /**
@@ -31,6 +33,9 @@ export interface SavedModelConfiguration {
   name: string
   description?: string
   modelCount: number
+  placementStrategy?: 'maximize-models' | 'balanced' | null
+  minKvCacheMb?: number | null
+  version?: number
   createdAt: string
   updatedAt?: string
   entries?: ModelConfigurationEntry[]

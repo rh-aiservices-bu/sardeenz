@@ -1040,9 +1040,236 @@ class ApiClient {
     )
     return response.data
   }
+
+  // Cluster endpoints (T038)
+
+  async getClusterStatus(): Promise<ClusterStatusResponse> {
+    const response = await this.client.get<ClusterStatusResponse>('/api/cluster')
+    return response.data
+  }
+
+  async getClusterPods(): Promise<ClusterPodsResponse> {
+    const response = await this.client.get<ClusterPodsResponse>('/api/cluster/pods')
+    return response.data
+  }
+
+  async getClusterPodMemory(podId: string): Promise<MultiGpuMemoryUsageResponse> {
+    const response = await this.client.get<MultiGpuMemoryUsageResponse>(
+      `/api/cluster/pods/${encodeURIComponent(podId)}/memory`
+    )
+    return response.data
+  }
+
+  async clusterLoadModel(request: ClusterLoadModelRequest): Promise<ClusterLoadModelResponse> {
+    const response = await this.client.post<ClusterLoadModelResponse>(
+      '/api/cluster/models/load',
+      request
+    )
+    return response.data
+  }
+
+  async clusterUnloadModel(instanceId: string): Promise<{ success: boolean }> {
+    const response = await this.client.post<{ success: boolean }>(
+      `/api/cluster/models/${instanceId}/unload`
+    )
+    return response.data
+  }
+
+  async clusterMoveModel(instanceId: string, request: ClusterMoveModelRequest): Promise<{ moveId: string }> {
+    const response = await this.client.post<{ moveId: string }>(
+      `/api/cluster/models/${instanceId}/move`,
+      request
+    )
+    return response.data
+  }
+
+  /**
+   * Subscribe to cluster model events via SSE (works for models on any pod).
+   * Returns an unsubscribe function to close the connection.
+   */
+  subscribeClusterModelEvents(
+    instanceId: string,
+    onEvent: (event: MessageEvent) => void,
+    onError?: (error: Event) => void
+  ): () => void {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+    const params = new URLSearchParams()
+
+    const token = this.authToken
+    if (token) {
+      params.set('token', token)
+    }
+
+    const url = `${baseURL}/api/cluster/models/${instanceId}/events?${params}`
+    const eventSource = new EventSource(url)
+
+    eventSource.onmessage = onEvent
+
+    eventSource.addEventListener('log', onEvent)
+    eventSource.addEventListener('status', onEvent)
+    eventSource.addEventListener('progress', onEvent)
+    eventSource.addEventListener('error', onEvent)
+
+    eventSource.onerror = (e) => {
+      onError?.(e)
+    }
+
+    return () => {
+      eventSource.close()
+    }
+  }
+
+  // ============ Cluster Preset & Profile APIs (T073) ============
+
+  async applyPreset(
+    presetId: string,
+    options: { dryRun?: boolean } = {}
+  ): Promise<PresetApplicationResult> {
+    const response = await this.client.post<PresetApplicationResult>(
+      `/api/cluster/presets/${presetId}/apply`,
+      { dryRun: options.dryRun ?? false }
+    )
+    return response.data
+  }
+
+  async reconcileProfiles(): Promise<ProfileReconcileResult> {
+    const response = await this.client.post<ProfileReconcileResult>(
+      '/api/cluster/memory-profiles/reconcile'
+    )
+    return response.data
+  }
+
+  async exportProfiles(): Promise<ProfileExportResult> {
+    const response = await this.client.get<ProfileExportResult>(
+      '/api/cluster/memory-profiles/export'
+    )
+    return response.data
+  }
+
+  async importProfiles(data: { profiles: unknown[] }): Promise<ProfileImportResult> {
+    const response = await this.client.post<ProfileImportResult>(
+      '/api/cluster/memory-profiles/import',
+      data
+    )
+    return response.data
+  }
 }
 
 export const apiClient = new ApiClient()
+
+// Cluster types (T038)
+
+export interface ClusterStatusResponse {
+  clusterId: string
+  isClusterMode: boolean
+  localPodId: string
+  podCount: number
+  healthyPodCount: number
+  leaderId: string
+  leaderAddress: string | null
+  term: number
+  expectedSize: number
+  totalModelsLoaded: number
+  totalGpus: number
+  routingTableVersion: number
+  health: 'healthy' | 'degraded' | 'critical'
+}
+
+export interface ClusterPodGpu {
+  gpuId: number
+  name: string
+  totalVramMB: number
+  usedVramMB: number
+  temperature: number
+  utilization: number
+}
+
+export interface ClusterModelInstance {
+  instanceId: string
+  podId: string
+  modelPath: string
+  modelName: string
+  status: string
+  port: number
+  gpuIds: number[]
+  tensorParallelSize: number
+}
+
+export interface ClusterPod {
+  podId: string
+  address: string
+  role: 'leader' | 'follower'
+  status: 'healthy' | 'suspect' | 'unavailable'
+  lastHeartbeat: string
+  joinedAt: string
+  modelCount: number
+  gpus: ClusterPodGpu[]
+  models: ClusterModelInstance[]
+}
+
+export interface ClusterPodsResponse {
+  pods: ClusterPod[]
+}
+
+export interface ClusterLoadModelRequest {
+  modelPath: string
+  targetPodId?: string
+  servedModelName?: string
+  maxTokens?: number
+  gpuIds?: number[]
+  tensorParallelSize?: number
+  enableSleepMode?: boolean
+}
+
+export interface ClusterLoadModelResponse {
+  instanceId: string
+  podId: string
+  status: string
+}
+
+export interface ClusterMoveModelRequest {
+  targetPodId?: string
+  targetGpuIds: number[]
+  drainTimeoutMs?: number
+}
+
+// Preset application types (T073)
+export interface PresetApplicationResult {
+  presetId: string
+  presetName: string
+  dryRun: boolean
+  placed: Array<{
+    modelPath: string
+    podId: string
+    gpuIds: number[]
+    reason: string
+  }>
+  unplaceable: Array<{
+    modelPath: string
+    reason: string
+  }>
+  unloaded: Array<{
+    modelPath: string
+    podId: string
+    reason: string
+  }>
+}
+
+export interface ProfileReconcileResult {
+  totalProfiles: number
+  newDistributed: number
+  duplicatesResolved: number
+}
+
+export interface ProfileExportResult {
+  profiles: unknown[]
+  exportedAt: string
+}
+
+export interface ProfileImportResult {
+  imported: number
+  skipped: number
+}
 
 // Re-export types for convenience
 export type { MoveModelRequest, MoveModelResponse, MoveProgressEvent } from '@sardeenz/types'

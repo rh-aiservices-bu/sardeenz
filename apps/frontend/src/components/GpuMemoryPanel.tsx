@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Card,
   CardHeader,
@@ -14,6 +14,7 @@ import {
   Tabs,
   Tab,
   TabTitleText,
+  Label,
 } from '@patternfly/react-core'
 import { MoonIcon } from '@patternfly/react-icons'
 import { ResponsiveBar } from '@nivo/bar'
@@ -74,10 +75,15 @@ interface GpuMemoryPanelProps {
   refreshTrigger?: number
   /** Callback when memory data is fetched/updated - exposes data for other components */
   onMemoryDataChange?: (data: MultiGpuMemoryUsageResponse) => void
+  /** Local pod ID (cluster mode) */
+  localPodId?: string | null
+  /** All pod IDs in the cluster (enables pod tabs when provided) */
+  clusterPodIds?: string[]
 }
 
 /**
  * Panel displaying GPU and KVCache memory usage with Nivo bar charts.
+ * In cluster mode, shows pod-level tabs to switch between pods.
  * Supports multiple GPUs with tabs for switching between them.
  * Shows two horizontal stacked bars:
  * - KVCache: shared pool (Prealloc / Used / Free)
@@ -88,6 +94,8 @@ export function GpuMemoryPanel({
   onModelClick,
   refreshTrigger,
   onMemoryDataChange,
+  localPodId,
+  clusterPodIds,
 }: GpuMemoryPanelProps) {
   const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,22 +103,47 @@ export function GpuMemoryPanel({
   const [refreshInterval, setRefreshInterval] = useState<number | null>(defaultRefreshInterval)
   const [isSelectOpen, setIsSelectOpen] = useState(false)
   const [activeGpuIndex, setActiveGpuIndex] = useState(0)
+  const [activePodId, setActivePodId] = useState<string | null>(null)
+
+  // Cache remote pod memory data to avoid flicker on tab switch
+  const remotePodCache = useRef<Record<string, MultiGpuMemoryUsageResponse>>({})
+
+  // Determine if we're viewing a remote pod
+  const isRemotePod = activePodId !== null && activePodId !== localPodId
+  const effectivePodId = activePodId ?? localPodId ?? null
+
+  // Initialize activePodId when localPodId first becomes available
+  useEffect(() => {
+    if (localPodId && activePodId === null) {
+      setActivePodId(localPodId)
+    }
+  }, [localPodId, activePodId])
 
   const fetchMemoryUsage = useCallback(async () => {
     try {
-      const data = await apiClient.getMultiGpuMemoryUsage()
+      let data: MultiGpuMemoryUsageResponse
+      if (isRemotePod && effectivePodId) {
+        data = await apiClient.getClusterPodMemory(effectivePodId)
+        remotePodCache.current[effectivePodId] = data
+      } else {
+        data = await apiClient.getMultiGpuMemoryUsage()
+      }
       setMemoryData(data)
       setError(null)
-      onMemoryDataChange?.(data)
+      // Only call onMemoryDataChange for local pod data (used by move dialog etc.)
+      if (!isRemotePod) {
+        onMemoryDataChange?.(data)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch memory usage')
     } finally {
       setLoading(false)
     }
-  }, [onMemoryDataChange])
+  }, [onMemoryDataChange, isRemotePod, effectivePodId])
 
   // Initial fetch and polling
   useEffect(() => {
+    setLoading(true)
     fetchMemoryUsage()
 
     if (refreshInterval === null) return
@@ -119,20 +152,30 @@ export function GpuMemoryPanel({
     return () => clearInterval(interval)
   }, [fetchMemoryUsage, refreshInterval, refreshTrigger])
 
+  // Handle pod tab switch
+  const handlePodTabSelect = useCallback((_event: React.MouseEvent, podId: string | number) => {
+    const pod = String(podId)
+    setActivePodId(pod)
+    setActiveGpuIndex(0)
+    // Show cached data immediately while fetching fresh data
+    if (remotePodCache.current[pod]) {
+      setMemoryData(remotePodCache.current[pod])
+    } else {
+      setMemoryData(null)
+      setLoading(true)
+    }
+  }, [])
+
   // Get the currently selected GPU data
   const selectedGpu: PerGpuMetrics | null = useMemo(() => {
     if (!memoryData || memoryData.gpus.length === 0) return null
-    // Find GPU by index or fallback to first
     const gpu = memoryData.gpus.find((g) => g.gpu_index === activeGpuIndex)
     return gpu || memoryData.gpus[0]
   }, [memoryData, activeGpuIndex])
 
   // Build KVCache bar data from per-GPU metrics
   const kvcacheData = useMemo(() => {
-    // Use per-GPU kvcache from selected GPU (if available)
     const kvcache = selectedGpu?.kvcache
-    // If no models loaded, kvcache should be considered non-existent (workaround for kvcached bug
-    // that reports stale preallocation values after all vLLMCore processes are terminated)
     const hasModels = selectedGpu?.models && selectedGpu.models.length > 0
     if (!kvcache || kvcache.total_gb === 0 || !hasModels) return []
 
@@ -161,33 +204,28 @@ export function GpuMemoryPanel({
     const otherMemory = Math.max(0, selectedGpu.used_gb - modelsMemory)
     const freeMemory = selectedGpu.free_gb
 
-    // Build data object dynamically
     const dataObj: Record<string, number | string> = { id: 'GPU' }
     const keys: string[] = []
     const colors: Record<string, string> = {}
     const fill: Array<{ match: { id: string }; id: string }> = []
 
-    // Add each model
     models.forEach((model) => {
       const key = model.display_name
       dataObj[key] = Number(model.gpu_memory_gb.toFixed(2))
       keys.push(key)
       colors[key] = model.color
 
-      // Apply hatching pattern to sleeping models
       if (model.is_sleeping) {
         fill.push({ match: { id: key }, id: 'sleeping-pattern' })
       }
     })
 
-    // Add Other (system processes, etc.)
     if (otherMemory > 0.01) {
       dataObj['Other'] = Number(otherMemory.toFixed(2))
       keys.push('Other')
       colors['Other'] = '#8B8D8F'
     }
 
-    // Add Free
     dataObj['Free'] = Number(freeMemory.toFixed(2))
     keys.push('Free')
     colors['Free'] = FREE_COLOR
@@ -208,10 +246,35 @@ export function GpuMemoryPanel({
 
   const selectedLabel = REFRESH_OPTIONS.find((opt) => opt.value === refreshInterval)?.label || '5s'
 
+  const isClusterMode = clusterPodIds && clusterPodIds.length > 1
+
   if (loading && !memoryData) {
     return (
       <Card>
+        <CardHeader>
+          <Content component="h2">GPU Memory Overview</Content>
+        </CardHeader>
         <CardBody>
+          {isClusterMode && (
+            <Tabs
+              activeKey={effectivePodId ?? ''}
+              onSelect={handlePodTabSelect}
+              aria-label="Pod selection tabs"
+              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+            >
+              {clusterPodIds.map((podId) => (
+                <Tab
+                  key={podId}
+                  eventKey={podId}
+                  title={
+                    <TabTitleText>
+                      {podId}{podId === localPodId ? ' (this pod)' : ''}
+                    </TabTitleText>
+                  }
+                />
+              ))}
+            </Tabs>
+          )}
           <Flex justifyContent={{ default: 'justifyContentCenter' }}>
             <FlexItem>
               <Spinner size="lg" aria-label="Loading memory data" />
@@ -225,7 +288,30 @@ export function GpuMemoryPanel({
   if (error && !memoryData) {
     return (
       <Card>
+        <CardHeader>
+          <Content component="h2">GPU Memory Overview</Content>
+        </CardHeader>
         <CardBody>
+          {isClusterMode && (
+            <Tabs
+              activeKey={effectivePodId ?? ''}
+              onSelect={handlePodTabSelect}
+              aria-label="Pod selection tabs"
+              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+            >
+              {clusterPodIds.map((podId) => (
+                <Tab
+                  key={podId}
+                  eventKey={podId}
+                  title={
+                    <TabTitleText>
+                      {podId}{podId === localPodId ? ' (this pod)' : ''}
+                    </TabTitleText>
+                  }
+                />
+              ))}
+            </Tabs>
+          )}
           <Alert variant="warning" title="Memory data unavailable" isInline>
             {error}
           </Alert>
@@ -233,6 +319,9 @@ export function GpuMemoryPanel({
       </Card>
     )
   }
+
+  // Disable model click for remote pods (models aren't in local model list)
+  const effectiveOnModelClick = isRemotePod ? undefined : onModelClick
 
   return (
     <Card>
@@ -267,9 +356,38 @@ export function GpuMemoryPanel({
           ),
         }}
       >
-        <Content component="h2">GPU Memory Overview</Content>
+        <Content component="h2">
+          GPU Memory Overview
+          {isRemotePod && effectivePodId && (
+            <Label color="blue" isCompact style={{ marginLeft: 'var(--pf-t--global--spacer--sm)', verticalAlign: 'middle' }}>
+              {effectivePodId}
+            </Label>
+          )}
+        </Content>
       </CardHeader>
       <CardBody>
+        {/* Pod Tabs for cluster mode */}
+        {isClusterMode && (
+          <Tabs
+            activeKey={effectivePodId ?? ''}
+            onSelect={handlePodTabSelect}
+            aria-label="Pod selection tabs"
+            style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+          >
+            {clusterPodIds.map((podId) => (
+              <Tab
+                key={podId}
+                eventKey={podId}
+                title={
+                  <TabTitleText>
+                    {podId}{podId === localPodId ? ' (this pod)' : ''}
+                  </TabTitleText>
+                }
+              />
+            ))}
+          </Tabs>
+        )}
+
         {/* GPU Tabs for multi-GPU systems */}
         {memoryData && memoryData.gpus.length > 1 && (
           <Tabs
@@ -327,18 +445,16 @@ export function GpuMemoryPanel({
                 axisLeft={null}
                 theme={getTooltipTheme()}
                 onClick={(bar) => {
-                  // Find the model by display_name and call onModelClick
                   const model = selectedGpu?.models.find((m) => m.display_name === bar.id)
-                  if (model && onModelClick) {
-                    onModelClick(model.instance_id)
+                  if (model && effectiveOnModelClick) {
+                    effectiveOnModelClick(model.instance_id)
                   }
                 }}
                 onMouseEnter={(_bar, event) => {
-                  // Check if this is a clickable model bar (not Other or Free)
                   const isClickable = selectedGpu?.models.some(
                     (m) => m.display_name === (_bar as { id: string }).id
                   )
-                  if (isClickable && onModelClick) {
+                  if (isClickable && effectiveOnModelClick) {
                     ;(event.target as HTMLElement).style.cursor = 'pointer'
                   }
                 }}
@@ -358,17 +474,17 @@ export function GpuMemoryPanel({
               {selectedGpu?.models.map((model) => (
                 <FlexItem key={`${model.instance_id}-${model.model_path}`}>
                   <span
-                    onClick={() => onModelClick?.(model.instance_id)}
+                    onClick={() => effectiveOnModelClick?.(model.instance_id)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
-                        onModelClick?.(model.instance_id)
+                        effectiveOnModelClick?.(model.instance_id)
                       }
                     }}
-                    role={onModelClick ? 'button' : undefined}
-                    tabIndex={onModelClick ? 0 : undefined}
-                    aria-label={onModelClick ? `Go to ${model.display_name}` : undefined}
+                    role={effectiveOnModelClick ? 'button' : undefined}
+                    tabIndex={effectiveOnModelClick ? 0 : undefined}
+                    aria-label={effectiveOnModelClick ? `Go to ${model.display_name}` : undefined}
                     style={{
-                      cursor: onModelClick ? 'pointer' : 'default',
+                      cursor: effectiveOnModelClick ? 'pointer' : 'default',
                       fontSize: 'var(--pf-t--global--font--size--sm)',
                       opacity: model.is_sleeping ? 0.7 : 1,
                     }}

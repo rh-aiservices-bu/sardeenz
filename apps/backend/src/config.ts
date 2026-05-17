@@ -53,6 +53,11 @@ export interface Config {
 
   // Virtual GPU configuration (dev mode only)
   virtualGpuCount: number
+
+  // Cluster configuration
+  clusterPeers: string
+  clusterSecret: string
+  clusterExpectedPods: number
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -154,6 +159,11 @@ export const config: Config = {
   // Virtual GPU configuration (dev mode only)
   // 0 = disabled (use real GPUs), N = create N virtual GPUs mapping to physical GPU 0
   virtualGpuCount: getEnvInt('DEV_VIRTUAL_GPU_COUNT', 0),
+
+  // Cluster configuration
+  clusterPeers: getEnv('CLUSTER_PEERS', ''),
+  clusterSecret: getEnv('CLUSTER_SECRET', ''),
+  clusterExpectedPods: getEnvInt('CLUSTER_EXPECTED_PODS', 0),
 }
 
 // Validate auth configuration
@@ -190,3 +200,31 @@ function validateAuthConfig(): void {
 }
 
 validateAuthConfig()
+
+// Validate cluster configuration
+function validateClusterConfig(): void {
+  const isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
+  if (isClusterMode && config.clusterSecret) {
+    const MIN_SECRET_LENGTH = 16
+    if (config.clusterSecret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `CLUSTER_SECRET must be at least ${MIN_SECRET_LENGTH} characters for secure inter-pod HMAC authentication. ` +
+          `Current length: ${config.clusterSecret.length}. Generate a secure value with: openssl rand -hex 32`
+      )
+    }
+  }
+  if (isClusterMode && !config.clusterSecret) {
+    throw new Error(
+      'CLUSTER_SECRET is required in cluster mode. Inter-pod communication cannot be secured without it. ' +
+        'Generate a secure value with: openssl rand -hex 32'
+    )
+  }
+  if (isClusterMode && config.authMode === 'none') {
+    console.warn(
+      'WARNING: Cluster mode with AUTH_MODE=none. The cluster admin API (/api/cluster/*) is unauthenticated. ' +
+        'Set AUTH_MODE to "simple" or "oauth" for production deployments.'
+    )
+  }
+}
+
+validateClusterConfig()

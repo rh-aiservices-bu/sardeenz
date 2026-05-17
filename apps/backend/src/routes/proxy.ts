@@ -12,7 +12,7 @@ import {
   type CompletionRequest,
   type ChatCompletionRequest,
 } from '@sardeenz/types'
-import { ProxyRouter } from '../services/proxy-router.js'
+import { ProxyRouter, FORWARDED_HEADER } from '../services/proxy-router.js'
 import { modelStore } from '../stores/model-store.js'
 import { metricsStore } from '../stores/metrics-store.js'
 import { AppError, NotFoundError } from '../utils/errors.js'
@@ -179,6 +179,9 @@ async function handleJsonProxyRequest(
     })
   }
 
+  // T046: Detect if this request was already forwarded from another pod (loop prevention)
+  const isForwarded = !!request.headers[FORWARDED_HEADER]
+
   const routingTimer = fastify.sardeenzMetrics.routingLatency.startTimer()
 
   try {
@@ -203,6 +206,7 @@ async function handleJsonProxyRequest(
         method: 'POST',
         body: body as Record<string, unknown>,
         streaming: true,
+        isForwarded,
       })
 
       // Check if vLLM returned an error (before streaming started)
@@ -242,6 +246,7 @@ async function handleJsonProxyRequest(
       method: 'POST',
       body: body as Record<string, unknown>,
       streaming: false,
+      isForwarded,
     })
 
     routingTimer({ model, endpoint })

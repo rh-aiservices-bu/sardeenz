@@ -1,4 +1,5 @@
 import { spawn } from 'child_process'
+import { readFileSync, readdirSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type {
@@ -56,6 +57,66 @@ function getDisplayName(modelPath: string): string {
   return parts[parts.length - 1] || modelPath
 }
 
+/**
+ * Find a GPU-using descendant of a given parent PID by scanning /proc.
+ * When engineCorePid extraction from logs fails, the vLLM API server PID
+ * won't appear in nvidia-smi because only the EngineCore worker allocates VRAM.
+ * This function walks /proc to find child processes that ARE in the GPU process list.
+ *
+ * @returns The PID of the GPU-using descendant, or null if none found
+ */
+function findGpuChildPid(parentPid: number, gpuPids: Set<number>): number | null {
+  // If the parent itself is a GPU process, return it directly
+  if (gpuPids.has(parentPid)) return parentPid
+
+  try {
+    // Build parent->children map from /proc
+    const childrenByParent = new Map<number, number[]>()
+    const entries = readdirSync('/proc', { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const pid = parseInt(entry.name, 10)
+      if (isNaN(pid)) continue
+
+      try {
+        const status = readFileSync(`/proc/${pid}/status`, 'utf-8')
+        const ppidMatch = status.match(/^PPid:\s+(\d+)/m)
+        if (ppidMatch) {
+          const ppid = parseInt(ppidMatch[1], 10)
+          const children = childrenByParent.get(ppid)
+          if (children) {
+            children.push(pid)
+          } else {
+            childrenByParent.set(ppid, [pid])
+          }
+        }
+      } catch {
+        // Process may have exited between readdir and readFile
+      }
+    }
+
+    // BFS from parentPid to find a descendant in gpuPids
+    const queue = [parentPid]
+    const visited = new Set<number>()
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) continue
+      visited.add(current)
+
+      const children = childrenByParent.get(current) ?? []
+      for (const child of children) {
+        if (gpuPids.has(child)) return child
+        queue.push(child)
+      }
+    }
+  } catch {
+    // /proc not available (non-Linux) — skip
+  }
+
+  return null
+}
+
 export class MemoryMonitor {
   private logger: Logger
   private metricsCache: Map<string, ResourceMetrics> = new Map()
@@ -111,6 +172,7 @@ export class MemoryMonitor {
       for (const proc of nvidiaSmiInfo.processes) {
         processMemoryByPid.set(proc.pid, proc.gpuMemoryMB)
       }
+      const gpuPidSet = new Set(processMemoryByPid.keys())
 
       // Build per-model GPU memory breakdown using actual NVML process memory
       const allInstances = modelStore.getAll()
@@ -122,7 +184,19 @@ export class MemoryMonitor {
       const models: ModelGpuMemory[] = runningInstances.map((instance, index) => {
         // Use EngineCore PID if available (it's the process that allocates GPU VRAM)
         // Fall back to main process ID if EngineCore PID not extracted from logs
-        const gpuPid = instance.engineCorePid ?? instance.processId
+        let gpuPid = instance.engineCorePid ?? instance.processId
+        // If the PID isn't in nvidia-smi, try to find a GPU-using child process via /proc
+        if (!processMemoryByPid.has(gpuPid)) {
+          const childPid = findGpuChildPid(instance.processId, gpuPidSet)
+          if (childPid) {
+            instance.engineCorePid = childPid
+            gpuPid = childPid
+            this.logger.info(
+              { instanceId: instance.id, engineCorePid: childPid },
+              'Discovered EngineCore PID via /proc fallback'
+            )
+          }
+        }
         const processMemoryMB = processMemoryByPid.get(gpuPid) ?? 0
         const gpuMemoryGb = processMemoryMB / 1024
 
@@ -170,6 +244,7 @@ export class MemoryMonitor {
       for (const proc of nvidiaSmiInfo.processes) {
         pidToGpuMemory.set(proc.pid, { gpuIndex: proc.gpu, memoryMB: proc.gpuMemoryMB })
       }
+      const gpuPidSet = new Set(pidToGpuMemory.keys())
 
       // Get all running and sleeping model instances (sleeping models still consume some GPU memory)
       const allInstances = modelStore.getAll()
@@ -183,7 +258,19 @@ export class MemoryMonitor {
 
       for (let index = 0; index < activeInstances.length; index++) {
         const instance = activeInstances[index]
-        const gpuPid = instance.engineCorePid ?? instance.processId
+        let gpuPid = instance.engineCorePid ?? instance.processId
+        // If the PID isn't in nvidia-smi, try to find a GPU-using child process via /proc
+        if (!pidToGpuMemory.has(gpuPid)) {
+          const childPid = findGpuChildPid(instance.processId, gpuPidSet)
+          if (childPid) {
+            instance.engineCorePid = childPid
+            gpuPid = childPid
+            this.logger.info(
+              { instanceId: instance.id, engineCorePid: childPid },
+              'Discovered EngineCore PID via /proc fallback'
+            )
+          }
+        }
         const baseName = getDisplayName(instance.modelPath)
         const count = (displayNameCounts.get(baseName) ?? 0) + 1
         displayNameCounts.set(baseName, count)
