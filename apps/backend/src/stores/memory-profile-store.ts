@@ -6,8 +6,12 @@
 
 import type Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
+import { hostname } from 'node:os'
 import { getDb } from '../db/index.js'
 import type { MemoryProfile, UpdateMemoryProfileInput } from '@sardeenz/types'
+import { peerStore } from './peer-store.js'
+import { signRequest } from '../services/cluster-auth.js'
+import { config } from '../config.js'
 
 // Row type for SQLite (snake_case)
 interface MemoryProfileRow {
@@ -27,6 +31,9 @@ interface MemoryProfileRow {
   created_by: string | null
   created_at: string
   updated_at: string | null
+  gpu_type: string | null
+  gpu_vram_mb: number | null
+  source_pod_id: string | null
 }
 
 // Convert row to domain object
@@ -52,6 +59,9 @@ function rowToProfile(row: MemoryProfileRow): MemoryProfile {
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
+    gpuType: row.gpu_type ?? undefined,
+    gpuVramMb: row.gpu_vram_mb ?? undefined,
+    sourcePodId: row.source_pod_id ?? undefined,
   }
 }
 
@@ -274,6 +284,41 @@ class MemoryProfileStore {
 
     // Create new profile
     return this.createProfile(data)
+  }
+
+  /**
+   * T071: Auto-push a profile to all healthy peers.
+   * Fire-and-forget with HMAC signing. Only active in cluster mode.
+   */
+  pushProfileToPeers(profile: MemoryProfile): void {
+    // Only push in cluster mode
+    if (!process.env.KUBERNETES_SERVICE_HOST && !config.clusterPeers) return
+
+    const peers = peerStore.getHealthyPeers()
+    const localPodId = hostname()
+
+    for (const peer of peers) {
+      if (peer.podId === localPodId) continue
+
+      const internalPath = '/internal/memory-profiles'
+      const body = JSON.stringify({ profiles: [profile] })
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+      if (config.clusterSecret) {
+        const { signature, timestamp } = signRequest('POST', internalPath, body, config.clusterSecret)
+        headers['x-cluster-signature'] = signature
+        headers['x-cluster-timestamp'] = String(timestamp)
+      }
+
+      fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => {
+        // Fire-and-forget — peers will sync during reconciliation
+      })
+    }
   }
 }
 

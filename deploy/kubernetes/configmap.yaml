@@ -1,0 +1,13 @@
+---
+# Optional configuration overrides for sardeenz pods.
+# These values can be customized per deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sardeenz-config
+  labels:
+    app: sardeenz
+data:
+  AUTH_MODE: "simple"
+  LOG_LEVEL: "info"
+  ENABLE_KVCACHED: "true"

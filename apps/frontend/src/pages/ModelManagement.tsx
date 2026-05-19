@@ -3,24 +3,23 @@ import { DndContext, DragEndEvent, pointerWithin } from '@dnd-kit/core'
 import {
   PageSection,
   Content,
-  Card,
-  CardBody,
   Button,
   Spinner,
-  EmptyState,
-  EmptyStateBody,
-  EmptyStateActions,
-  EmptyStateFooter,
   Flex,
   FlexItem,
   ClipboardCopy,
   ClipboardCopyVariant,
+  Card,
+  CardHeader,
+  CardBody,
   Modal,
   ModalBody,
   ModalFooter,
   ModalHeader,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@patternfly/react-core'
-import { PlusCircleIcon, CubesIcon, SaveIcon, UploadIcon, TrashIcon } from '@patternfly/react-icons'
+import { PlusCircleIcon, SaveIcon, UploadIcon, TrashIcon, ColumnsIcon } from '@patternfly/react-icons'
 import { apiClient } from '../services/api'
 import type {
   ModelInstanceDTO,
@@ -32,71 +31,31 @@ import {
   GpuMemoryPanel,
   SaveConfigurationDialog,
   LoadConfigurationDialog,
-  ModelToolbar,
-  GpuGroupSection,
-  ModelTable,
-  MoveModelDialog,
+  ClusterOverview,
+  PodSelector,
+  NodeModelPane,
 } from '../components'
-import type { ViewMode, FilterState, SortField, SortDirection, ConfigLoadStartedInfo } from '../components'
+import type { ConfigLoadStartedInfo, NodeModelPaneHandle } from '../components'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useOperations } from '../contexts/OperationsContext'
-
-// Helper to determine GPU group key
-function getGpuGroupKey(model: ModelInstanceDTO): string {
-  return model.gpu_ids.length > 1 ? 'multi-gpu' : `gpu-${model.gpu_ids[0]}`
-}
-
-// Format GPU key to display label
-function formatGpuLabel(gpuKey: string): string {
-  if (gpuKey === 'multi-gpu') return 'Multi-GPU'
-  return gpuKey.replace('gpu-', 'GPU ')
-}
+import { useClusterStatus } from '../hooks/useClusterStatus'
 
 function ModelManagement() {
-  const [models, setModels] = useState<ModelInstanceDTO[]>([])
-  const [loading, setLoading] = useState(true)
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false)
-  const [unloadingInstanceId, setUnloadingInstanceId] = useState<string | null>(null)
-  const [sleepingInstanceId, setSleepingInstanceId] = useState<string | null>(null)
-  const [wakingInstanceId, setWakingInstanceId] = useState<string | null>(null)
   const [isSaveConfigOpen, setIsSaveConfigOpen] = useState(false)
   const [isLoadConfigOpen, setIsLoadConfigOpen] = useState(false)
   const [isUnloadAllModalOpen, setIsUnloadAllModalOpen] = useState(false)
   const [isUnloadingAll, setIsUnloadingAll] = useState(false)
   const [gpuRefreshTrigger, setGpuRefreshTrigger] = useState(0)
-  // KV cache total per GPU (gpu index -> total_gb), updated from GpuMemoryPanel
   const [kvCacheTotalByGpu, setKvCacheTotalByGpu] = useState<Record<number, number>>({})
-  // GPU memory utilization per instance (instance_id -> percentage 0-1), from GpuMemoryPanel
-  const [memoryUtilizationByInstance, setMemoryUtilizationByInstance] = useState<
-    Record<string, number>
-  >({})
-
-  // View mode state
-  const [viewMode, setViewMode] = useState<ViewMode>('card')
-
-  // Filter state
-  const [filters, setFilters] = useState<FilterState>({
-    status: [],
-    gpuAssignment: [],
-    searchTerm: '',
-  })
-
-  // Sort state
-  const [sortBy, setSortBy] = useState<SortField>('name')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-
-  // Expansion state
-  const [expandedGpuGroups, setExpandedGpuGroups] = useState<Set<string>>(new Set())
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
-
-  // Move modal state
-  const [moveModalOpen, setMoveModalOpen] = useState(false)
-  const [moveModalModel, setMoveModalModel] = useState<ModelInstanceDTO | null>(null)
-  const [moveTargetGpuIds, setMoveTargetGpuIds] = useState<number[]>([])
-  // State for GPU memory data needed by move modal
+  const [memoryUtilizationByInstance, setMemoryUtilizationByInstance] = useState<Record<string, number>>({})
   const [gpuMemoryData, setGpuMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
 
-  // Configuration loading tracking state
+  // Local models for header counts and unload-all
+  const [localModels, setLocalModels] = useState<ModelInstanceDTO[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Configuration loading tracking
   const [configLoadingInfo, setConfigLoadingInfo] = useState<{
     operationId: string
     expectedModelCount: number
@@ -104,190 +63,81 @@ function ModelManagement() {
   } | null>(null)
   const configLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Cluster pod IDs for GPU memory panel
+  const [clusterPodIds, setClusterPodIds] = useState<string[]>([])
+
+  // Pane refs for cross-pane drag-and-drop
+  const leftPaneRef = useRef<NodeModelPaneHandle>(null)
+  const rightPaneRef = useRef<NodeModelPaneHandle>(null)
+  const singlePaneRef = useRef<NodeModelPaneHandle>(null)
+
+  // Node selector and split view state
+  const [selectedPodId, setSelectedPodId] = useState<string | undefined>(undefined)
+  const [splitViewActive, setSplitViewActive] = useState(false)
+  const [splitRightPodId, setSplitRightPodId] = useState<string | undefined>(undefined)
+
   const { addNotification } = useNotifications()
   const { startOperation, endOperation } = useOperations()
+  const clusterData = useClusterStatus({
+    onLeaderChange: useCallback((leaderId: string, leaderAddress: string | null) => {
+      addNotification({
+        title: 'Cluster leader changed',
+        description: leaderAddress
+          ? `New leader: ${leaderId}. Redirecting to ${leaderAddress}...`
+          : `New leader: ${leaderId}. Waiting for leader address...`,
+        variant: 'info',
+      })
+    }, [addNotification]),
+  })
 
-  // Trigger GPU memory panel refresh
+  // Initialize selected pod to local pod
+  useEffect(() => {
+    if (clusterData.isClusterMode && clusterData.clusterStatus?.localPodId && !selectedPodId) {
+      setSelectedPodId(clusterData.clusterStatus.localPodId)
+    }
+  }, [clusterData.isClusterMode, clusterData.clusterStatus?.localPodId, selectedPodId])
+
+  // Initialize split right pod to a different pod if available
+  useEffect(() => {
+    if (splitViewActive && !splitRightPodId && clusterPodIds.length > 1) {
+      const otherPod = clusterPodIds.find((id) => id !== selectedPodId)
+      if (otherPod) setSplitRightPodId(otherPod)
+    }
+  }, [splitViewActive, splitRightPodId, clusterPodIds, selectedPodId])
+
+  // Fetch cluster pod IDs
+  useEffect(() => {
+    if (!clusterData.isClusterMode) return
+    apiClient.getClusterPods().then((res) => {
+      setClusterPodIds(res.pods.map((p) => p.podId))
+    }).catch(() => { })
+  }, [clusterData.isClusterMode, clusterData.clusterStatus?.podCount])
+
   const triggerGpuRefresh = useCallback(() => {
     setGpuRefreshTrigger((prev) => prev + 1)
   }, [])
 
-  // Handle memory data updates from GpuMemoryPanel
   const handleMemoryDataChange = useCallback((data: MultiGpuMemoryUsageResponse) => {
-    setGpuMemoryData(data) // Store for move modal
+    setGpuMemoryData(data)
     const kvCacheMap: Record<number, number> = {}
     const memoryMap: Record<string, number> = {}
-
     for (const gpu of data.gpus) {
-      // Use per-GPU kvcache if available, otherwise fall back to global
       const kvcacheTotal = gpu.kvcache?.total_gb ?? data.kvcache.total_gb
       kvCacheMap[gpu.gpu_index] = kvcacheTotal
-
-      // Memory utilization per model instance (for live updates after sleep/wake)
       for (const model of gpu.models) {
         const utilization = gpu.total_gb > 0 ? model.gpu_memory_gb / gpu.total_gb : 0
         memoryMap[model.instance_id] = utilization
       }
     }
-
     setKvCacheTotalByGpu(kvCacheMap)
     setMemoryUtilizationByInstance(memoryMap)
   }, [])
 
-  // Count running models for configuration save
-  const runningModelCount = useMemo(
-    () => models.filter((m) => m.status === 'running').length,
-    [models]
-  )
-
-  const inferenceUrl = useMemo(() => `${window.location.origin}/v1`, [])
-
-  // Get available GPUs from loaded models (for filtering)
-  const availableGpusFromModels = useMemo(() => {
-    const gpuSet = new Set<string>()
-    models.forEach((model) => {
-      gpuSet.add(getGpuGroupKey(model))
-    })
-    // Sort: gpu-0, gpu-1, ..., multi-gpu
-    return Array.from(gpuSet).sort((a, b) => {
-      if (a === 'multi-gpu') return 1
-      if (b === 'multi-gpu') return -1
-      return a.localeCompare(b)
-    })
-  }, [models])
-
-  // Get all available GPUs from hardware (includes empty GPUs for drag-drop targets)
-  const allAvailableGpus = useMemo(() => {
-    if (!gpuMemoryData?.gpus) {
-      // Fall back to model-derived GPUs if no memory data yet
-      return availableGpusFromModels
-    }
-    const gpuKeys = gpuMemoryData.gpus.map((gpu) => `gpu-${gpu.gpu_index}`)
-    // Add multi-gpu if any models use multiple GPUs
-    if (models.some((m) => m.gpu_ids.length > 1)) {
-      gpuKeys.push('multi-gpu')
-    }
-    return gpuKeys.sort((a, b) => {
-      if (a === 'multi-gpu') return 1
-      if (b === 'multi-gpu') return -1
-      return a.localeCompare(b)
-    })
-  }, [gpuMemoryData, models, availableGpusFromModels])
-
-  // Filter and sort models
-  const filteredModels = useMemo(() => {
-    return models
-      .filter((model) => {
-        // Status filter
-        if (filters.status.length > 0 && !filters.status.includes(model.status)) {
-          return false
-        }
-        // GPU assignment filter
-        if (filters.gpuAssignment.length > 0) {
-          const gpuKey = getGpuGroupKey(model)
-          if (!filters.gpuAssignment.includes(gpuKey)) {
-            return false
-          }
-        }
-        // Search filter
-        if (filters.searchTerm) {
-          const term = filters.searchTerm.toLowerCase()
-          return (
-            model.model_path.toLowerCase().includes(term) ||
-            model.model_name.toLowerCase().includes(term)
-          )
-        }
-        return true
-      })
-      .sort((a, b) => {
-        let comparison = 0
-        switch (sortBy) {
-          case 'name':
-            comparison = a.model_path.localeCompare(b.model_path)
-            break
-          case 'startTime':
-            comparison = (a.loaded_at || '').localeCompare(b.loaded_at || '')
-            break
-          case 'memoryUsage':
-            comparison = a.gpu_memory_utilization - b.gpu_memory_utilization
-            break
-        }
-        return sortDirection === 'asc' ? comparison : -comparison
-      })
-  }, [models, filters, sortBy, sortDirection])
-
-  // Group models by GPU for card view
-  const groupedModels = useMemo(() => {
-    const groups: Record<string, ModelInstanceDTO[]> = {}
-
-    filteredModels.forEach((model) => {
-      const gpuKey = getGpuGroupKey(model)
-      if (!groups[gpuKey]) {
-        groups[gpuKey] = []
-      }
-      groups[gpuKey].push(model)
-    })
-
-    return groups
-  }, [filteredModels])
-
-  // Initialize expanded GPU groups when GPUs are available (only expand non-empty groups)
-  useEffect(() => {
-    if (allAvailableGpus.length > 0 && expandedGpuGroups.size === 0) {
-      // Only expand groups that have models
-      const nonEmptyGroups = allAvailableGpus.filter((gpuKey) => {
-        const modelsInGroup = groupedModels[gpuKey]
-        return modelsInGroup && modelsInGroup.length > 0
-      })
-      setExpandedGpuGroups(new Set(nonEmptyGroups))
-    }
-  }, [allAvailableGpus, expandedGpuGroups.size, groupedModels])
-
-  // Auto-collapse empty groups and auto-expand groups that receive models
-  useEffect(() => {
-    setExpandedGpuGroups((prev) => {
-      const next = new Set(prev)
-      let changed = false
-
-      // Collapse groups that became empty
-      for (const gpuKey of prev) {
-        const modelsInGroup = groupedModels[gpuKey]
-        if (!modelsInGroup || modelsInGroup.length === 0) {
-          next.delete(gpuKey)
-          changed = true
-        }
-      }
-
-      // Expand groups that have models but are not expanded
-      for (const gpuKey of Object.keys(groupedModels)) {
-        const modelsInGroup = groupedModels[gpuKey]
-        if (modelsInGroup && modelsInGroup.length > 0 && !prev.has(gpuKey)) {
-          next.add(gpuKey)
-          changed = true
-        }
-      }
-
-      return changed ? next : prev
-    })
-  }, [groupedModels])
-
-  // Get ordered GPU keys for rendering (includes empty GPUs for drag-drop targets)
-  const orderedGpuKeys = useMemo(() => {
-    // Start with all available GPUs from hardware
-    const keys = new Set(allAvailableGpus)
-    // Add any additional keys from grouped models (e.g., multi-gpu)
-    Object.keys(groupedModels).forEach((k) => keys.add(k))
-    return Array.from(keys).sort((a, b) => {
-      if (a === 'multi-gpu') return 1
-      if (b === 'multi-gpu') return -1
-      return a.localeCompare(b)
-    })
-  }, [allAvailableGpus, groupedModels])
-
-  const fetchModels = useCallback(async () => {
+  // Fetch local models (for header counts, config tracking, unload-all)
+  const fetchLocalModels = useCallback(async () => {
     try {
       const response = await apiClient.listModels()
-      setModels(response.models)
+      setLocalModels(response.models)
     } catch (err) {
       addNotification({
         title: 'Error fetching models',
@@ -300,371 +150,227 @@ function ModelManagement() {
   }, [addNotification])
 
   useEffect(() => {
-    fetchModels()
-
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(fetchModels, 5000)
+    fetchLocalModels()
+    const interval = setInterval(fetchLocalModels, 5000)
     return () => clearInterval(interval)
-  }, [fetchModels])
+  }, [fetchLocalModels])
 
-  // Check if configuration loading is complete
+  // Config loading tracking
   useEffect(() => {
     if (!configLoadingInfo) return
-
-    // Count models that are running or failed
-    const runningCount = models.filter((m) => m.status === 'running').length
-    const failedCount = models.filter((m) => m.status === 'failed').length
+    const failedCount = localModels.filter((m) => m.status === 'failed').length
+    // In cluster mode use the cluster-wide running count; localModels only covers the local pod.
+    const runningCount = clusterData.isClusterMode
+      ? (clusterData.clusterStatus?.totalModelsLoaded ?? 0)
+      : localModels.filter((m) => m.status === 'running').length
     const terminalCount = runningCount + failedCount
 
-    // Check if we've reached the expected count
     if (terminalCount >= configLoadingInfo.expectedModelCount) {
-      // Clear timeout
       if (configLoadTimeoutRef.current) {
         clearTimeout(configLoadTimeoutRef.current)
         configLoadTimeoutRef.current = null
       }
-
       endOperation(configLoadingInfo.operationId)
       setConfigLoadingInfo(null)
-
       if (failedCount > 0) {
-        addNotification({
-          title: 'Configuration partially loaded',
-          description: `${runningCount} models loaded, ${failedCount} failed`,
-          variant: 'warning',
-        })
+        addNotification({ title: 'Configuration partially loaded', description: `${runningCount} models loaded, ${failedCount} failed`, variant: 'warning' })
       } else {
-        addNotification({
-          title: 'Configuration loaded',
-          description: `${configLoadingInfo.configurationName} loaded successfully`,
-          variant: 'success',
-        })
+        addNotification({ title: 'Configuration loaded', description: `${configLoadingInfo.configurationName} loaded successfully`, variant: 'success' })
       }
     }
-  }, [models, configLoadingInfo, endOperation, addNotification])
+  }, [localModels, configLoadingInfo, endOperation, addNotification, clusterData.isClusterMode, clusterData.clusterStatus?.totalModelsLoaded])
 
-  // Cleanup config loading timeout on unmount
   useEffect(() => {
     return () => {
-      if (configLoadTimeoutRef.current) {
-        clearTimeout(configLoadTimeoutRef.current)
-      }
+      if (configLoadTimeoutRef.current) clearTimeout(configLoadTimeoutRef.current)
     }
   }, [])
 
+  const runningModelCount = useMemo(
+    () => localModels.filter((m) => m.status === 'running').length,
+    [localModels]
+  )
+
+  // Cluster-wide total (used for header button states and Save Config dialog count)
+  const totalModelCount = useMemo(
+    () => clusterData.isClusterMode
+      ? (clusterData.clusterStatus?.totalModelsLoaded ?? runningModelCount)
+      : runningModelCount,
+    [clusterData.isClusterMode, clusterData.clusterStatus?.totalModelsLoaded, runningModelCount]
+  )
+
+  const inferenceUrl = useMemo(() => `${window.location.origin}/v1`, [])
+
+  const isLocalPod = useMemo(() => {
+    if (!clusterData.isClusterMode) return true
+    return selectedPodId === clusterData.clusterStatus?.localPodId
+  }, [clusterData.isClusterMode, clusterData.clusterStatus?.localPodId, selectedPodId])
+
+  const isRightLocalPod = useMemo(() => {
+    if (!clusterData.isClusterMode) return true
+    return splitRightPodId === clusterData.clusterStatus?.localPodId
+  }, [clusterData.isClusterMode, clusterData.clusterStatus?.localPodId, splitRightPodId])
+
+  // Effective pod ID (for single-pod mode, use a stable value)
+  const effectivePodId = clusterData.isClusterMode
+    ? selectedPodId || clusterData.clusterStatus?.localPodId || 'local'
+    : 'local'
+
   const handleLoadModel = async (request: LoadModelRequest) => {
-    // Start the load and return instance_id for SSE subscription
     const result = await apiClient.loadModel(request)
     return { instance_id: result.instance_id }
   }
 
   const handleLoadSuccess = () => {
-    fetchModels()
+    fetchLocalModels()
     triggerGpuRefresh()
-    addNotification({
-      title: 'Model loaded',
-      description: 'Model is now ready for inference',
-      variant: 'success',
-    })
-  }
-
-  const handleUnloadModel = async (instanceId: string, modelPath: string, isFailed: boolean) => {
-    setUnloadingInstanceId(instanceId)
-    const opId = startOperation({
-      type: 'unload',
-      label: `Unloading ${modelPath}`,
-      targetId: instanceId,
-    })
-    try {
-      await apiClient.unloadModelByInstanceId(instanceId)
-      addNotification({
-        title: isFailed ? 'Model removed' : 'Model unloaded',
-        description: isFailed
-          ? `Successfully removed: ${modelPath}`
-          : `Successfully unloaded: ${modelPath}`,
-        variant: 'success',
-      })
-      await fetchModels()
-      triggerGpuRefresh()
-    } catch (err) {
-      addNotification({
-        title: isFailed ? 'Failed to remove model' : 'Failed to unload model',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'danger',
-      })
-    } finally {
-      setUnloadingInstanceId(null)
-      endOperation(opId)
-    }
-  }
-
-  const handleSleepModel = async (instanceId: string) => {
-    const model = models.find((m) => m.id === instanceId)
-    if (!model) return
-
-    setSleepingInstanceId(instanceId)
-    const opId = startOperation({
-      type: 'sleep',
-      label: `Sleeping ${model.model_path}`,
-      targetId: instanceId,
-    })
-    try {
-      await apiClient.sleepModel(instanceId)
-      addNotification({
-        title: 'Model sleeping',
-        description: `${model.model_path} has been put to sleep`,
-        variant: 'success',
-      })
-      await fetchModels()
-      triggerGpuRefresh()
-    } catch (err) {
-      addNotification({
-        title: 'Failed to sleep model',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'danger',
-      })
-    } finally {
-      setSleepingInstanceId(null)
-      endOperation(opId)
-    }
-  }
-
-  const handleWakeModel = async (instanceId: string) => {
-    const model = models.find((m) => m.id === instanceId)
-    if (!model) return
-
-    setWakingInstanceId(instanceId)
-    const opId = startOperation({
-      type: 'wake',
-      label: `Waking ${model.model_path}`,
-      targetId: instanceId,
-    })
-    try {
-      await apiClient.wakeModel(instanceId)
-      addNotification({
-        title: 'Model woken up',
-        description: `${model.model_path} is now ready for inference`,
-        variant: 'success',
-      })
-      await fetchModels()
-      triggerGpuRefresh()
-    } catch (err) {
-      addNotification({
-        title: 'Failed to wake model',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'danger',
-      })
-    } finally {
-      setWakingInstanceId(null)
-      endOperation(opId)
-    }
+    addNotification({ title: 'Model loaded', description: 'Model is now ready for inference', variant: 'success' })
   }
 
   const handleConfigSaved = () => {
-    addNotification({
-      title: 'Configuration saved',
-      description: 'Model configuration saved successfully',
-      variant: 'success',
-    })
+    addNotification({ title: 'Configuration saved', description: 'Model configuration saved successfully', variant: 'success' })
   }
 
   const handleConfigLoadStarted = (info: ConfigLoadStartedInfo) => {
-    // Start the operation (will be ended when models are loaded)
-    const opId = startOperation({
-      type: 'load-config',
-      label: `Loading configuration: ${info.configurationName}`,
-    })
-
-    setConfigLoadingInfo({
-      operationId: opId,
-      expectedModelCount: info.expectedModelCount,
-      configurationName: info.configurationName,
-    })
-
-    addNotification({
-      title: 'Loading configuration',
-      description: info.message,
-      variant: 'info',
-    })
-
-    // Set timeout (5 minutes) to prevent infinite loading state
+    const opId = startOperation({ type: 'load-config', label: `Loading configuration: ${info.configurationName}` })
+    setConfigLoadingInfo({ operationId: opId, expectedModelCount: info.expectedModelCount, configurationName: info.configurationName })
+    addNotification({ title: 'Loading configuration', description: info.message, variant: 'info' })
+    if (info.skippedPods && info.skippedPods.length > 0) {
+      addNotification({
+        title: 'Some pods unavailable',
+        description: `Models for the following pods were skipped: ${info.skippedPods.join(', ')}`,
+        variant: 'warning',
+      })
+    }
     configLoadTimeoutRef.current = setTimeout(() => {
       setConfigLoadingInfo((current) => {
         if (current) {
           endOperation(current.operationId)
-          addNotification({
-            title: 'Configuration load timeout',
-            description: 'Some models may not have loaded successfully',
-            variant: 'warning',
-          })
+          addNotification({ title: 'Configuration load timeout', description: 'Some models may not have loaded successfully', variant: 'warning' })
         }
         return null
       })
     }, 5 * 60 * 1000)
-
-    // Trigger immediate refresh
-    fetchModels()
+    fetchLocalModels()
     triggerGpuRefresh()
   }
 
   const handleUnloadAll = async () => {
     setIsUnloadingAll(true)
-    const opId = startOperation({
-      type: 'unload-all',
-      label: `Unloading all models (${models.length})`,
-    })
     try {
-      for (const model of models) {
+      if (clusterData.isClusterMode && clusterPodIds.length > 0) {
+        const allModels: ModelInstanceDTO[] = []
+        for (const podId of clusterPodIds) {
+          try {
+            const res = await apiClient.getClusterPodModelsFull(podId)
+            allModels.push(...res.models)
+          } catch (err) {
+            addNotification({
+              title: `Failed to list models on pod ${podId}`,
+              description: err instanceof Error ? err.message : 'Unknown error',
+              variant: 'warning',
+            })
+          }
+        }
+        const opId = startOperation({ type: 'unload-all', label: `Unloading all models (${allModels.length}) across ${clusterPodIds.length} pods` })
         try {
-          await apiClient.unloadModelByInstanceId(model.id)
+          for (const model of allModels) {
+            try {
+              await apiClient.clusterUnloadModel(model.id)
+            } catch (err) {
+              addNotification({
+                title: 'Failed to unload model',
+                description: `${model.model_path}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                variant: 'warning',
+              })
+            }
+          }
+          addNotification({ title: 'All models unloaded', description: `Successfully unloaded all models across all pods`, variant: 'success' })
+          await fetchLocalModels()
+          triggerGpuRefresh()
+        } finally {
+          endOperation(opId)
+        }
+      } else {
+        const opId = startOperation({ type: 'unload-all', label: `Unloading all models (${localModels.length})` })
+        try {
+          for (const model of localModels) {
+            try {
+              await apiClient.unloadModelByInstanceId(model.id)
+            } catch (err) {
+              addNotification({
+                title: 'Failed to unload model',
+                description: `${model.model_path}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                variant: 'warning',
+              })
+            }
+          }
+          addNotification({ title: 'All models unloaded', description: 'Successfully unloaded all models', variant: 'success' })
+          await fetchLocalModels()
+          triggerGpuRefresh()
         } catch (err) {
-          addNotification({
-            title: 'Failed to unload model',
-            description: `${model.model_path}: ${err instanceof Error ? err.message : 'Unknown error'}`,
-            variant: 'warning',
-          })
+          addNotification({ title: 'Error unloading models', description: err instanceof Error ? err.message : 'Unknown error', variant: 'danger' })
+        } finally {
+          endOperation(opId)
         }
       }
-      addNotification({
-        title: 'All models unloaded',
-        description: 'Successfully unloaded all models',
-        variant: 'success',
-      })
-      await fetchModels()
-      triggerGpuRefresh()
-    } catch (err) {
-      addNotification({
-        title: 'Error unloading models',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'danger',
-      })
     } finally {
       setIsUnloadingAll(false)
       setIsUnloadAllModalOpen(false)
-      endOperation(opId)
     }
   }
 
-  // Drag-and-drop handler
+  // Drag-and-drop: route to the correct pane based on drop target's podId
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
     if (!over) return
-
     const model = active.data?.current?.model as ModelInstanceDTO | undefined
     if (!model) return
-
-    // Extract target GPU from drop zone id (e.g., "gpu-drop-0" -> 0)
     const targetGpuId = over.data?.current?.gpuIndex as number | undefined
+    const targetPodId = over.data?.current?.podId as string | undefined
+    const sourcePodId = active.data?.current?.sourcePodId as string | undefined
     if (targetGpuId === undefined || targetGpuId === -1) return
+    if (model.gpu_ids.includes(targetGpuId) && (!sourcePodId || !targetPodId || sourcePodId === targetPodId)) return
 
-    // Don't open modal if dropping on same GPU
-    if (model.gpu_ids.includes(targetGpuId)) return
-
-    // Open move modal with preselected target GPU
-    setMoveModalModel(model)
-    setMoveTargetGpuIds([targetGpuId])
-    setMoveModalOpen(true)
-  }, [])
-
-  // Move handlers (for menu item in ModelCardCompact)
-  const handleMoveModel = useCallback((model: ModelInstanceDTO) => {
-    setMoveModalModel(model)
-    setMoveTargetGpuIds([])
-    setMoveModalOpen(true)
-  }, [])
-
-  const handleMoveComplete = useCallback(() => {
-    fetchModels()
-    triggerGpuRefresh()
-    setMoveModalOpen(false)
-    setMoveModalModel(null)
-    setMoveTargetGpuIds([])
-  }, [fetchModels, triggerGpuRefresh])
-
-  // Toolbar handlers
-  const handleFiltersChange = (newFilters: FilterState) => {
-    setFilters(newFilters)
-  }
-
-  const handleSortChange = (field: SortField, direction: SortDirection) => {
-    setSortBy(field)
-    setSortDirection(direction)
-  }
-
-  const handleClearAllFilters = () => {
-    setFilters({
-      status: [],
-      gpuAssignment: [],
-      searchTerm: '',
-    })
-  }
-
-  // GPU group toggle
-  const handleGpuGroupToggle = (gpuKey: string) => {
-    setExpandedGpuGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(gpuKey)) {
-        next.delete(gpuKey)
-      } else {
-        next.add(gpuKey)
+    if (splitViewActive) {
+      if (targetPodId === selectedPodId) {
+        leftPaneRef.current?.openMoveDialog(model, [targetGpuId], targetPodId, sourcePodId)
+      } else if (targetPodId === splitRightPodId) {
+        rightPaneRef.current?.openMoveDialog(model, [targetGpuId], targetPodId, sourcePodId)
       }
-      return next
-    })
-  }
-
-  // Card toggle
-  const handleCardToggle = (instanceId: string) => {
-    setExpandedCards((prev) => {
-      const next = new Set(prev)
-      if (next.has(instanceId)) {
-        next.delete(instanceId)
-      } else {
-        next.add(instanceId)
-      }
-      return next
-    })
-  }
-
-  // Handle click from GPU memory panel - scroll to model card
-  const handleMemoryBarClick = useCallback(
-    (instanceId: string) => {
-      const model = models.find((m) => m.id === instanceId)
-      if (!model) return
-
-      const gpuKey = getGpuGroupKey(model)
-
-      // Ensure GPU group is expanded
-      setExpandedGpuGroups((prev) => new Set([...prev, gpuKey]))
-
-      // Ensure card is expanded
-      setExpandedCards((prev) => new Set([...prev, instanceId]))
-
-      // Scroll to card after state updates
-      requestAnimationFrame(() => {
-        const cardElement = document.getElementById(`model-card-${instanceId}`)
-        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      })
-    },
-    [models]
-  )
-
-  // Table sort handler
-  const handleTableSort = (field: SortField) => {
-    if (field === sortBy) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
     } else {
-      setSortBy(field)
-      setSortDirection('asc')
+      singlePaneRef.current?.openMoveDialog(model, [targetGpuId], targetPodId, sourcePodId)
     }
-  }
+  }, [splitViewActive, selectedPodId, splitRightPodId])
+
+  const handleMemoryBarClick = useCallback(
+    (instanceId: string, podId?: string) => {
+      // Switch left/main panel to the pod hosting this model
+      if (podId && podId !== selectedPodId) {
+        setSelectedPodId(podId)
+      }
+
+      // Retry scrolling until the model card exists in the DOM (pod switch triggers re-render + fetch)
+      let attempts = 0
+      const tryScroll = () => {
+        const el = document.getElementById(`model-card-${instanceId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else if (attempts < 20) {
+          attempts++
+          setTimeout(tryScroll, 150)
+        }
+      }
+      requestAnimationFrame(tryScroll)
+    },
+    [selectedPodId]
+  )
 
   if (loading) {
     return (
       <PageSection>
         <Flex justifyContent={{ default: 'justifyContentCenter' }}>
-          <FlexItem>
-            <Spinner size="xl" aria-label="Loading models" />
-          </FlexItem>
+          <FlexItem><Spinner size="xl" aria-label="Loading models" /></FlexItem>
         </Flex>
       </PageSection>
     )
@@ -672,175 +378,177 @@ function ModelManagement() {
 
   return (
     <DndContext onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
-      <PageSection>
-        <Flex
-          justifyContent={{ default: 'justifyContentSpaceBetween' }}
-          alignItems={{ default: 'alignItemsCenter' }}
-        >
+      {/* Sticky header */}
+      <PageSection stickyOnBreakpoint={{ default: 'top' }} hasShadowBottom>
+        <Content component="h1">Model Management</Content>
+        <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
           <FlexItem>
-            <Content component="h1">Model Placement Management</Content>
-            <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>
-              Inference URL:{' '}
-              <ClipboardCopy
-                isReadOnly
-                hoverTip="Copy"
-                clickTip="Copied"
-                variant={ClipboardCopyVariant.inline}
-              >
-                {inferenceUrl}
-              </ClipboardCopy>
-            </span>
+            <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
+              <FlexItem>
+                <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>Inference URL:</span>
+              </FlexItem>
+              <FlexItem>
+                <ClipboardCopy isReadOnly hoverTip="Copy" clickTip="Copied" variant={ClipboardCopyVariant.inline}>
+                  {inferenceUrl}
+                </ClipboardCopy>
+              </FlexItem>
+            </Flex>
           </FlexItem>
           <FlexItem>
             <Flex gap={{ default: 'gapSm' }}>
               <FlexItem>
-                <Button
-                  variant="secondary"
-                  icon={<SaveIcon />}
-                  onClick={() => setIsSaveConfigOpen(true)}
-                  isDisabled={runningModelCount === 0}
-                >
+                <Button variant="secondary" icon={<SaveIcon />} onClick={() => setIsSaveConfigOpen(true)} isDisabled={totalModelCount === 0}>
                   Save Config
                 </Button>
               </FlexItem>
               <FlexItem>
-                <Button
-                  variant="secondary"
-                  icon={<UploadIcon />}
-                  onClick={() => setIsLoadConfigOpen(true)}
-                >
+                <Button variant="secondary" icon={<UploadIcon />} onClick={() => setIsLoadConfigOpen(true)}>
                   Load Config
                 </Button>
               </FlexItem>
               <FlexItem>
-                <Button
-                  variant="secondary"
-                  icon={<TrashIcon />}
-                  onClick={() => setIsUnloadAllModalOpen(true)}
-                  isDisabled={models.length === 0}
-                >
+                <Button variant="secondary" icon={<TrashIcon />} onClick={() => setIsUnloadAllModalOpen(true)} isDisabled={totalModelCount === 0}>
                   Unload All
                 </Button>
               </FlexItem>
               <FlexItem>
-                <Button
-                  variant="primary"
-                  icon={<PlusCircleIcon />}
-                  onClick={() => setIsLoadModalOpen(true)}
-                >
+                <Button variant="primary" icon={<PlusCircleIcon />} onClick={() => setIsLoadModalOpen(true)}>
                   Start Model
                 </Button>
               </FlexItem>
             </Flex>
           </FlexItem>
         </Flex>
+      </PageSection>
 
-        {/* GPU Memory Overview Panel */}
+      {/* Scrollable content */}
+      <PageSection>
+        {/* Cluster Overview */}
+        {clusterData.isClusterMode && (
+          <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
+            <ClusterOverview clusterData={clusterData} />
+          </div>
+        )}
+
+        {/* GPU Memory Overview */}
         <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
           <GpuMemoryPanel
             onModelClick={handleMemoryBarClick}
             refreshTrigger={gpuRefreshTrigger}
             onMemoryDataChange={handleMemoryDataChange}
+            localPodId={clusterData.isClusterMode ? clusterData.clusterStatus?.localPodId : null}
+            clusterPodIds={clusterData.isClusterMode ? clusterPodIds : undefined}
           />
         </div>
 
-        {models.length === 0 ? (
-          <Card style={{ marginTop: 'var(--pf-t--global--spacer--xl)' }}>
+        {/* Model Management card */}
+        <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
+          <Card>
+            <CardHeader>
+              <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
+                <FlexItem>
+                  <Content component="h2">Model Management</Content>
+                </FlexItem>
+                <FlexItem>
+                  {clusterData.isClusterMode && clusterPodIds.length > 1 && (
+                    <FlexItem>
+                      <ToggleGroup aria-label="Split view toggle">
+                        <ToggleGroupItem
+                          icon={<ColumnsIcon />}
+                          text="Split View"
+                          isSelected={splitViewActive}
+                          onChange={() => setSplitViewActive(!splitViewActive)}
+                          aria-label="Toggle split view"
+                        />
+                      </ToggleGroup>
+                    </FlexItem>
+                  )}
+                </FlexItem>
+              </Flex>
+            </CardHeader>
             <CardBody>
-              <EmptyState titleText="No models started" icon={CubesIcon}>
-                <EmptyStateBody>Start a model to get started with inference.</EmptyStateBody>
-                <EmptyStateFooter>
-                  <EmptyStateActions>
-                    <Button
-                      variant="primary"
-                      onClick={() => setIsLoadModalOpen(true)}
-                      icon={<PlusCircleIcon />}
-                    >
-                      Start Model
-                    </Button>
-                  </EmptyStateActions>
-                </EmptyStateFooter>
-              </EmptyState>
+              {clusterData.isClusterMode && splitViewActive && clusterPodIds.length > 1 ? (
+                // Split view: two panes side by side, each with its own pod selector
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 'var(--pf-t--global--spacer--lg)', alignItems: 'stretch' }}>
+                  <div>
+                    <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+                      <PodSelector
+                        selectedPodId={selectedPodId}
+                        onSelect={setSelectedPodId}
+                        isClusterMode={clusterData.isClusterMode}
+                        label="Left node"
+                      />
+                    </div>
+                    <NodeModelPane
+                      ref={leftPaneRef}
+                      podId={effectivePodId}
+                      isLocalPod={isLocalPod}
+                      isClusterMode={clusterData.isClusterMode}
+                      gpuMemoryData={isLocalPod ? gpuMemoryData : null}
+                      kvCacheTotalByGpu={isLocalPod ? kvCacheTotalByGpu : {}}
+                      memoryUtilizationByInstance={isLocalPod ? memoryUtilizationByInstance : {}}
+                      onGpuRefresh={triggerGpuRefresh}
+                      onModelsChanged={fetchLocalModels}
+                      isSplitView
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '1px', height: '100%', backgroundColor: 'var(--pf-t--global--border--color--default)' }} />
+                  </div>
+                  <div>
+                    <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+                      <PodSelector
+                        selectedPodId={splitRightPodId}
+                        onSelect={setSplitRightPodId}
+                        isClusterMode={clusterData.isClusterMode}
+                        label="Right node"
+                      />
+                    </div>
+                    {splitRightPodId && (
+                      <NodeModelPane
+                        ref={rightPaneRef}
+                        podId={splitRightPodId}
+                        isLocalPod={isRightLocalPod}
+                        isClusterMode={clusterData.isClusterMode}
+                        gpuMemoryData={isRightLocalPod ? gpuMemoryData : null}
+                        kvCacheTotalByGpu={isRightLocalPod ? kvCacheTotalByGpu : {}}
+                        memoryUtilizationByInstance={isRightLocalPod ? memoryUtilizationByInstance : {}}
+                        onGpuRefresh={triggerGpuRefresh}
+                        onModelsChanged={fetchLocalModels}
+                        isSplitView
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                // Single pane view, with pod selector when in cluster mode
+                <div>
+                  {clusterData.isClusterMode && (
+                    <div style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}>
+                      <PodSelector
+                        selectedPodId={selectedPodId}
+                        onSelect={setSelectedPodId}
+                        isClusterMode={clusterData.isClusterMode}
+                        label="Select node"
+                      />
+                    </div>
+                  )}
+                  <NodeModelPane
+                    ref={singlePaneRef}
+                    podId={effectivePodId}
+                    isLocalPod={isLocalPod}
+                    isClusterMode={clusterData.isClusterMode}
+                    gpuMemoryData={isLocalPod ? gpuMemoryData : null}
+                    kvCacheTotalByGpu={isLocalPod ? kvCacheTotalByGpu : {}}
+                    memoryUtilizationByInstance={isLocalPod ? memoryUtilizationByInstance : {}}
+                    onGpuRefresh={triggerGpuRefresh}
+                    onModelsChanged={fetchLocalModels}
+                  />
+                </div>
+              )}
             </CardBody>
           </Card>
-        ) : (
-          <>
-            {/* Toolbar */}
-            <div style={{ marginTop: 'var(--pf-t--global--spacer--lg)' }}>
-              <ModelToolbar
-                filters={filters}
-                onFiltersChange={handleFiltersChange}
-                sortBy={sortBy}
-                sortDirection={sortDirection}
-                onSortChange={handleSortChange}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                availableGpus={allAvailableGpus}
-                onClearAllFilters={handleClearAllFilters}
-              />
-            </div>
-
-            {/* Model List/Table */}
-            <div style={{ marginTop: 'var(--pf-t--global--spacer--md)' }}>
-              {filteredModels.length === 0 ? (
-                <Card>
-                  <CardBody>
-                    <EmptyState titleText="No models match filters" icon={CubesIcon}>
-                      <EmptyStateBody>Try adjusting your filters or search term.</EmptyStateBody>
-                      <EmptyStateFooter>
-                        <EmptyStateActions>
-                          <Button variant="link" onClick={handleClearAllFilters}>
-                            Clear all filters
-                          </Button>
-                        </EmptyStateActions>
-                      </EmptyStateFooter>
-                    </EmptyState>
-                  </CardBody>
-                </Card>
-              ) : viewMode === 'card' ? (
-                // Card View with GPU Groups
-                <>
-                  {orderedGpuKeys.map((gpuKey) => (
-                    <GpuGroupSection
-                      key={gpuKey}
-                      gpuKey={gpuKey}
-                      gpuLabel={formatGpuLabel(gpuKey)}
-                      gpuIndex={gpuKey === 'multi-gpu' ? -1 : parseInt(gpuKey.replace('gpu-', ''), 10)}
-                      models={groupedModels[gpuKey] || []}
-                      isExpanded={expandedGpuGroups.has(gpuKey)}
-                      onToggle={handleGpuGroupToggle}
-                      onUnload={handleUnloadModel}
-                      onSleep={handleSleepModel}
-                      onWake={handleWakeModel}
-                      onMove={handleMoveModel}
-                      unloadingInstanceId={unloadingInstanceId}
-                      sleepingInstanceId={sleepingInstanceId}
-                      wakingInstanceId={wakingInstanceId}
-                      expandedCards={expandedCards}
-                      onCardToggle={handleCardToggle}
-                      kvCacheTotalByGpu={kvCacheTotalByGpu}
-                      memoryUtilizationByInstance={memoryUtilizationByInstance}
-                    />
-                  ))}
-                </>
-              ) : (
-                // Table View
-                <ModelTable
-                  models={filteredModels}
-                  sortBy={sortBy}
-                  sortDirection={sortDirection}
-                  onSort={handleTableSort}
-                  onUnload={handleUnloadModel}
-                  onSleep={handleSleepModel}
-                  onWake={handleWakeModel}
-                  unloadingInstanceId={unloadingInstanceId}
-                  sleepingInstanceId={sleepingInstanceId}
-                  wakingInstanceId={wakingInstanceId}
-                />
-              )}
-            </div>
-          </>
-        )}
+        </div>
       </PageSection>
 
       <LoadModelDialog
@@ -848,13 +556,15 @@ function ModelManagement() {
         onClose={() => setIsLoadModalOpen(false)}
         onLoad={handleLoadModel}
         onSuccess={handleLoadSuccess}
+        isClusterMode={clusterData.isClusterMode}
       />
 
       <SaveConfigurationDialog
         isOpen={isSaveConfigOpen}
         onClose={() => setIsSaveConfigOpen(false)}
         onSuccess={handleConfigSaved}
-        modelCount={runningModelCount}
+        modelCount={totalModelCount}
+        isClusterMode={clusterData.isClusterMode}
       />
 
       <LoadConfigurationDialog
@@ -873,42 +583,19 @@ function ModelManagement() {
       >
         <ModalHeader title="Unload All Models" labelId="unload-all-modal-title" />
         <ModalBody id="unload-all-modal-body">
-          Are you sure you want to unload all {models.length} model{models.length !== 1 ? 's' : ''}?
-          This will stop all inference services and free GPU memory.
+          {clusterData.isClusterMode
+            ? `Are you sure you want to unload all models across all ${clusterPodIds.length} pod${clusterPodIds.length !== 1 ? 's' : ''}? This will stop all inference services and free GPU memory on every node.`
+            : `Are you sure you want to unload all ${localModels.length} model${localModels.length !== 1 ? 's' : ''}? This will stop all inference services and free GPU memory.`}
         </ModalBody>
         <ModalFooter>
-          <Button
-            key="confirm"
-            variant="danger"
-            onClick={handleUnloadAll}
-            isLoading={isUnloadingAll}
-            isDisabled={isUnloadingAll}
-          >
+          <Button key="confirm" variant="danger" onClick={handleUnloadAll} isLoading={isUnloadingAll} isDisabled={isUnloadingAll}>
             {isUnloadingAll ? 'Unloading...' : 'Unload All'}
           </Button>
-          <Button
-            key="cancel"
-            variant="link"
-            onClick={() => setIsUnloadAllModalOpen(false)}
-            isDisabled={isUnloadingAll}
-          >
+          <Button key="cancel" variant="link" onClick={() => setIsUnloadAllModalOpen(false)} isDisabled={isUnloadingAll}>
             Cancel
           </Button>
         </ModalFooter>
       </Modal>
-
-      <MoveModelDialog
-        isOpen={moveModalOpen}
-        onClose={() => {
-          setMoveModalOpen(false)
-          setMoveModalModel(null)
-          setMoveTargetGpuIds([])
-        }}
-        model={moveModalModel}
-        preselectedGpuIds={moveTargetGpuIds}
-        gpuMemoryData={gpuMemoryData}
-        onMoveComplete={handleMoveComplete}
-      />
     </DndContext>
   )
 }

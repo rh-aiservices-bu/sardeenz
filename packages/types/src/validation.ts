@@ -108,6 +108,7 @@ export const ModelInstanceDTOSchema = Type.Object({
   sleep_mode_enabled: Type.Boolean(),
   sleep_level: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
   slept_at: Type.Optional(Type.String({ format: 'date-time' })),
+  pod_id: Type.Optional(Type.String()),
 })
 
 export const ListModelsResponseSchema = Type.Object({

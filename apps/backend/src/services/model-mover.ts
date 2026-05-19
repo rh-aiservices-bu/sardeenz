@@ -9,8 +9,11 @@ import type { MoveOperation, MoveOperationPhase } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
 import { moveStore } from '../stores/move-store.js'
 import { metricsStore } from '../stores/metrics-store.js'
+import { peerStore } from '../stores/peer-store.js'
+import { clusterRoutingStore } from '../stores/cluster-routing-store.js'
 import { getModelManager, type ModelManager } from './model-manager.js'
 import { getGpuSelector, type GpuSelector } from './gpu-selector.js'
+import { signedFetch } from './cluster-auth.js'
 import {
   NotFoundError,
   ConflictError,
@@ -435,6 +438,244 @@ export class ModelMover {
 
     this.emitProgress(moveId, 'completed', 'Move force completed')
     moveStore.complete(moveId, 'completed', 'Force completed by user')
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cross-pod move (T055)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Initiate a cross-pod model move.
+   * Loads on target pod first, waits for ready, drains source, updates routing, unloads source.
+   */
+  async crossPodMoveModel(request: {
+    instanceId: string
+    targetPodId: string
+    targetGpuIds: number[]
+    drainTimeoutMs?: number
+  }): Promise<{
+    moveId: string
+    sourceInstanceId: string
+    targetPodId: string
+    targetGpuIds: number[]
+  }> {
+    const { instanceId, targetPodId, targetGpuIds, drainTimeoutMs = 60000 } = request
+
+    // 1. Validate source exists locally
+    const source = modelStore.get(instanceId)
+    if (!source) {
+      throw new NotFoundError(`Model instance ${instanceId} not found`)
+    }
+
+    if (source.status !== 'running' && source.status !== 'sleeping') {
+      throw new BadRequestError(
+        `Cannot move model in status '${source.status}'. Model must be running or sleeping.`
+      )
+    }
+
+    // 2. Validate not already being moved
+    const existingMove = moveStore.getBySourceInstance(instanceId)
+    if (existingMove) {
+      throw new ConflictError(
+        `Model ${instanceId} is already being moved (move ID: ${existingMove.id})`
+      )
+    }
+
+    // 3. Validate target pod exists and is healthy
+    const targetPeer = peerStore.getPeer(targetPodId)
+    if (!targetPeer) {
+      throw new NotFoundError(`Target pod ${targetPodId} not found`)
+    }
+    if (targetPeer.status !== 'healthy') {
+      throw new BadRequestError(`Target pod ${targetPodId} is ${targetPeer.status}`)
+    }
+
+    // 4. Create move operation
+    const moveId = randomUUID()
+    const operation: MoveOperation = {
+      id: moveId,
+      sourceInstanceId: instanceId,
+      targetInstanceId: '',
+      targetGpuIds,
+      drainTimeoutMs,
+      phase: 'validating',
+      startedAt: new Date(),
+    }
+
+    moveStore.create(operation)
+
+    // 5. Execute async
+    this.executeCrossPodMoveAsync(moveId, targetPodId).catch((err) => {
+      this.logger.error({ moveId, err }, 'Cross-pod move execution failed')
+    })
+
+    return {
+      moveId,
+      sourceInstanceId: instanceId,
+      targetPodId,
+      targetGpuIds,
+    }
+  }
+
+  /**
+   * Execute cross-pod move asynchronously.
+   */
+  private async executeCrossPodMoveAsync(moveId: string, targetPodId: string): Promise<void> {
+    const op = moveStore.get(moveId)
+    if (!op) return
+
+    const source = modelStore.get(op.sourceInstanceId)
+    if (!source) {
+      this.emitProgress(moveId, 'failed', 'Source model disappeared', undefined, 'Source model not found')
+      moveStore.complete(moveId, 'failed', 'Source model not found')
+      return
+    }
+
+    const targetPeer = peerStore.getPeer(targetPodId)
+    if (!targetPeer) {
+      this.emitProgress(moveId, 'failed', 'Target pod disappeared', undefined, 'Target pod not found')
+      moveStore.complete(moveId, 'failed', 'Target pod not found')
+      return
+    }
+
+    try {
+      // Phase: SPAWNING — load on target pod
+      this.emitProgress(moveId, 'spawning', `Loading model on pod ${targetPodId}...`)
+      moveStore.update(moveId, { phase: 'spawning' })
+
+      const loadResult = await this.signedFetch(
+        targetPeer.address,
+        targetPeer.port,
+        'POST',
+        '/internal/models/load',
+        JSON.stringify({
+          modelPath: source.modelPath,
+          maxTokens: source.maxTokens,
+          gpuIds: op.targetGpuIds,
+          tensorParallelSize: source.tensorParallelSize,
+          servedModelName: source.modelName,
+          enableSleepMode: source.sleepModeEnabled,
+        })
+      )
+
+      if (!loadResult.ok) {
+        const errorBody = await loadResult.json().catch(() => ({ error: 'Unknown error' })) as { error?: string }
+        throw new Error(`Remote load failed: ${errorBody.error ?? loadResult.statusText}`)
+      }
+
+      const loadData = await loadResult.json() as { instanceId: string; status: string }
+      moveStore.update(moveId, { targetInstanceId: loadData.instanceId })
+
+      // Wait for target to report running via polling peer state
+      await this.waitForRemoteRunning(targetPodId, loadData.instanceId, moveId)
+
+      // Phase: SWITCHING — make source non-routable
+      this.emitProgress(moveId, 'switching', 'Switching traffic to new pod...')
+      moveStore.update(moveId, { phase: 'switching' })
+      modelStore.setRoutable(op.sourceInstanceId, false)
+
+      // Phase: DRAINING — wait for source connections to drain
+      this.emitProgress(moveId, 'draining', 'Waiting for active connections to complete...')
+      moveStore.update(moveId, { phase: 'draining' })
+      await this.waitForDrain(op.sourceInstanceId, op.drainTimeoutMs, moveId)
+
+      // Phase: COMPLETING — unload from source, then rebuild routing table
+      this.emitProgress(moveId, 'completing', 'Unloading from source pod...')
+      moveStore.update(moveId, { phase: 'completing' })
+      await this.modelManager.unloadModel(op.sourceInstanceId)
+
+      // Rebuild routing table AFTER source unload to prevent stale entries
+      clusterRoutingStore.rebuildFromPeers(peerStore.getAllPeers())
+
+      // Success
+      this.emitProgress(moveId, 'completed', 'Cross-pod move completed successfully')
+      moveStore.complete(moveId, 'completed')
+
+      this.logger.info(
+        {
+          moveId,
+          sourceId: op.sourceInstanceId,
+          targetPodId,
+          targetInstanceId: loadData.instanceId,
+          targetGpus: op.targetGpuIds,
+        },
+        'Cross-pod model move completed successfully'
+      )
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      this.logger.error({ moveId, err }, 'Cross-pod move operation failed')
+
+      // Rollback: restore source routability, attempt remote unload of target
+      try {
+        modelStore.setRoutable(op.sourceInstanceId, true)
+        if (op.targetInstanceId) {
+          await this.signedFetch(
+            targetPeer.address,
+            targetPeer.port,
+            'POST',
+            `/internal/models/${op.targetInstanceId}/unload`,
+            ''
+          ).catch(() => {})
+        }
+      } catch {
+        // Best-effort rollback
+      }
+
+      this.emitProgress(moveId, 'failed', `Cross-pod move failed: ${errorMessage}`, undefined, errorMessage)
+      moveStore.complete(moveId, 'failed', errorMessage)
+    }
+  }
+
+  /**
+   * Wait for a remote model instance to reach 'running' status by polling peer state.
+   */
+  private async waitForRemoteRunning(
+    targetPodId: string,
+    targetInstanceId: string,
+    moveId: string
+  ): Promise<void> {
+    const maxWait = 30 * 60 * 1000 // 30 minutes
+    const pollInterval = 3000 // 3 seconds
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWait) {
+      const peer = peerStore.getPeer(targetPodId)
+      if (!peer) {
+        throw new Error('Target pod disappeared during loading')
+      }
+
+      const model = peer.models.find((m) => m.instanceId === targetInstanceId)
+      if (model) {
+        if (model.status === 'running') {
+          this.emitProgress(moveId, 'spawning', 'Target model is ready on remote pod', 100)
+          return
+        }
+        if (model.status === 'failed') {
+          throw new Error('Target model failed to load on remote pod')
+        }
+      }
+
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(95, Math.floor((elapsed / maxWait) * 100))
+      this.emitProgress(moveId, 'spawning', 'Waiting for model to load on target pod...', progress)
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    }
+
+    throw new Error('Timeout waiting for target model to become ready on remote pod')
+  }
+
+  /**
+   * Make an HMAC-signed fetch to a peer pod.
+   */
+  private async signedFetch(
+    address: string,
+    port: number,
+    method: string,
+    path: string,
+    body: string
+  ): Promise<Response> {
+    return signedFetch(`http://${address}:${port}${path}`, method, body)
   }
 
   /**

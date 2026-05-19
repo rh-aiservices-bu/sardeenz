@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sardeenz
+  labels:
+    app: sardeenz
+spec:
+  replicas: 3 # Up to 8 pods supported
+  serviceName: sardeenz-headless
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: sardeenz
+  template:
+    metadata:
+      labels:
+        app: sardeenz
+    spec:
+      serviceAccountName: sardeenz
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - sardeenz
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: sardeenz
+          image: quay.io/rh-aiservices-bu/sardeenz:latest
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 5001
+              name: vllm
+          env:
+            - name: PORT
+              value: "3000"
+            - name: CLUSTER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-cluster-secret
+                  key: CLUSTER_SECRET
+            - name: CLUSTER_EXPECTED_PODS
+              value: "3"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: AUTH_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: AUTH_MODE
+                  optional: true
+          envFrom:
+            - configMapRef:
+                name: sardeenz-config
+                optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            failureThreshold: 120
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

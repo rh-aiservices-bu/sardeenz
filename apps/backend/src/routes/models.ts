@@ -15,60 +15,24 @@ import {
   WakeModelRequestSchema,
   WakeModelResponseSchema,
   SleepStatusResponseSchema,
-  type ModelInstanceDTO,
   type LoadModelRequestType,
   type SleepModelRequestType,
   type WakeModelRequestType,
 } from '@sardeenz/types'
 import { getModelManager } from '../services/model-manager.js'
 import { getModelMover } from '../services/model-mover.js'
+import { getClusterManager } from '../services/cluster-manager.js'
 import { modelStore } from '../stores/model-store.js'
+import { peerStore } from '../stores/peer-store.js'
 import { operationStore } from '../stores/operation-store.js'
 import { NotFoundError, AppError } from '../utils/errors.js'
 import { randomUUID } from 'crypto'
-import type { ModelInstance, ControllerOperation } from '@sardeenz/types'
+import type { ControllerOperation, ModelInstanceDTO } from '@sardeenz/types'
 import { OperationStatus, OperationType } from '@sardeenz/types'
+import { toModelDTO as toDTO } from '../utils/model-dto.js'
 
 export default async function modelsRoutes(fastify: FastifyInstance) {
   const modelManager = getModelManager(fastify.log)
-
-  // Helper to convert ModelInstance to DTO
-  function toDTO(instance: ModelInstance): ModelInstanceDTO {
-    return {
-      id: instance.id,
-      model_path: instance.modelPath,
-      model_name: instance.modelName,
-      status: instance.status,
-      port: instance.port,
-      process_id: instance.processId,
-      max_tokens: instance.maxTokens,
-      gpu_memory_utilization: instance.gpuMemoryUtilization,
-      loaded_at: instance.loadedAt.toISOString(),
-      ready_at: instance.readyAt?.toISOString(),
-      error_message: instance.errorMessage,
-      memory_metrics: instance.memoryMetrics
-        ? {
-            total_gpu_memory_gib: instance.memoryMetrics.totalGpuMemoryGiB,
-            weights_memory_gib: instance.memoryMetrics.weightsMemoryGiB,
-            cuda_graph_memory_gib: instance.memoryMetrics.cudaGraphMemoryGiB,
-            overhead_memory_gib: instance.memoryMetrics.overheadMemoryGiB,
-            kv_cache_available_gib: instance.memoryMetrics.kvCacheAvailableGiB,
-            kv_cache_per_request_mib: instance.memoryMetrics.kvCachePerRequestMiB,
-            max_model_len: instance.memoryMetrics.maxModelLen,
-          }
-        : undefined,
-      has_chat_template: instance.hasChatTemplate,
-      launch_command: instance.launchCommand,
-      gpu_ids: instance.gpuIds,
-      tensor_parallel_size: instance.tensorParallelSize,
-      kvcached_enabled: instance.kvcachedEnabled,
-      memory_baseline_by_gpu: instance.memoryBaselineByGpu,
-      sleep_mode_enabled: instance.sleepModeEnabled,
-      sleep_level: instance.sleepLevel,
-      slept_at: instance.sleptAt?.toISOString(),
-      routable: instance.routable,
-    }
-  }
 
   /**
    * POST /api/models/load - Load a new model
@@ -251,14 +215,19 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
   )
 
   /**
-   * GET /api/models - List all models
+   * GET /api/models - List models
+   * ?scope=cluster  → all pods (chatbot playground)
+   * (default)       → local pod only (Model Management, benchmarks, etc.)
    */
-  fastify.get(
+  fastify.get<{ Querystring: { scope?: string } }>(
     '/api/models',
     {
       schema: {
         tags: ['models'],
-        description: 'List all loaded models',
+        description: 'List loaded models. Use ?scope=cluster to include all cluster pods.',
+        querystring: Type.Object({
+          scope: Type.Optional(Type.String()),
+        }),
         response: {
           200: ListModelsResponseSchema,
         },
@@ -266,12 +235,58 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
       onRequest: fastify.requireRole('admin-readonly'),
       config: { logRequests: false },
     },
-    async () => {
-      const instances = modelManager.listModels()
-      return {
-        models: instances.map(toDTO),
-        total: instances.length,
+    async (request) => {
+      const clusterManager = getClusterManager(fastify.log)
+      const clusterScope = request.query.scope === 'cluster'
+
+      if (!clusterScope || !clusterManager.isClusterMode()) {
+        // Local-only: original behavior used by Model Management, benchmarks, etc.
+        const instances = modelManager.listModels()
+        if (clusterManager.isClusterMode()) {
+          const localPodId = clusterManager.getPodId()
+          return {
+            models: instances.map((inst) => ({ ...toDTO(inst), pod_id: localPodId })),
+            total: instances.length,
+          }
+        }
+        return { models: instances.map(toDTO), total: instances.length }
       }
+
+      // Cluster scope: aggregate from all healthy peers
+      const localPodId = clusterManager.getPodId()
+      const localModels: ModelInstanceDTO[] = modelManager.listModels().map((inst) => ({
+        ...toDTO(inst),
+        pod_id: localPodId,
+      }))
+      const seenIds = new Set<string>(localModels.map((m) => m.id))
+
+      const remoteModels: ModelInstanceDTO[] = []
+      for (const peer of peerStore.getHealthyPeers()) {
+        if (peer.podId === localPodId) continue
+        for (const entry of peer.models) {
+          if (seenIds.has(entry.instanceId)) continue
+          seenIds.add(entry.instanceId)
+          remoteModels.push({
+            id: entry.instanceId,
+            model_path: entry.modelPath,
+            model_name: entry.modelName,
+            status: entry.status,
+            port: entry.port,
+            process_id: -1,
+            max_tokens: entry.maxTokens,
+            gpu_memory_utilization: 0,
+            loaded_at: new Date(peer.lastHeartbeat).toISOString(),
+            gpu_ids: entry.gpuIds,
+            tensor_parallel_size: entry.tensorParallelSize,
+            kvcached_enabled: false,
+            sleep_mode_enabled: false,
+            pod_id: peer.podId,
+          })
+        }
+      }
+
+      const allModels = [...localModels, ...remoteModels]
+      return { models: allModels, total: allModels.length }
     }
   )
 

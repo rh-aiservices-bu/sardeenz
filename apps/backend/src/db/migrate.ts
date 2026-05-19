@@ -72,6 +72,37 @@ function getMigrationFiles(): { version: number; path: string }[] {
 }
 
 /**
+ * Check if a column exists on a table.
+ */
+function columnExists(db: Database.Database, table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>
+  return cols.some((c) => c.name === column)
+}
+
+/**
+ * Execute a SQL migration safely. Handles ALTER TABLE ADD COLUMN statements
+ * by checking for column existence first (SQLite lacks IF NOT EXISTS for columns).
+ */
+function executeMigrationSql(db: Database.Database, sql: string): void {
+  const alterRegex = /ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)\b/gi
+  const statements = sql.split(';').map((s) => s.trim()).filter((s) => s.length > 0)
+
+  for (const stmt of statements) {
+    const match = alterRegex.exec(stmt)
+    alterRegex.lastIndex = 0
+
+    if (match) {
+      const [, table, column] = match
+      if (columnExists(db, table, column)) {
+        continue // Column already exists, skip
+      }
+    }
+
+    db.exec(stmt)
+  }
+}
+
+/**
  * Run all pending migrations
  */
 export function runMigrations(db?: Database.Database): void {
@@ -92,8 +123,11 @@ export function runMigrations(db?: Database.Database): void {
 
     const sql = fs.readFileSync(migration.path, 'utf-8')
 
-    // Execute the migration in a transaction
-    database.exec(sql)
+    // Execute the migration in a transaction (all-or-nothing)
+    const runMigration = database.transaction(() => {
+      executeMigrationSql(database, sql)
+    })
+    runMigration()
 
     console.log(`[db] Migration ${migration.version} applied successfully`)
   }

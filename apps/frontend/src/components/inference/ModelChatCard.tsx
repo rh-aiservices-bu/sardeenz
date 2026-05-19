@@ -167,7 +167,7 @@ export function ModelChatCard({ model, onStatusChange }: ModelChatCardProps) {
                           label="Proxy"
                           isChecked={!useDirectCall}
                           isDisabled={isGenerating}
-                          onChange={(_, checked) => updateSettings({ useDirectCall: checked })}
+                          onChange={(_, checked) => updateSettings({ useDirectCall: !checked })}
                           className="chat-header-actions-text"
                         />
                       </FlexItem>

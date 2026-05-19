@@ -33,7 +33,7 @@ export function InferenceWorkspace() {
   // Fetch running models
   const fetchModels = useCallback(async () => {
     try {
-      const response = await apiClient.listModels()
+      const response = await apiClient.listClusterModels()
       // Filter to only show running models
       const runningModels = response.models.filter((m) => m.status === 'running')
       setModels(runningModels)

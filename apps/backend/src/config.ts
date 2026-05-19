@@ -1,7 +1,7 @@
 import { config as dotenvConfig } from 'dotenv'
 
-// Load environment variables
-dotenvConfig()
+// Load environment variables (DOTENV_CONFIG_PATH overrides the default .env)
+dotenvConfig({ path: process.env.DOTENV_CONFIG_PATH || '.env' })
 
 import type { AuthMode } from '@sardeenz/types'
 
@@ -53,6 +53,18 @@ export interface Config {
 
   // Virtual GPU configuration (dev mode only)
   virtualGpuCount: number
+
+  // Cluster configuration
+  clusterPeers: string
+  clusterSecret: string
+  clusterExpectedPods: number
+
+  // Inference backend configuration
+  inferenceBackend: 'vllm' | 'inference-sim'
+  simGpuMemoryGB: number
+  simModelMemoryGB: number
+  simStartupDuration: string
+  inferenceSimBinary: string
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -133,7 +145,22 @@ export const config: Config = {
   inferenceApiKey: getEnv('INFERENCE_API_KEY', ''),
 
   // vLLM configuration
-  vllmBasePort: getEnvInt('VLLM_BASE_PORT', 12346),
+  // In cluster mode with CLUSTER_PEERS, auto-offset by pod index * 100 to avoid
+  // port collisions when multiple pods share the same host (local dev).
+  // Explicit VLLM_BASE_PORT always takes precedence.
+  vllmBasePort: (() => {
+    const STRIDE = 100
+    const base = getEnvInt('VLLM_BASE_PORT', 12346)
+    const peers = getEnv('CLUSTER_PEERS', '')
+    if (!peers) return base
+    const peerList = peers.split(',').map((p) => p.trim())
+    const selfPort = getEnvInt('PORT', 3000)
+    const podIndex = peerList.findIndex((entry) => {
+      const port = parseInt(entry.split(':')[1], 10)
+      return port === selfPort
+    })
+    return base + Math.max(podIndex, 0) * STRIDE
+  })(),
   vllmMaxInstances: getEnvInt('VLLM_MAX_INSTANCES', 10),
   vllmStartupTimeout: getEnvInt('VLLM_STARTUP_TIMEOUT', 1800000), // 30 minutes default
 
@@ -154,6 +181,26 @@ export const config: Config = {
   // Virtual GPU configuration (dev mode only)
   // 0 = disabled (use real GPUs), N = create N virtual GPUs mapping to physical GPU 0
   virtualGpuCount: getEnvInt('DEV_VIRTUAL_GPU_COUNT', 0),
+
+  // Cluster configuration
+  clusterPeers: getEnv('CLUSTER_PEERS', ''),
+  clusterSecret: getEnv('CLUSTER_SECRET', ''),
+  clusterExpectedPods: getEnvInt('CLUSTER_EXPECTED_PODS', 0),
+
+  // Inference backend configuration
+  inferenceBackend: (() => {
+    const backend = getEnv('INFERENCE_BACKEND', 'vllm')
+    if (backend !== 'vllm' && backend !== 'inference-sim') {
+      throw new Error(
+        `Invalid INFERENCE_BACKEND: '${backend}'. Must be 'vllm' or 'inference-sim'`
+      )
+    }
+    return backend
+  })(),
+  simGpuMemoryGB: getEnvInt('SIM_GPU_MEMORY_GB', 24),
+  simModelMemoryGB: getEnvInt('SIM_MODEL_MEMORY_GB', 4),
+  simStartupDuration: getEnv('SIM_STARTUP_DURATION', '3s'),
+  inferenceSimBinary: getEnv('INFERENCE_SIM_BINARY', 'llm-d-inference-sim'),
 }
 
 // Validate auth configuration
@@ -190,3 +237,35 @@ function validateAuthConfig(): void {
 }
 
 validateAuthConfig()
+
+// Validate cluster configuration
+function validateClusterConfig(): void {
+  const isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
+  if (isClusterMode && config.clusterSecret) {
+    const MIN_SECRET_LENGTH = 16
+    if (config.clusterSecret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `CLUSTER_SECRET must be at least ${MIN_SECRET_LENGTH} characters for secure inter-pod HMAC authentication. ` +
+          `Current length: ${config.clusterSecret.length}. Generate a secure value with: openssl rand -hex 32`
+      )
+    }
+  }
+  if (isClusterMode && !config.clusterSecret) {
+    throw new Error(
+      'CLUSTER_SECRET is required in cluster mode. Inter-pod communication cannot be secured without it. ' +
+        'Generate a secure value with: openssl rand -hex 32'
+    )
+  }
+  if (isClusterMode && config.authMode === 'none') {
+    console.warn(
+      'WARNING: Cluster mode with AUTH_MODE=none. The cluster admin API (/api/cluster/*) is unauthenticated. ' +
+        'Set AUTH_MODE to "simple" or "oauth" for production deployments.'
+    )
+  }
+}
+
+validateClusterConfig()
+
+export function isInferenceSimMode(): boolean {
+  return config.inferenceBackend === 'inference-sim'
+}

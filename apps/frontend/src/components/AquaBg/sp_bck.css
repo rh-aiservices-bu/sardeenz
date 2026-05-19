@@ -1,0 +1,108 @@
+/* ocean gradient on the main panel only — margins stay grey */
+body.sp-bck .pf-v6-c-page__main-container {
+  background: linear-gradient(180deg, #0d2d4f 0%, #1a5080 40%, #0d2d4f 100%) !important;
+  position: relative !important;
+  isolation: isolate !important;
+}
+
+html.pf-v6-theme-dark body.sp-bck .pf-v6-c-page__main-container {
+  background: linear-gradient(180deg, #04162a 0%, #082440 40%, #04162a 100%) !important;
+}
+
+/* layout containers inside the panel are transparent — gradient shows through */
+body.sp-bck .pf-v6-c-page__main-section:not(.pf-m-sticky-top):not(.pf-m-shadow-bottom),
+body.sp-bck .pf-v6-c-page__main-group,
+body.sp-bck .pf-v6-c-drawer,
+body.sp-bck .pf-v6-c-drawer__content,
+body.sp-bck .pf-v6-c-drawer__content-body {
+  background: transparent !important;
+}
+
+/* cards sit above the overlay */
+body.sp-bck .pf-v6-c-card {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* overlay fills the panel, clipped by overflow */
+.sp_bck_ov {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* sardine wrapper — handles horizontal swim */
+.sp_bck_f {
+  position: absolute;
+  will-change: transform;
+}
+
+/* sardine inner — handles vertical bob */
+.sp_bck_f__i {
+  animation: sp_a_bob var(--sp-bob, 3s) ease-in-out infinite;
+}
+
+.sp_bck_f__i img {
+  display: block;
+  opacity: 0.85;
+}
+
+@keyframes sp_a_ltr {
+  from {
+    transform: translateX(calc(-10vw - 80px));
+  }
+  to {
+    transform: translateX(calc(100vw + 80px));
+  }
+}
+
+@keyframes sp_a_rtl {
+  from {
+    transform: translateX(calc(100vw + 80px));
+  }
+  to {
+    transform: translateX(calc(-10vw - 80px));
+  }
+}
+
+@keyframes sp_a_bob {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+/* bubble */
+.sp_bck_b {
+  position: absolute;
+  bottom: -60px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+  animation: sp_a_rise var(--sp-bd, 12s) ease-in infinite;
+  will-change: transform;
+}
+
+@keyframes sp_a_rise {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.6);
+    opacity: 0.75;
+  }
+  40% {
+    transform: translateY(calc(-40vh)) translateX(8px) scale(0.85);
+    opacity: 0.5;
+  }
+  80% {
+    transform: translateY(calc(-80vh)) translateX(-6px) scale(1);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateY(calc(-110vh)) translateX(4px) scale(1.1);
+    opacity: 0;
+  }
+}

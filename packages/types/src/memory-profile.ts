@@ -59,6 +59,14 @@ export interface MemoryProfile {
   createdAt: string
   /** When profile was last updated */
   updatedAt?: string
+
+  // Cluster context
+  /** GPU type used for profiling (e.g., "NVIDIA A100") */
+  gpuType?: string
+  /** Total VRAM in MB of the GPU used for profiling */
+  gpuVramMb?: number
+  /** Pod ID that generated this profile */
+  sourcePodId?: string
 }
 
 /**

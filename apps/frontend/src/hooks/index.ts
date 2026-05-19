@@ -6,3 +6,6 @@ export type { UseMoveEventsOptions, UseMoveEventsReturn } from './useMoveEvents'
 
 export { useOperation } from './useOperation'
 export type { UseOperationReturn } from './useOperation'
+
+export { useClusterStatus } from './useClusterStatus'
+export type { UseClusterStatusReturn } from './useClusterStatus'
