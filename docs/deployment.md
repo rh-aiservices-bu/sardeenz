@@ -8,6 +8,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 - [Container Build](#container-build)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
+- [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment)
 - [Authentication and RBAC](#authentication-and-rbac)
 - [Configuration](#configuration)
 - [Health Checks](#health-checks)
@@ -476,17 +477,177 @@ oc logs -f deployment/sardeenz -n sardeenz
 
 ### Scaling Considerations
 
-**Single Pod Deployment (Current Design):**
+**Single Pod Deployment:**
 
-- One pod manages all model instances
-- Stateless design (no shared state between pods)
-- Scale by deploying multiple independent instances
+- One pod manages all model instances on its local GPU(s)
+- Self-contained — no shared state between pods
+- Suitable for single-GPU or small multi-GPU nodes
 
-**Future: Multi-Pod Deployment:**
+**Multi-Pod Cluster Deployment:**
 
-- Shared model registry (e.g., Redis, PostgreSQL)
-- Sticky sessions for proxy routing
-- Distributed model scheduling
+For horizontal scaling across multiple GPU nodes, see [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment) below.
+
+## Multi-Pod Cluster Deployment
+
+Sardeenz supports multi-pod cluster deployments where multiple pods coordinate to manage models across GPU nodes. The cluster uses a StatefulSet with leader election, heartbeat-based health monitoring, HMAC-authenticated inter-pod communication, and a unified routing table for cross-pod inference.
+
+### Architecture Overview
+
+- **StatefulSet** with headless service for stable DNS names (`sardeenz-0.sardeenz-headless`, `sardeenz-1.sardeenz-headless`, etc.)
+- **Leader election** via Kubernetes Lease objects — the leader coordinates model placement and preset application
+- **Heartbeat protocol** (every 5s) carries pod state (models, GPUs, health) and synchronizes the routing table
+- **HMAC-SHA256 authentication** on all inter-pod requests via `CLUSTER_SECRET`
+- **Pod scheduler** with placement strategies for intelligent model-to-pod assignment
+
+### Prerequisites
+
+1. **GPU-enabled Kubernetes/OpenShift cluster** with NVIDIA GPU Operator
+2. **Multiple GPU nodes** (one GPU per pod minimum)
+3. **Namespace** with GPU quota for all pods
+4. **Shared cluster secret** for inter-pod authentication
+
+### Deploy the Cluster
+
+The Kubernetes manifests are in `deploy/kubernetes/`. Apply them in order:
+
+**1. Create the namespace and RBAC:**
+
+```bash
+oc new-project sardeenz
+
+# ServiceAccount, Role (pod discovery + leader election), and RoleBinding
+oc apply -f deploy/kubernetes/rbac.yaml
+```
+
+The RBAC configuration grants:
+- Pod discovery: `get`, `list`, `watch` on pods
+- Leader election: `get`, `create`, `update`, `list`, `watch` on leases
+
+**2. Create the cluster secret:**
+
+```bash
+# Generate a secure secret (minimum 16 characters)
+CLUSTER_SECRET=$(openssl rand -hex 32)
+
+# Create the secret
+oc create secret generic sardeenz-cluster-secret \
+  --from-literal=CLUSTER_SECRET=$CLUSTER_SECRET \
+  -n sardeenz
+```
+
+Or apply the template and edit it:
+
+```bash
+oc apply -f deploy/kubernetes/secret.yaml
+# Edit to replace the placeholder value
+oc edit secret sardeenz-cluster-secret -n sardeenz
+```
+
+**3. Create the ConfigMap (optional overrides):**
+
+```bash
+oc apply -f deploy/kubernetes/configmap.yaml
+```
+
+Default values in the ConfigMap:
+
+| Key               | Default  | Description              |
+| ----------------- | -------- | ------------------------ |
+| `AUTH_MODE`        | `simple` | Authentication mode      |
+| `LOG_LEVEL`        | `info`   | Log verbosity            |
+| `ENABLE_KVCACHED`  | `true`   | Enable GPU memory sharing |
+
+**4. Create the Services:**
+
+```bash
+oc apply -f deploy/kubernetes/services.yaml
+```
+
+This creates two services:
+
+| Service              | Type      | Purpose                                          |
+| -------------------- | --------- | ------------------------------------------------ |
+| `sardeenz-headless`  | Headless  | Pod discovery and direct pod-to-pod addressing   |
+| `sardeenz`           | ClusterIP | External access (load-balanced across all pods)  |
+
+**5. Deploy the StatefulSet:**
+
+```bash
+oc apply -f deploy/kubernetes/statefulset.yaml
+```
+
+Key StatefulSet settings:
+
+| Setting                       | Value      | Description                                     |
+| ----------------------------- | ---------- | ----------------------------------------------- |
+| `replicas`                    | 3          | Number of pods (up to 8 supported)              |
+| `podManagementPolicy`         | `Parallel` | All pods start simultaneously                   |
+| `terminationGracePeriodSeconds` | 30       | Time for graceful model unloading               |
+| Pod anti-affinity             | Preferred  | Spreads pods across nodes for GPU distribution  |
+
+**6. Verify the cluster:**
+
+```bash
+# Watch pods come up
+oc get pods -l app=sardeenz -w
+
+# Check cluster status via the leader
+curl -H "Authorization: Bearer $TOKEN" \
+  http://sardeenz.apps.your-cluster.com/api/cluster
+
+# List all pods and their GPUs
+curl -H "Authorization: Bearer $TOKEN" \
+  http://sardeenz.apps.your-cluster.com/api/cluster/pods
+```
+
+### Cluster Environment Variables
+
+| Variable                | Required | Default | Description                                                   |
+| ----------------------- | -------- | ------- | ------------------------------------------------------------- |
+| `CLUSTER_SECRET`        | Yes      | -       | Shared HMAC secret for inter-pod auth (min 16 chars)          |
+| `CLUSTER_EXPECTED_PODS` | No       | `0`     | Expected cluster size (0 = auto-detect from StatefulSet)      |
+| `CLUSTER_PEERS`         | No       | -       | Comma-separated peer addresses for local dev (e.g., `localhost:3000,localhost:3001`) |
+
+When running in Kubernetes, pods auto-discover each other via the headless service DNS. The `CLUSTER_PEERS` variable is only needed for local development without Kubernetes.
+
+### Scaling Guidance
+
+| Replicas | Use Case                                        | GPU Requirement     |
+| -------- | ----------------------------------------------- | ------------------- |
+| 1        | Single-node, no cluster overhead                | 1+ GPU              |
+| 2        | High availability with failover                 | 1 GPU per node      |
+| 3        | Recommended — HA with distributed model hosting | 1 GPU per node      |
+| 4-8      | Large-scale multi-model serving                 | 1+ GPU per node     |
+
+**Scale the cluster:**
+
+```bash
+# Scale to 5 pods
+oc scale statefulset sardeenz --replicas=5
+
+# Optionally update expected size
+oc set env statefulset/sardeenz CLUSTER_EXPECTED_PODS=5
+```
+
+New pods automatically join the cluster, elect a leader if needed, and appear in the routing table within seconds.
+
+### Local Development (Multi-Pod)
+
+For local development without Kubernetes, use `CLUSTER_PEERS` to simulate a cluster:
+
+```bash
+# Terminal 1: Pod 0 (leader)
+PORT=3000 CLUSTER_PEERS=localhost:3000,localhost:3001 \
+  CLUSTER_SECRET=dev-secret-at-least-16-chars \
+  npm run dev -w apps/backend
+
+# Terminal 2: Pod 1 (follower)
+PORT=3001 CLUSTER_PEERS=localhost:3000,localhost:3001 \
+  CLUSTER_SECRET=dev-secret-at-least-16-chars \
+  npm run dev -w apps/backend
+```
+
+> **Note:** vLLM base ports are automatically offset per pod to avoid collisions (pod 0 uses 12346+, pod 1 uses 12446+, etc.).
 
 ## Authentication and RBAC
 
@@ -632,6 +793,13 @@ For API permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-rol
 | `PROMETHEUS_ENABLED`   | No                  | `true`             | Enable Prometheus metrics                                                                                                        |
 | `MAX_MODELS`           | No                  | `10`               | Maximum concurrent models                                                                                                        |
 | `GPU_MEMORY_RESERVE`   | No                  | `2.0`              | GPU memory reserved for CUDA (GB)                                                                                                |
+| `CLUSTER_SECRET`       | If cluster mode     | -                  | Shared HMAC-SHA256 secret for inter-pod auth (min 16 chars). Generate with `openssl rand -hex 32`                                |
+| `CLUSTER_EXPECTED_PODS`| No                  | `0`                | Expected cluster size (0 = auto-detect from StatefulSet)                                                                         |
+| `CLUSTER_PEERS`        | No                  | -                  | Comma-separated peer addresses for local dev cluster (e.g., `localhost:3000,localhost:3001`)                                      |
+| `INFERENCE_BACKEND`    | No                  | `vllm`             | Inference backend: `vllm` (production) or `inference-sim` (GPU-free development)                                                 |
+| `SIM_GPU_MEMORY_GB`    | No                  | `24`               | Simulated GPU memory in GB (inference-sim only)                                                                                  |
+| `SIM_MODEL_MEMORY_GB`  | No                  | `4`                | Default simulated model memory in GB (inference-sim only)                                                                        |
+| `SIM_STARTUP_DURATION` | No                  | `3s`               | Simulated model loading time (inference-sim only)                                                                                |
 
 ### Configuration File (Future)
 

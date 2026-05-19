@@ -11,8 +11,8 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [**Architecture Overview**](./architecture.md)                       | High-level system architecture, design decisions, and technical details |
 | [**Backend Architecture**](./architecture/backend-architecture.md)   | Detailed backend components, flows, and process management              |
 | [**Frontend Architecture**](./architecture/frontend-architecture.md) | Frontend component specs, state management, and API integration         |
-| [**API Guide**](./api-guide.md)                                      | API reference with code examples for Controller and Proxy APIs          |
-| [**Deployment Guide**](./deployment.md)                              | Container building and OpenShift/Kubernetes deployment                  |
+| [**API Guide**](./api-guide.md)                                      | API reference with code examples for Controller, Proxy, and Cluster APIs |
+| [**Deployment Guide**](./deployment.md)                              | Container building, OpenShift/Kubernetes deployment, multi-pod cluster  |
 | [**RBAC Setup**](./rbac-setup.md)                                    | Kubernetes-native RBAC configuration for OAuth authentication           |
 
 ### 🛠️ Development Guides
@@ -78,6 +78,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 **Deploying and managing the platform?**
 
 - [Deployment Guide](./deployment.md) - Container build and OpenShift deployment
+- [Multi-Pod Cluster Deployment](./deployment.md#multi-pod-cluster-deployment) - Kubernetes StatefulSet cluster setup
 - [RBAC Setup Guide](./rbac-setup.md) - Kubernetes-native RBAC for OAuth authentication
 - [Deployment Guide: Configuration](./deployment.md#configuration) - Environment variables
 - [Deployment Guide: Monitoring](./deployment.md#monitoring) - Prometheus metrics setup
@@ -89,6 +90,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 - App Data PVC (required for SQLite)
 - Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](../deployment/README.md#storage-configuration))
 - OAuth 2.0 integration with Kubernetes RBAC (see [rbac-setup.md](./rbac-setup.md))
+- Kubernetes manifests for multi-pod cluster (see [deploy/kubernetes/](../deploy/kubernetes/))
 
 ### 📊 Data Scientists / ML Engineers
 
@@ -96,6 +98,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 - [API Guide: Controller API](./api-guide.md#controller-api) - Load/unload models
 - [API Guide: Model Move API](./api-guide.md#model-move-api) - Move models between GPUs without downtime
+- [API Guide: Cluster API](./api-guide.md#cluster-api) - Multi-pod cluster management (load, move, sleep models across pods)
 - [API Guide: Proxy API](./api-guide.md#proxy-api) - Inference requests (OpenAI-compatible)
 - [kvcached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
 - [Architecture: Memory Management](./architecture.md#memory-management) - GPU allocation strategy
@@ -136,18 +139,21 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 ### API & Integration
 
-| Document                                                         | Topics Covered                                                                                                                       |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [api-guide.md](./api-guide.md)                                   | Controller API (load/unload/move models), Proxy API (inference), authentication, error handling, code examples (Python, JavaScript, curl) |
-| [specs/contracts/](../specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available)                                                                                          |
+| Document                                                         | Topics Covered                                                                                                                                                  |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [api-guide.md](./api-guide.md)                                   | Controller API (load/unload/move models), Proxy API (inference), Cluster API (multi-pod), Internal API (inter-pod), authentication, error handling, code examples |
+| [specs/contracts/](../specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available)                                                                                                                     |
+| [Cluster Admin API](../specs/004-school-orchestration/contracts/cluster-admin-api.yaml) | OpenAPI spec for cluster management endpoints                                                                                                  |
+| [Internal API](../specs/004-school-orchestration/contracts/internal-api.yaml)           | OpenAPI spec for inter-pod communication endpoints                                                                                             |
 
 ### Deployment & Operations
 
-| Document                         | Topics Covered                                                                                                   |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [deployment.md](./deployment.md) | Container build, Docker Compose, OpenShift deployment, configuration, health checks, monitoring, troubleshooting |
-| [rbac-setup.md](./rbac-setup.md) | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions          |
-| [kvcached/](./kvcached/)         | kvcached installation, configuration, memory segment management                                                  |
+| Document                                           | Topics Covered                                                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [deployment.md](./deployment.md)                   | Container build, Docker Compose, OpenShift deployment, multi-pod cluster deployment, configuration, health checks, monitoring, troubleshooting |
+| [rbac-setup.md](./rbac-setup.md)                   | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions                                |
+| [kvcached/](./kvcached/)                           | kvcached installation, configuration, memory segment management                                                                        |
+| [deploy/kubernetes/](../deploy/kubernetes/)         | Kubernetes manifests for multi-pod cluster: StatefulSet, Services, RBAC, ConfigMap, Secret                                             |
 
 ### Development Guides
 
@@ -193,6 +199,30 @@ The **Proxy API** provides a unified inference endpoint:
 **Base URL:** `http://localhost:8000/v1/`
 
 **Compatible with:** OpenAI Python SDK, OpenAI JavaScript SDK, curl
+
+### Cluster Orchestration
+
+**Multi-pod cluster mode** enables horizontal scaling across GPU nodes:
+
+- **Leader election** via Kubernetes Leases for coordinated management
+- **Heartbeat protocol** (5s interval) for health monitoring and state sync
+- **Unified routing table** for cross-pod inference request routing
+- **Cross-pod model operations** — load, unload, move, sleep, wake on any pod
+- **Preset reconciliation** — apply model presets across the entire cluster
+- **HMAC-SHA256 authentication** on all inter-pod communication
+
+See [Deployment Guide: Multi-Pod Cluster](./deployment.md#multi-pod-cluster-deployment) and [API Guide: Cluster API](./api-guide.md#cluster-api).
+
+### Inference Simulator
+
+The **inference simulator** (`inference-sim`) enables GPU-free development:
+
+- Simulates model loading with configurable startup duration
+- Tracks simulated GPU memory allocation
+- Returns echo responses for inference requests
+- Set `INFERENCE_BACKEND=inference-sim` to enable
+
+See [GPU-Free Development](./dev-setup.md#gpu-free-development-inference-simulator).
 
 ### kvcached
 
@@ -350,5 +380,5 @@ _To be determined_
 
 ---
 
-**Last Updated:** 2025-11-11
-**Project Status:** Early Development (001-multi-model-platform)
+**Last Updated:** 2026-05-19
+**Project Status:** Active Development (004-school-orchestration, 006-inference-sim-backend)

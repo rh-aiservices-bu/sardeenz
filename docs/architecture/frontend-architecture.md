@@ -7,6 +7,7 @@ This document provides detailed frontend architecture specifications for the sar
 - [Overview](#overview)
 - [Technology Stack](#technology-stack)
 - [Component Hierarchy](#component-hierarchy)
+- [Cluster UI Components](#cluster-ui-components)
 - [State Management](#state-management)
 - [Routing Architecture](#routing-architecture)
 - [Authentication Flow](#authentication-flow)
@@ -59,50 +60,184 @@ App (AuthProvider, Router)
 │       │   └── Metrics link
 │       └── PageSection (Content area)
 │           └── Routes
-│               ├── Dashboard
-│               │   ├── ModelsSummaryCard
-│               │   │   ├── ModelStatusBadge (x N models)
-│               │   │   └── LoadModelButton
-│               │   ├── GPUMetricsCard
-│               │   │   └── MemoryUsageChart
-│               │   └── RecentActivityCard
-│               │       └── OperationLogList
-│               ├── ModelManagement
-│               │   ├── ModelListToolbar
-│               │   │   ├── SearchInput
-│               │   │   ├── StatusFilter
-│               │   │   └── LoadModelButton → LoadModelDialog
-│               │   ├── ModelTable (PF Table)
-│               │   │   └── ModelRow (x N)
-│               │   │       ├── ModelStatusBadge
-│               │   │       ├── MemoryProgressBar
-│               │   │       └── ActionButtons (unload, details)
-│               │   └── EmptyState (when no models)
-│               ├── ModelDetails (:id)
-│               │   ├── ModelHeader
-│               │   │   ├── ModelStatusBadge
-│               │   │   └── ActionButtons
-│               │   ├── ConfigurationCard
-│               │   │   └── ConfigDisplay (key-value pairs)
-│               │   ├── MetricsCard
-│               │   │   ├── RequestRateChart
-│               │   │   └── LatencyChart
-│               │   └── LogsCard
-│               │       └── LogViewer
-│               └── Metrics
-│                   ├── SystemMetricsCard
-│                   │   └── GPUMemoryTimeSeries
-│                   └── ModelMetricsGrid
-│                       └── ModelMetricsCard (x N models)
+│               ├── ModelManagement (/)
+│               │   ├── ClusterOverview (cluster mode)
+│               │   │   ├── SummaryCards (leader, pods, models, GPUs)
+│               │   │   └── PodSections (expandable, with model grid)
+│               │   ├── PodSelector (cluster mode, target pod dropdown)
+│               │   ├── NodeModelPane (left pane)
+│               │   │   ├── ModelCard / ModelCardCompact (x N, GPU-grouped)
+│               │   │   ├── MoveModelDialog
+│               │   │   └── Filters, sorting, view toggle
+│               │   ├── NodeModelPane (right pane, split-view)
+│               │   ├── GpuMemoryPanel
+│               │   ├── LoadModelDialog
+│               │   └── SaveConfigurationDialog / LoadConfigurationDialog
+│               ├── GpuInfo (/gpu)
+│               │   ├── PodSelector (cluster mode)
+│               │   └── GPU detail cards per selected pod
+│               ├── ModelBenchmark (/benchmark)
+│               └── Settings (/settings)
 │
 └── Shared Components
     ├── LoadModelDialog (Modal form)
     ├── SaveConfigurationDialog (Save current models as preset)
     ├── LoadConfigurationDialog (Load saved configuration)
+    ├── MoveModelDialog (GPU/pod target selection)
     ├── UnloadModelDialog (Confirmation)
     ├── ErrorAlert (Notification)
     └── LoadingSpinner
 ```
+
+## Cluster UI Components
+
+The frontend supports both single-pod and multi-pod cluster modes. Components detect cluster mode via `useClusterStatus()` and conditionally render cluster-specific UI or switch between local and cluster API calls.
+
+### ClusterOverview (`src/components/ClusterOverview.tsx`)
+
+**Purpose:** Cluster-level status dashboard displayed at the top of ModelManagement when in cluster mode.
+
+**Props:**
+
+```tsx
+interface ClusterOverviewProps {
+  clusterData: UseClusterStatusReturn
+}
+```
+
+**Features:**
+- 4 summary cards: Leader ID, Healthy Pods count, Models loaded, Total GPUs
+- Expandable pod sections with model grids showing status, GPU assignment, port
+- Color-coded health labels: green (healthy), orange (suspect), red (unavailable)
+- Leader badge on leader pod
+- Polls `apiClient.getClusterPods()` every 10 seconds
+
+### PodSelector (`src/components/PodSelector.tsx`)
+
+**Purpose:** Dropdown selector for choosing a target pod for model operations (load, move).
+
+**Props:**
+
+```tsx
+interface PodSelectorProps {
+  selectedPodId: string | undefined
+  onSelect: (podId: string) => void
+  isClusterMode: boolean
+  label?: string  // Default: 'Target pod'
+}
+```
+
+**Features:**
+- Only renders when `isClusterMode` is true
+- Fetches pods on mount, shows role (leader/follower) and GPU summary per option
+- Disabled options for unavailable pods
+- Used in both ModelManagement and GpuInfo pages
+
+### NodeModelPane (`src/components/NodeModelPane.tsx`)
+
+**Purpose:** Displays and manages models loaded on a specific pod (local or remote). Core component for per-pod model management.
+
+**Props:**
+
+```tsx
+interface NodeModelPaneProps {
+  podId: string
+  isLocalPod: boolean
+  isClusterMode: boolean
+  gpuMemoryData: MultiGpuMemoryUsageResponse | null
+  kvCacheTotalByGpu: Record<number, number>
+  memoryUtilizationByInstance: Record<string, number>
+  onGpuRefresh: () => void
+  onModelsChanged?: () => void
+  isSplitView?: boolean
+}
+
+interface NodeModelPaneHandle {
+  openMoveDialog: (model, targetGpuIds, targetPodId?, modelSourcePodId?) => void
+}
+```
+
+**API Duality Pattern:** Checks `isLocalPod` to select between local APIs (e.g., `apiClient.unloadModelByInstanceId()`) and cluster APIs (e.g., `apiClient.clusterUnloadModel()`).
+
+**Features:**
+- Dual view modes: Card view (GPU-grouped) or Table view
+- Model actions: Unload, Sleep, Wake, Move (with loading states)
+- Advanced filtering by status, GPU assignment, search term
+- Sorting by name, load time, memory usage
+- Imperative handle for triggering move dialog from parent (drag-and-drop integration)
+- Polls models every 5 seconds
+
+### useClusterStatus (`src/hooks/useClusterStatus.ts`)
+
+**Purpose:** Polls cluster status API and detects leader changes with optional auto-redirect.
+
+```tsx
+interface UseClusterStatusOptions {
+  onLeaderChange?: (leaderId: string, leaderAddress: string | null) => void
+}
+
+interface UseClusterStatusReturn {
+  clusterStatus: ClusterStatusResponse | null
+  isClusterMode: boolean
+  isLoading: boolean
+  error: string | null
+  refresh: () => void
+}
+```
+
+**Features:**
+- Polls `GET /api/cluster` every 10 seconds
+- Detects leader changes after initial load
+- Auto-redirects browser to new leader after 3s delay (internal addresses only)
+- Preserves stale data on transient errors
+
+### Cluster API Methods (`src/services/api.ts`)
+
+The API client includes cluster-specific methods that proxy operations to the appropriate pod:
+
+**Status & Info:**
+- `getClusterStatus()` — `GET /api/cluster`
+- `getClusterPods()` — `GET /api/cluster/pods`
+- `getClusterPodGpuAvailability(podId)` — `GET /api/cluster/pods/{podId}/gpu/available`
+- `getClusterPodGpuInfo(podId)` — `GET /api/cluster/pods/{podId}/gpu/info`
+- `getClusterPodMemory(podId)` — `GET /api/cluster/pods/{podId}/memory`
+- `getClusterPodModelsFull(podId)` — `GET /api/cluster/pods/{podId}/models/full`
+
+**Model Operations:**
+- `clusterLoadModel(request)` — `POST /api/cluster/models/load`
+- `clusterUnloadModel(instanceId)` — `POST /api/cluster/models/{instanceId}/unload`
+- `clusterMoveModel(instanceId, request)` — `POST /api/cluster/models/{instanceId}/move`
+- `clusterSleepModel(instanceId, level?)` — `POST /api/cluster/models/{instanceId}/sleep`
+- `clusterWakeModel(instanceId, tags?)` — `POST /api/cluster/models/{instanceId}/wake`
+- `getClusterModelLogs(instanceId)` — `GET /api/cluster/models/{instanceId}/logs`
+
+**Event Streaming:**
+- `subscribeClusterModelEvents(instanceId, onEvent, onError)` — SSE: `/api/cluster/models/{instanceId}/events`
+- `subscribeClusterMoveEvents(moveId, onEvent, onError)` — SSE: `/api/cluster/moves/{moveId}/events`
+
+**Presets & Profiles:**
+- `applyClusterPreset(presetId, dryRun?)` — `POST /api/cluster/presets/{presetId}/apply`
+- `reconcileClusterMemoryProfiles()` — `POST /api/cluster/memory-profiles/reconcile`
+- `exportClusterMemoryProfiles()` / `importClusterMemoryProfiles(request)` — Export/import profiles
+
+### Cluster State Management
+
+Cluster state is managed through a combination of hooks and context:
+
+- **`useClusterStatus()`**: Cluster status polling and leader detection (hook)
+- **`AuthContext`**: Authentication state (existing context, unchanged)
+- **`NotificationContext`**: Toast notifications for cluster operations
+- **`OperationsContext`**: Background task tracking (model loads, moves across pods)
+- **Local `useState`**: Component-level state (selected pod, expanded sections, filters)
+
+**Polling Intervals:**
+
+| Data | Interval | Component |
+|------|----------|-----------|
+| Cluster status | 10s | `useClusterStatus` |
+| Pod list | 10s | `ClusterOverview` |
+| Models | 5s | `NodeModelPane` |
+| GPU memory | 5s | `NodeModelPane` (fallback) |
 
 ## State Management
 

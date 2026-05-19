@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**sardeenz** is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of vLLM (inference engine) and kvcached (GPU memory sharing), it allows efficient multi-model hosting on a single GPU.
+**sardeenz** is a multi-model management platform that enables dynamic loading, management, and serving of multiple Large Language Models (LLMs) through a unified interface. Built on top of vLLM (inference engine) and kvcached (GPU memory sharing), it allows efficient multi-model hosting on a single GPU — or across a multi-pod Kubernetes cluster.
 
 **Core Components:**
 
@@ -15,9 +15,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Memory profiling for capacity planning
   - Multi-GPU support with tensor parallelism and intelligent GPU selection
   - Model configuration presets (save/load model sets with GPU assignments)
+- **Cluster Orchestration**: Multi-pod coordination via StatefulSet with leader election, peer discovery, heartbeat protocol, and HMAC-signed inter-pod communication
+  - Pod scheduler with placement strategies (maximize-models / balanced)
+  - Cross-pod model moves (blue-green), preset reconciliation, cluster-wide routing table
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
-- **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, and benchmarking
-- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes
+- **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, cluster overview, and benchmarking
+- **Inference Sim Backend**: GPU-free simulation backend (`inference-sim`) for development without NVIDIA hardware — simulates model loading, memory tracking, and inference responses
+- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes, with Kubernetes manifests (`deploy/kubernetes/`)
 - **Authentication**: Dual-auth model separating admin (JWT) from inference (optional API key)
   - Admin: Three modes (`none`, `simple`, `oauth`) via `AUTH_MODE` for dashboard/controller API
   - Inference: Optional `INFERENCE_API_KEY` for OpenAI-compatible endpoints (`/v1/*`)
@@ -101,14 +105,11 @@ make push VERSION=x.y.z            # Push to registry
 - When updating CUDA-related dependencies (vLLM, kvcached, container builds), always verify exact package versions available in the target CUDA repo before editing. Use `WebFetch` or `Bash` to confirm versions exist before committing changes.
 
 ## Active Technologies
-- TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target + Fastify 5.1+, React 18, PatternFly 6, `@kubernetes/client-node` (new), `undici` (built-in Node 22) (004-school-orchestration)
-- SQLite (better-sqlite3) for presets/profiles, in-memory Maps for cluster state and routing table (004-school-orchestration)
-- TypeScript 5.7+ (strict mode), Node.js 22.x, ES2022 target + Fastify 5.1+, `@rh-ai-bu/ts-nvml` (GPU bindings), `better-sqlite3` (006-inference-sim-backend)
-- SQLite for persistence, in-memory Maps for runtime state (006-inference-sim-backend)
-
 - TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target
 - Fastify 5.1+ (backend), React 18 + PatternFly 6 (frontend)
-- SQLite (better-sqlite3) for persistence, in-memory Maps for runtime state
+- `@kubernetes/client-node` for cluster peer discovery and leader election
+- `@rh-ai-bu/ts-nvml` for GPU bindings, `undici` (built-in Node 22)
+- SQLite (better-sqlite3) for persistence, in-memory Maps for runtime state and cluster routing
 
 ## Component-Specific Context
 
@@ -126,7 +127,3 @@ For detailed context specific to backend or frontend development:
 - ✅ **Use `docs/development/pf6-guide/` + PatternFly.org** for Patternfly 6 components
 
 Context7 may contain outdated PatternFly versions. For all PatternFly 6 UI development, refer to the local PF6 guide and official PatternFly.org documentation.
-
-## Recent Changes
-- 006-inference-sim-backend: Added TypeScript 5.7+ (strict mode), Node.js 22.x, ES2022 target + Fastify 5.1+, `@rh-ai-bu/ts-nvml` (GPU bindings), `better-sqlite3`
-- 004-school-orchestration: Added TypeScript 5.7+ (strict mode) with Node.js 22.x, ES2022 target + Fastify 5.1+, React 18, PatternFly 6, `@kubernetes/client-node` (new), `undici` (built-in Node 22)

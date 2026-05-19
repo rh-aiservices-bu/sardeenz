@@ -56,6 +56,11 @@ frontend/
 │   │   ├── benchmark/   # Benchmark-related components
 │   │   ├── inference/   # Chat session and inference components
 │   │   ├── Layout/      # AppLayout, NavSidebar
+│   │   ├── ClusterOverview.tsx           # Multi-pod cluster status cards
+│   │   ├── PodSelector.tsx               # Pod target dropdown for model operations
+│   │   ├── NodeModelPane.tsx             # Per-pod model list with GPU grouping
+│   │   ├── ApplyPresetDialog.tsx         # Cluster-wide preset application dialog
+│   │   ├── MoveModelDialog.tsx           # Cross-GPU/pod model move dialog
 │   │   ├── LoadConfigurationDialog.tsx   # Load saved model configurations
 │   │   ├── SaveConfigurationDialog.tsx   # Save current models as configuration
 │   │   ├── LoadModelDialog.tsx           # Load individual models
@@ -64,11 +69,18 @@ frontend/
 │   │   ├── AuthContext.tsx           # Authentication state management
 │   │   ├── NotificationContext.tsx   # Toast notifications
 │   │   └── ConnectionContext.tsx     # Backend connection status
+│   ├── hooks/           # Custom React hooks
+│   │   ├── useClusterStatus.ts   # Polls cluster state, detects leader changes
+│   │   ├── useMoveEvents.ts      # SSE subscription for model move progress
+│   │   ├── useWorkspaceState.ts  # Inference workspace session/layout state
+│   │   ├── useKeySeq.ts          # Keyboard sequence detection (easter egg)
+│   │   └── ...
 │   ├── pages/           # Route-specific pages
 │   │   ├── Login.tsx         # Login page (simple & OAuth modes)
 │   │   ├── OAuthCallback.tsx # OAuth redirect handler
 │   │   └── ...
 │   ├── services/        # API client layer
+│   │   └── api.ts       # Typed Axios client for all backend endpoints
 │   ├── App.tsx          # Root component with routing
 │   └── main.tsx         # Entry point
 ├── dist/                # Vite build output

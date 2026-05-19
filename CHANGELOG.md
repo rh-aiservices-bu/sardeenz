@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-05-19
+
+### School of Sardeenz — Multi-Pod Cluster Orchestration
+
+- **Multi-pod cluster mode**: Deploy multiple sardeenz pods as a coordinated cluster ("School") with automatic peer discovery and leader election
+  - Kubernetes-native discovery via headless Service or static `CLUSTER_PEERS` configuration
+  - Raft-inspired leader election with automatic failover and leader stability scoring
+  - Periodic heartbeat with model state synchronization across all pods
+  - HMAC-based inter-pod authentication (`CLUSTER_SECRET`)
+- **Cluster-wide model management**: Load, unload, sleep, and wake models across any pod from a single control plane
+  - Intelligent pod scheduling considers GPU availability, memory capacity, and existing model distribution
+  - Cross-pod model moves with zero-downtime blue-green migration
+  - Cluster-wide configuration presets — save and restore model sets across the entire cluster
+- **Cluster routing and proxy**: Unified inference endpoint routes requests to the correct pod automatically
+  - Per-pod connection pools with circuit breakers and health-aware failover
+  - Cluster routing table synchronized via heartbeat protocol
+  - Leader redirect plugin forwards cluster operations to the current leader
+- **Cluster Admin API**: New `/api/cluster/*` endpoints for cluster status, pod info, cross-pod model operations, distributed benchmarks, and memory profile reconciliation
+- **Internal API**: New `/internal/*` endpoints for pod-to-pod communication (heartbeat, model sync, config distribution)
+- **Cluster UI**: Dual-pane model management view with per-pod GPU visualization
+  - `ClusterOverview` component showing cluster health, pod status, and model distribution
+  - `PodSelector` for navigating between pods
+  - `NodeModelPane` with per-pod model cards and GPU memory panels
+  - Cross-pod drag-and-drop model moves between panes
+  - `ApplyPresetDialog` for cluster-wide configuration application
+- **Kubernetes deployment manifests**: StatefulSet, headless Service, RBAC, ConfigMap, and Secret templates in `deploy/kubernetes/`
+- **Database extensions**: New migrations for cluster routing tables and pod ID tracking in configuration entries
+
+### Inference Simulator Backend
+
+- **GPU-free development mode**: New `inference-sim` backend (`INFERENCE_BACKEND=inference-sim`) replaces vLLM for development without a GPU
+  - Downloads the `llm-d-inference-sim` binary automatically
+  - Simulated GPU memory tracking (`SIM_GPU_MEMORY_GB`, `SIM_MODEL_MEMORY_GB`)
+  - Configurable startup duration (`SIM_STARTUP_DURATION`) for realistic loading behavior
+  - Echo-based responses for testing inference flows without real model weights
+- **Multi-pod cluster simulation**: `make dev:cluster:sim` spins up multiple simulated pods locally with automatic port isolation
+- **Model memory estimator**: Regex-based VRAM estimation from model names for realistic capacity planning in sim mode
+
+### Internal
+
+- **Claude Code configuration**: Added `.claude/` config with speckit and release skills
+
 ## [0.6.0] - 2026-03-05
 
 ### vLLM 0.14.1 Upgrade

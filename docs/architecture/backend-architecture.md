@@ -6,6 +6,11 @@ This document provides detailed backend architecture specifications for the sard
 
 - [Overview](#overview)
 - [Key Components](#key-components)
+- [Cluster Services](#cluster-services)
+- [Cluster Stores](#cluster-stores)
+- [Cluster Plugins](#cluster-plugins)
+- [Cluster Routes](#cluster-routes)
+- [Database Migrations](#database-migrations)
 - [Model Loading Flow](#model-loading-flow)
 - [Model Unload Flow](#model-unload-flow)
 - [Process Management](#process-management)
@@ -224,6 +229,320 @@ In-memory store for tracking move operations:
 - **Operation tracking**: CRUD operations for move records
 - **Lookup methods**: Find moves by source or target instance ID
 - **Auto-pruning**: Keeps only last 10 completed operations
+
+## Cluster Services
+
+### ClusterManager (`src/services/cluster-manager.ts`)
+
+Facade that orchestrates all cluster sub-services. Implements `HeartbeatDataProvider` to supply local pod state (models, GPUs, term, role) to the heartbeat protocol.
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Registers self as peer, starts discovery + election + heartbeat if in cluster mode |
+| `stop()` | Stops all timers, cleans up peer store |
+| `isClusterMode()` | Returns true if `KUBERNETES_SERVICE_HOST` or `CLUSTER_PEERS` is configured |
+| `isLeader()` | Delegates to leader election service |
+| `getClusterState()` | Returns clusterId, term, leaderId, peers, routing table, expected size |
+| `getLeaderAddress()` | Resolves leader pod's IP:port for redirect |
+| `getPodId()` | Returns pod identifier (K8s hostname or `host:port` for static) |
+| `refreshGpuInfo()` | Calls nvidia-smi every 5s, updates peer store with GPU metrics |
+
+**Lazy Activation:** Single-instance mode has zero overhead (no timers). Cluster services auto-activate when the first peer is discovered via `handlePeerAdded()`. Enforces a maximum cluster size of 8 pods.
+
+### LeaderElection (`src/services/leader-election.ts`)
+
+Factory-created election service with three strategy implementations:
+
+| Strategy | Class | Detection | Details |
+|----------|-------|-----------|---------|
+| **Kubernetes** | `KubernetesLeaderElection` | `KUBERNETES_SERVICE_HOST` | K8s Lease API, 15s duration, 10s renewal |
+| **Heartbeat** | `HeartbeatLeaderElection` | `CLUSTER_PEERS` | Bully algorithm, lowest podId wins, quorum required |
+| **Single** | `SingleInstanceElection` | Neither | Always leader (no-op) |
+
+**Interface:**
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Begin election cycle |
+| `stop()` | Stop election monitoring |
+| `isLeader()` | Is this pod the current leader? |
+| `getCurrentTerm()` | Current election term/epoch |
+| `getLeaderId()` | Current leader pod ID |
+| `onLeaderChange` | Callback fired when leadership changes |
+
+**Quorum:** Heartbeat-based election requires `floor(clusterSize / 2) + 1` healthy peers to maintain leadership, preventing split-brain in network partitions. Uses `CLUSTER_EXPECTED_PODS` for quorum calculation when some pods are not yet visible.
+
+### PeerDiscovery (`src/services/peer-discovery.ts`)
+
+Discovers peers dynamically via Kubernetes Watch API or static peer health polling:
+
+| Strategy | Class | Mechanism |
+|----------|-------|-----------|
+| **Kubernetes** | `KubernetesPeerDiscovery` | Watches pods with label `app=sardeenz`, waits for `Running` phase + IP assignment |
+| **Static** | `StaticPeerDiscovery` | Polls `GET /internal/ping` on each peer every 10s (5s timeout), removes unresponsive peers |
+| **No-op** | `NoOpPeerDiscovery` | Single instance (no discovery needed) |
+
+**Callbacks:** `onPeerAdded(peer)` and `onPeerRemoved(podId)` fire into `ClusterManager`.
+
+### HeartbeatService (`src/services/heartbeat.ts`)
+
+Peer-to-peer heartbeat messaging with failure detection state machine:
+
+**Timing Constants:**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `HEARTBEAT_INTERVAL_MS` | 5000 | Heartbeat send + reap cycle |
+| `SUSPECT_THRESHOLD` | 10000 | Time before marking peer suspect |
+| `UNAVAILABLE_THRESHOLD` | 15000 | Time before marking peer unavailable |
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Begin heartbeat sending and failure detection (with startup jitter) |
+| `stop()` | Stop all timers |
+| `processIncomingHeartbeat(message)` | Updates peer store, schedules routing table rebuild (debounced 500ms) |
+
+**Heartbeat Payload:**
+
+```typescript
+interface HeartbeatMessage {
+  podId: string
+  role: 'leader' | 'follower'
+  term: number
+  timestamp: number
+  models: PeerModelEntry[]    // Running models with status, port, gpuIds
+  gpus: PeerGpuInfo[]         // GPU memory, temp, utilization
+  clusterVersion: number      // Routing table version for consistency
+}
+```
+
+**Failure Detection States:** `healthy` → `suspect` (10s) → `unavailable` (15s, removed from routing table).
+
+### PodScheduler (`src/services/pod-scheduler.ts`)
+
+Places models onto cluster GPUs according to strategy and resource constraints:
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `placeModels(request)` | Places model entries onto available GPU slots, returns decisions + failures |
+| `reconcile(preset)` | Diffs a saved preset against current cluster state, returns toUnload/toLoad/unchanged |
+
+**Placement Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `maximize-models` | Pack to fewest GPUs (least available VRAM first) |
+| `balanced` | Spread across GPUs (fewest models per GPU, then most available VRAM) |
+
+**Placement Algorithm:**
+1. Build GPU slots from healthy peers (mutable state for simulation)
+2. Sort entries by `loadOrder`
+3. For each entry: filter candidates by GPU type, VRAM, KV cache headroom
+4. For tensor-parallel: find pod with `tpSize` candidate GPUs
+5. Apply strategy-specific sorting, deduct VRAM from slots
+
+**Dependencies:** Uses `peerStore` for healthy peer state and `getMemoryProfileStore()` for VRAM estimation by model.
+
+### Cluster Auth (`src/services/cluster-auth.ts`)
+
+HMAC-SHA256 signing for inter-pod requests with replay protection:
+
+**Key Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `signRequest(method, path, body, secret)` | Returns `{signature, timestamp}` |
+| `verifyRequest(method, path, body, signature, timestamp, secret)` | Returns boolean |
+| `verifyRequestDualSecret(...)` | Verifies against current + previous secret (key rotation) |
+| `buildSignedHeaders(method, path, body)` | Returns headers dict with `X-Cluster-Signature` and `X-Cluster-Timestamp` |
+| `signedFetch(url, method, body?)` | Convenience wrapper for signed HTTP requests |
+
+**Signing Payload:** `METHOD\nPATH\nTIMESTAMP\nBODY` → HMAC-SHA256 hex digest. Replay window: 30 seconds. Uses `timingSafeEqual()` for constant-time comparison.
+
+## Cluster Stores
+
+### ClusterRoutingStore (`src/stores/cluster-routing-store.ts`)
+
+In-memory store mapping model names to available pod endpoints (vLLM ports). Built atomically from peer heartbeats.
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `rebuildFromPeers(peers)` | Atomic rebuild from peer model lists (only running models) |
+| `getRoutingEntries(modelName)` | Returns all pods serving a model |
+| `getLocalEntries(modelName)` | Returns only local pod entries (fallback) |
+| `getRoutingTable()` | Returns `{entries: Map, version}` |
+| `removeEntriesForPod(podId)` | Remove all routes for a departing peer |
+| `swapEntry(modelName, sourcePodId, targetEntry)` | Atomic add-then-remove for zero-downtime moves |
+
+**RoutingEntry Structure:**
+
+```typescript
+interface RoutingEntry {
+  podId: string
+  podAddress: string
+  vllmPort: number
+  weight: number        // 2 for local, 1 for remote
+  lastVerified: number  // timestamp
+}
+```
+
+Version increments on any change, enabling cache invalidation in the proxy router.
+
+### PeerStore (`src/stores/peer-store.ts`)
+
+In-memory store of all known peers with health, models, GPUs, and role:
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `addPeer(peer)` / `removePeer(podId)` | Add or remove a peer |
+| `getAllPeers()` / `getHealthyPeers()` | List all or only healthy peers |
+| `updateLastHeartbeat(podId, timestamp)` | Updates timestamp and resets status to healthy |
+| `markSuspect(podId)` / `markUnavailable(podId)` | Transition peer health status |
+| `getPeersByStatus(status)` | Filter by `healthy`, `suspect`, or `unavailable` |
+
+**PeerInfo Structure:**
+
+```typescript
+interface PeerInfo {
+  podId: string
+  address: string
+  port: number
+  role: 'leader' | 'follower'
+  status: 'healthy' | 'suspect' | 'unavailable'
+  lastHeartbeat: number
+  term: number
+  models: PeerModelEntry[]
+  gpus: PeerGpuInfo[]
+  joinedAt: number
+}
+```
+
+## Cluster Plugins
+
+### ClusterAuthPlugin (`src/plugins/cluster-auth.ts`)
+
+Fastify `preHandler` hook that validates HMAC signatures on all `/internal/*` routes:
+
+1. Skips if path doesn't start with `/internal/`
+2. Skips if `CLUSTER_SECRET` not configured (single-pod mode)
+3. Extracts `X-Cluster-Signature` and `X-Cluster-Timestamp` headers
+4. Verifies with `verifyRequestDualSecret()` (supports key rotation)
+5. Returns 401 on missing or invalid signature
+
+### LeaderRedirectPlugin (`src/plugins/leader-redirect.ts`)
+
+Fastify `onRequest` hook that redirects admin/dashboard requests from follower pods to the leader (307 Temporary Redirect):
+
+**Exempt Routes** (never redirected):
+- `/v1/*` — inference (handled by distributed proxy)
+- `/api/direct/*` — direct port proxy
+- `/internal/*` — inter-pod communication
+- `/api/health*` — health checks work on every pod
+- `/api/cluster` — cluster status useful from any pod
+- `/docs/*`, `/metrics` — operational endpoints
+
+Validates the leader address is a known peer before redirecting (prevents open redirect).
+
+## Cluster Routes
+
+### Public Cluster API (`/api/cluster/*`)
+
+**Status & Info:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cluster` | GET | Cluster health, term, leader, pod count, routing table version |
+| `/api/cluster/pods` | GET | All pods with GPU details and model counts |
+| `/api/cluster/pods/:podId/models` | GET | Models on a specific pod |
+| `/api/cluster/routing-table` | GET | Full routing table with model-to-pod mappings |
+| `/api/cluster/pods/:podId/gpu/available` | GET | GPU availability (proxied to pod) |
+| `/api/cluster/pods/:podId/memory` | GET | GPU memory usage (proxied to pod) |
+| `/api/cluster/pods/:podId/gpu/info` | GET | Full GPU info (proxied to pod) |
+| `/api/cluster/pods/:podId/models/full` | GET | Full model instance list (proxied to pod) |
+
+**Model Operations:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cluster/models/load` | POST | Load model on target pod (or local if unspecified) |
+| `/api/cluster/models/:instanceId/unload` | POST | Unload from any pod |
+| `/api/cluster/models/:instanceId/move` | POST | Cross-pod or intra-pod move with drain timeout |
+| `/api/cluster/models/:instanceId/events` | GET | SSE relay for load progress (cross-pod) |
+| `/api/cluster/models/:instanceId/sleep` | POST | Sleep model on any pod |
+| `/api/cluster/models/:instanceId/wake` | POST | Wake model on any pod |
+| `/api/cluster/models/:instanceId/logs` | GET | Logs from any pod |
+| `/api/cluster/moves/:moveId/events` | GET | SSE relay for move progress |
+
+**Presets & Profiles:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cluster/presets/:presetId/apply` | POST | Leader-only: reconcile + schedule + execute (dry-run supported) |
+| `/api/cluster/memory-profiles/reconcile` | POST | Collect, deduplicate, distribute profiles across cluster |
+| `/api/cluster/memory-profiles/export` | GET | Export all profiles as JSON backup |
+| `/api/cluster/memory-profiles/import` | POST | Import profiles, distribute to peers |
+| `/api/cluster/benchmarks/export` | GET | Export benchmark runs for backup |
+| `/api/cluster/benchmarks/import` | POST | Import benchmark runs from backup |
+
+### Internal Routes (`/internal/*`)
+
+All routes protected by cluster-auth plugin (HMAC verification):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/internal/ping` | GET | Liveness check (static discovery) |
+| `/internal/heartbeat` | POST | Receive heartbeat from peer |
+| `/internal/state` | GET | Full pod state (for sync after reconnection) |
+| `/internal/cluster/event` | POST | Receive cluster events |
+| `/internal/models/load` | POST | Remote load command from leader |
+| `/internal/models/:id/unload` | POST | Remote unload command |
+| `/internal/models/:id/events` | GET | SSE relay for model load progress |
+| `/internal/models/:id/sleep` | POST | Remote sleep command |
+| `/internal/models/:id/wake` | POST | Remote wake command |
+| `/internal/models/:id/logs` | GET | Process logs for instance |
+| `/internal/models` | GET | Full model list |
+| `/internal/gpu/available` | GET | GPU availability for proxying |
+| `/internal/memory/multi-gpu` | GET | GPU memory usage for proxying |
+| `/internal/gpu/info` | GET | Full GPU info |
+| `/internal/presets/sync` | POST | Receive presets from leader (version-based conflict resolution) |
+| `/internal/memory-profiles` | GET | Return local profiles for reconciliation |
+| `/internal/memory-profiles` | POST | Receive profiles from peers |
+| `/internal/moves/:moveId/events` | GET | SSE stream for move progress |
+
+## Database Migrations
+
+### Migration 006: Cluster Schema Extensions (`006-cluster-schema-extensions.sql`)
+
+Extends existing tables for cluster scheduling:
+
+**`model_configurations`:**
+- `placement_strategy TEXT` — `'maximize-models'` or `'balanced'`
+- `min_kv_cache_mb INTEGER` — Minimum KV cache headroom required
+- `version INTEGER DEFAULT 1` — Version for conflict resolution during preset sync
+
+**`model_configuration_entries`:**
+- `gpu_type_constraint TEXT` — GPU type filter (e.g., `"A100"`)
+- `min_vram_mb INTEGER` — Minimum VRAM required for placement
+
+**`memory_profiles`:**
+- `gpu_type TEXT` — GPU model name
+- `gpu_vram_mb INTEGER` — GPU total VRAM
+- `source_pod_id TEXT` — Which pod measured this profile
+
+### Migration 007: Pod ID in Config Entries (`007-pod-id-in-config-entries.sql`)
+
+**`model_configuration_entries`:**
+- `pod_id TEXT` — Which pod should run this entry (cluster-aware save/load)
 
 ## Model Loading Flow
 

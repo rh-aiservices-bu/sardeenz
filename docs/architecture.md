@@ -7,6 +7,7 @@ This document provides a detailed overview of the Sardeenz architecture, design 
 - [System Overview](#system-overview)
 - [Technology Stack](#technology-stack)
 - [Component Architecture](#component-architecture)
+- [Multi-Pod Cluster Architecture](#multi-pod-cluster-architecture)
 - [Data Model](#data-model)
 - [Process Management](#process-management)
 - [Memory Management](#memory-management)
@@ -80,6 +81,7 @@ Sardeenz is a multi-model management platform designed to:
 | **Metrics**      | fastify-metrics  | Latest   | Prometheus-format metrics                      |
 | **API Docs**     | @fastify/swagger | Latest   | OpenAPI 3.1 specification                      |
 | **Process Mgmt** | child_process    | Built-in | vLLM subprocess management                     |
+| **Cluster**      | @kubernetes/client-node | Latest | K8s peer discovery and leader election   |
 
 ### Frontend
 
@@ -113,15 +115,39 @@ sardeenz/
 │   │   │   │   ├── migrate.ts       # Migration runner
 │   │   │   │   └── migrations/      # SQL migration files
 │   │   │   ├── services/     # Business logic
+│   │   │   │   ├── cluster-manager.ts   # Cluster orchestration facade
+│   │   │   │   ├── leader-election.ts   # K8s/Bully/single election
+│   │   │   │   ├── peer-discovery.ts    # K8s/static peer discovery
+│   │   │   │   ├── heartbeat.ts         # Peer heartbeat + failure detection
+│   │   │   │   ├── pod-scheduler.ts     # Model placement + reconciliation
+│   │   │   │   └── ...                  # model-manager, proxy-router, etc.
 │   │   │   ├── stores/       # Data stores (in-memory + SQLite)
+│   │   │   │   ├── cluster-routing-store.ts  # Model → pod routing table
+│   │   │   │   ├── peer-store.ts             # Peer health + state
+│   │   │   │   └── ...                       # model-store, move-store, etc.
+│   │   │   ├── plugins/      # Fastify plugins
+│   │   │   │   ├── cluster-auth.ts      # HMAC verification for /internal/*
+│   │   │   │   ├── leader-redirect.ts   # Redirect followers → leader
+│   │   │   │   └── ...                  # inference-auth, request-logging
 │   │   │   ├── routes/       # API routes
+│   │   │   │   ├── cluster/  # /api/cluster/* (status, models, presets, profiles)
+│   │   │   │   ├── internal.ts  # /internal/* (heartbeat, model ops, sync)
+│   │   │   │   └── ...          # models, benchmarks, presets, etc.
 │   │   │   └── server.ts     # Entry point
 │   │   └── package.json
 │   └── frontend/             # React frontend
 │       ├── src/
 │       │   ├── components/   # UI components
+│       │   │   ├── ClusterOverview.tsx  # Cluster status dashboard
+│       │   │   ├── PodSelector.tsx      # Pod dropdown for operations
+│       │   │   ├── NodeModelPane.tsx    # Per-pod model management
+│       │   │   └── ...                  # ModelCard, LoadModelDialog, etc.
 │       │   ├── pages/        # Route pages
 │       │   ├── hooks/        # Custom hooks
+│       │   │   ├── useClusterStatus.ts  # Cluster polling + leader redirect
+│       │   │   └── ...
+│       │   ├── services/     # API client
+│       │   │   └── api.ts    # Includes cluster API methods
 │       │   └── App.tsx       # Root component
 │       └── package.json
 ├── packages/
@@ -223,6 +249,112 @@ For testing and debugging, the `/api/direct/:port/*` endpoint bypasses model rou
 - WebSocket connection for real-time updates
 
 For detailed frontend architecture, see [Frontend Architecture](./architecture/frontend-architecture.md).
+
+## Multi-Pod Cluster Architecture
+
+Sardeenz supports multi-pod deployment where multiple instances coordinate to distribute models across a Kubernetes cluster (or a set of static peers for local development). Each pod runs the full Fastify backend and can serve inference requests independently, while a single elected leader coordinates administrative operations.
+
+### High-Level Cluster Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    Clients / Load Balancer                      │
+│              (inference: /v1/*  admin: /api/*)                 │
+└────────┬──────────────────────┬──────────────────────┬─────────┘
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│    Pod 0        │  │    Pod 1        │  │    Pod 2        │
+│   (Leader)      │  │  (Follower)     │  │  (Follower)     │
+│                 │  │                 │  │                 │
+│ Controller API  │  │ Controller API  │  │ Controller API  │
+│ Inference Proxy │  │ Inference Proxy │  │ Inference Proxy │
+│ Cluster Mgr     │  │ Cluster Mgr     │  │ Cluster Mgr     │
+│                 │  │                 │  │                 │
+│ vLLM: Model A  │  │ vLLM: Model B  │  │ vLLM: Model C  │
+│ vLLM: Model D  │  │ vLLM: Model E  │  │ GPU 0, GPU 1   │
+│ GPU 0           │  │ GPU 0           │  │                 │
+└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
+         │                    │                     │
+         └─── Heartbeat + HMAC-signed /internal/* ──┘
+```
+
+### Cluster Modes
+
+| Mode | Detection | Discovery | Leader Election |
+|------|-----------|-----------|-----------------|
+| **Kubernetes** | `KUBERNETES_SERVICE_HOST` env var | K8s Pod Watch API (label: `app=sardeenz`) | K8s Lease API (`sardeenz-leader`, 15s duration) |
+| **Static Peers** | `CLUSTER_PEERS` env var | HTTP health polling (`/internal/ping`, 10s interval) | Heartbeat-based Bully algorithm (lowest podId wins) |
+| **Single Instance** | Neither present | No-op | Always leader |
+
+### Cluster Configuration
+
+| Environment Variable | Default | Purpose |
+|---------------------|---------|---------|
+| `CLUSTER_PEERS` | `''` | Comma-separated `host:port` list for static peer discovery |
+| `CLUSTER_SECRET` | `''` | Shared HMAC-SHA256 secret for inter-pod authentication |
+| `CLUSTER_EXPECTED_PODS` | `0` | Expected cluster size (for quorum calculation before all pods visible) |
+| `NAMESPACE` | `'sardeenz'` | Kubernetes namespace for peer discovery and lease |
+| `VLLM_BASE_PORT` | `12346` | Base port for vLLM instances (auto-offset per pod in cluster mode) |
+
+### Core Cluster Services
+
+**ClusterManager** (`src/services/cluster-manager.ts`): Facade that orchestrates all cluster sub-services. Initializes peer discovery, leader election, and heartbeat monitoring. Provides cluster state to routes and plugins. Supports lazy activation — single-instance mode has zero overhead, and cluster services auto-activate when the first peer is discovered.
+
+**LeaderElection** (`src/services/leader-election.ts`): Factory-created election service with three strategies (K8s Lease, heartbeat Bully, single-instance). The heartbeat-based strategy requires quorum (`floor(size/2) + 1`) to maintain leadership, preventing split-brain in network partitions.
+
+**PeerDiscovery** (`src/services/peer-discovery.ts`): Discovers peers via K8s Watch API or static health polling. Fires `onPeerAdded`/`onPeerRemoved` callbacks to the ClusterManager.
+
+**HeartbeatService** (`src/services/heartbeat.ts`): Peer-to-peer heartbeat protocol with failure detection state machine:
+- **Healthy**: Last heartbeat < 10s ago
+- **Suspect**: 10–15s since last heartbeat
+- **Unavailable**: > 15s — removed from routing table
+
+Heartbeats carry each pod's running models, GPU metrics, and routing table version, enabling the cluster to maintain a consistent distributed routing table without a separate data plane.
+
+**PodScheduler** (`src/services/pod-scheduler.ts`): Places models onto cluster GPUs according to a configurable strategy (`maximize-models` or `balanced`). Supports GPU type constraints, minimum VRAM requirements, and tensor-parallel placement. Also provides `reconcile()` to diff a saved preset against the live cluster state for declarative configuration.
+
+### Cluster Routing
+
+**ClusterRoutingStore** (`src/stores/cluster-routing-store.ts`): In-memory store mapping model names to available pod endpoints. Rebuilt atomically from peer heartbeats. Uses weight-based load balancing (local pod weight=2, remote=1) to prefer local inference. Version-tracked for cache invalidation.
+
+**PeerStore** (`src/stores/peer-store.ts`): In-memory store of all known peers with health status, GPU metrics, and running models. Updated by heartbeats and used by the scheduler for placement decisions.
+
+### Inter-Pod Communication
+
+All inter-pod requests use HMAC-SHA256 signing with replay protection (30s window):
+
+- **Signing**: `METHOD\nPATH\nTIMESTAMP\nBODY` → HMAC-SHA256 hex digest
+- **Headers**: `X-Cluster-Signature`, `X-Cluster-Timestamp`
+- **Verification**: Constant-time comparison via `timingSafeEqual()`
+- **Key rotation**: Dual-secret verification supports rolling secret updates
+
+**Internal Routes** (`/internal/*`): HMAC-protected endpoints for peer communication:
+- `/internal/ping` — Liveness check (static discovery)
+- `/internal/heartbeat` — Receive peer heartbeat
+- `/internal/state` — Full pod state sync
+- `/internal/models/load`, `/internal/models/:id/unload` — Remote model operations
+- `/internal/models/:id/sleep`, `/internal/models/:id/wake` — Remote sleep/wake
+- `/internal/presets/sync` — Preset distribution from leader
+- `/internal/memory-profiles` — Profile reconciliation
+
+### Leader Responsibilities
+
+The leader pod coordinates state-changing operations:
+- **Preset application**: Reconciles desired state vs. actual, schedules model placement
+- **Profile reconciliation**: Collects, deduplicates, and distributes memory profiles across all pods
+- **Admin redirect**: Follower pods redirect admin/dashboard requests to the leader (307 Temporary Redirect), while inference (`/v1/*`) and health endpoints work on every pod
+
+### Cross-Pod Model Moves
+
+Model moves between pods use a blue-green pattern for zero-downtime:
+1. Spawn target instance on destination pod
+2. Remove source from routing table (target now receives new requests)
+3. Drain in-flight connections on source
+4. Unload source instance
+5. Atomic routing table swap ensures at least one route always exists
+
+For detailed backend cluster components, see [Backend Architecture](./architecture/backend-architecture.md).
 
 ### 4. vLLM Model Instances
 
@@ -575,12 +707,20 @@ For detailed kvcached documentation, see [`kvcached/README.md`](./kvcached/READM
 | `admin`          | Load models, unload models, view all data    |
 | `admin-readonly` | View models, view metrics (no modifications) |
 
+**Inter-Pod Communication:** HMAC-SHA256 signed requests
+
+- All `/internal/*` routes protected by cluster-auth plugin
+- Shared secret via `CLUSTER_SECRET` environment variable
+- 30-second replay protection window
+- Dual-secret verification for rolling key rotation
+
 ### Security Best Practices
 
 - **No credentials in logs**: Sanitize all log output
 - **Process isolation**: Each vLLM instance runs in separate process
 - **Resource limits**: Prevent memory exhaustion via kvcached limits
 - **API versioning**: URL-based versioning (`/api/v1/`) for backward compatibility
+- **Cluster auth**: HMAC-signed inter-pod communication with replay protection
 
 ## Performance Considerations
 

@@ -27,7 +27,16 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | `src/routes/orphans.ts`              | Orphan process detection                                                       |
 | `src/routes/settings.ts`             | Application settings (HF token)                                                |
 | `src/routes/auth.ts`                 | Authentication endpoints: info, login, callback, logout, me                    |
+| `src/routes/cluster/index.ts`        | Cluster route group — registers status, models, presets, profiles, benchmarks  |
+| `src/routes/cluster/status.ts`       | Cluster status, per-pod GPU/memory info, aggregated model list                 |
+| `src/routes/cluster/models.ts`       | Cross-pod model load/unload/sleep/wake with SSE relay                          |
+| `src/routes/cluster/presets.ts`      | Cluster-wide preset application with pod scheduler placement                   |
+| `src/routes/cluster/profiles.ts`     | Cluster-wide memory profile aggregation and cross-pod profiling                |
+| `src/routes/cluster/benchmarks.ts`   | Cluster benchmark export/import                                                |
+| `src/routes/internal.ts`             | Inter-pod endpoints (HMAC-authed) for heartbeat, model ops, presets, profiles  |
 | `src/plugins/inference-auth.ts`      | Inference API key auth (separate from admin JWT)                               |
+| `src/plugins/cluster-auth.ts`        | HMAC auth for `/internal/*` inter-pod routes                                   |
+| `src/plugins/leader-redirect.ts`     | Redirects admin requests from follower pods to the leader                      |
 
 **Sleep Mode Endpoints** (in `src/routes/models.ts`):
 
@@ -39,11 +48,15 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 
 ### In-Memory Stores
 
-| Store                            | Purpose                           |
-| -------------------------------- | --------------------------------- |
-| `src/stores/model-store.ts`      | ModelInstance tracking by ID/path |
-| `src/stores/operation-store.ts`  | ControllerOperation audit trail   |
-| `src/stores/runtime-settings.ts` | Runtime settings (HF token)       |
+| Store                                  | Purpose                                             |
+| -------------------------------------- | --------------------------------------------------- |
+| `src/stores/model-store.ts`            | ModelInstance tracking by ID/path                    |
+| `src/stores/operation-store.ts`        | ControllerOperation audit trail                      |
+| `src/stores/runtime-settings.ts`       | Runtime settings (HF token)                          |
+| `src/stores/cluster-routing-store.ts`  | Cluster routing table (model→pod mapping for proxy)  |
+| `src/stores/peer-store.ts`             | Cluster peer info (pod status, addresses, GPUs)      |
+| `src/stores/move-store.ts`             | Model move operation state with concurrency lock     |
+| `src/stores/metrics-store.ts`          | Resource metrics and per-instance connection counts  |
 
 ### SQLite-Backed Stores
 
@@ -52,6 +65,25 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | `src/stores/benchmark-store.ts`           | BenchmarkRun, Scenario, Results, Metrics persistence |
 | `src/stores/memory-profile-store.ts`      | MemoryProfile storage and lookup                     |
 | `src/stores/model-configuration-store.ts` | SavedModelConfiguration persistence                  |
+
+## Cluster Services
+
+| Service                              | Purpose                                                         |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `src/services/cluster-manager.ts`    | Top-level orchestrator: peer discovery, leader election, heartbeat |
+| `src/services/leader-election.ts`    | K8s Lease-based leader election (falls back to static for dev)  |
+| `src/services/peer-discovery.ts`     | K8s endpoint-based peer discovery (or static `CLUSTER_PEERS`)   |
+| `src/services/heartbeat.ts`          | Periodic heartbeat with model/GPU data; reaps unavailable peers |
+| `src/services/pod-scheduler.ts`      | Placement algorithm and preset reconciliation for cluster scheduling |
+| `src/services/model-mover.ts`        | Blue-green model moves between GPUs/pods with drain tracking    |
+| `src/services/cluster-auth.ts`       | HMAC-SHA256 signing/verification for inter-pod requests         |
+
+## Inference-Sim Utilities
+
+| Utility                                 | Purpose                                              |
+| --------------------------------------- | ---------------------------------------------------- |
+| `src/utils/sim-gpu-tracker.ts`          | Simulated GPU memory tracking for inference-sim mode |
+| `src/utils/model-memory-estimator.ts`   | Estimates model memory from model path/name          |
 
 ## Development Commands
 
@@ -103,6 +135,9 @@ See `apps/backend/.env.example` for a complete reference.
 | `SIM_MODEL_MEMORY_GB`| `4`                      | Default model memory estimate in GB (inference-sim only)                                 |
 | `SIM_STARTUP_DURATION`| `3s`                    | Simulated model loading time (inference-sim only)                                        |
 | `INFERENCE_SIM_BINARY`| `llm-d-inference-sim`   | Path to inference-sim binary (inference-sim only)                                        |
+| `CLUSTER_PEERS`      | (none)                   | Comma-separated `id=host:port` list for static peer discovery (local dev)                |
+| `CLUSTER_SECRET`     | (none)                   | HMAC secret for inter-pod auth (required in cluster mode, min 32 chars)                  |
+| `CLUSTER_EXPECTED_PODS`| 0                      | Expected pod count for cluster readiness checks                                          |
 
 ## Testing Notes
 
