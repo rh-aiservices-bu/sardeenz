@@ -1,5 +1,7 @@
 # Architecture
 
+> **Interactive**: [Explore the architecture visually](architecture-visualizer.html) — animated flow diagrams showing cluster formation, inference routing, model moves, and failover.
+
 This document provides a detailed overview of the Sardeenz architecture, design decisions, and system components.
 
 ## Table of Contents
