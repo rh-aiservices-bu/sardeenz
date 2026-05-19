@@ -70,6 +70,7 @@ New to the dashboard? The **[User Guide](./docs/user-guide.md)** walks you throu
 | **[Development Guide](./docs/development/README.md)** | Build from source, contribute      |
 | **[API Guide](./docs/api-guide.md)**                  | API reference with code examples   |
 | **[Architecture](./docs/architecture.md)**            | System design and components       |
+| **[Architecture Visualizer](./docs/architecture-visualizer.html)** | Interactive animated flow diagrams |
 
 ## License
 
