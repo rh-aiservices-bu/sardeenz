@@ -5,8 +5,8 @@ This document provides a complete reference for kvcached's command-line tools fo
 ## Table of Contents
 
 - [Overview](#overview)
-- [kvctl - Memory Control CLI](#kvctl---memory-control-cli)
-- [kvtop - Real-Time Monitoring](#kvtop---real-time-monitoring)
+- [kvctl - Memory Control CLI](#kvctl-memory-control-cli)
+- [kvtop - Real-Time Monitoring](#kvtop-real-time-monitoring)
 - [Usage Workflows](#usage-workflows)
 - [Integration with Backend](#integration-with-backend)
 

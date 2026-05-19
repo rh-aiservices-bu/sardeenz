@@ -400,7 +400,7 @@ spec:
 The deployment uses two PVCs. Only the App Data PVC is required:
 
 - **App Data PVC** (`sardeenz-app-data`): **Required.** Stores SQLite database and other persistent app data
-- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for alternatives.
+- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration) for alternatives.
 
 **Model Cache PVC (`pvc-model-cache.yaml`):**
 
@@ -1038,4 +1038,4 @@ oc logs -f deployment/sardeenz | jq .
 - [Architecture](./architecture.md) - System architecture and design
 - [API Guide](./api-guide.md) - API usage examples
 - [RBAC Setup](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
-- [kvcached Documentation](./kvcached/) - GPU memory sharing setup
+- [kvcached Documentation](./kvcached/README.md) - GPU memory sharing setup

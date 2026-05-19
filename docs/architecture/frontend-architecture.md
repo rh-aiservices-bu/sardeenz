@@ -1117,5 +1117,5 @@ test('loads and displays models', async () => {
 
 - [PatternFly 6 Guide](../development/pf6-guide/README.md) - Component library documentation
 - [Frontend API Client](../development/frontend-api-client.md) - API integration guide
-- [Frontend CLAUDE.md](../../apps/frontend/CLAUDE.md) - Development context
+- [Frontend CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/apps/frontend/CLAUDE.md) - Development context
 - [Architecture](../architecture.md) - System-wide architecture overview

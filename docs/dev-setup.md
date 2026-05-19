@@ -515,4 +515,4 @@ kvctl limit <segment-name> 4G
 - [Architecture Documentation](./architecture.md) - System design and vLLM integration
 - [API Guide](./api-guide.md) - Model loading API endpoints
 - [RBAC Setup Guide](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
-- [kvcached Documentation](./kvcached/) - Detailed kvcached configuration
+- [kvcached Documentation](./kvcached/README.md) - Detailed kvcached configuration

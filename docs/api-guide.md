@@ -2914,6 +2914,6 @@ These events trigger routing table rebuilds and peer state updates.
 
 - [Architecture](./architecture.md) - System architecture details
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
-- [OpenAPI Specification](../specs/001-multi-model-platform/contracts/) - Full API schema (when available)
-- [Cluster Admin API Spec](../specs/004-school-orchestration/contracts/cluster-admin-api.yaml) - OpenAPI spec for cluster endpoints
-- [Internal API Spec](../specs/004-school-orchestration/contracts/internal-api.yaml) - OpenAPI spec for inter-pod endpoints
+- [OpenAPI Specification](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/contracts/) - Full API schema (when available)
+- [Cluster Admin API Spec](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/cluster-admin-api.yaml) - OpenAPI spec for cluster endpoints
+- [Internal API Spec](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/internal-api.yaml) - OpenAPI spec for inter-pod endpoints

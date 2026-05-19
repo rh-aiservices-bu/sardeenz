@@ -621,7 +621,6 @@ When using PatternFly components, consult documentation for correct props:
 
 - **[Modal Testing](./modals.md)**: ModalBoxCloseButton context
 - **[Dropdown Testing](./dropdowns-pagination.md)**: Menu component context
-- **[Error Handling](../../error-handling.md)**: ErrorAlert implementation
 
 ## Summary
 

@@ -4,6 +4,8 @@
 
 # Sardeenz
 
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://rh-aiservices-bu.github.io/sardeenz/)
+
 Sardeenz is a proof-of-concept application that allows you to load more than one model on a given GPU. It allows you to add more and more models onto the GPU, until it is fully utilized. You can also do this for a set of GPUs on the same machine or visible by the same Pod in a Kubernetes environment.
 
 > **Status:** Early development (PoC phase)

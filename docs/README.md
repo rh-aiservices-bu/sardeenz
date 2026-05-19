@@ -30,9 +30,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Resource                                                 | Description                                                |
 | -------------------------------------------------------- | ---------------------------------------------------------- |
-| [**kvcached**](./kvcached/)                              | GPU memory sharing documentation and setup guides          |
-| [**Specifications**](../specs/001-multi-model-platform/) | Design specifications, planning documents, and data models |
-| [**Changelog**](../CHANGELOG.md)                         | Project change history                                     |
+| [**kvcached**](./kvcached/README.md)                              | GPU memory sharing documentation and setup guides          |
+| [**Specifications**](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/) | Design specifications, planning documents, and data models |
+| [**Changelog**](https://github.com/rh-aiservices-bu/sardeenz/blob/main/CHANGELOG.md) | Project change history |
 
 ### 🚀 Getting Started
 
@@ -46,7 +46,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
    - Read the [User Guide](./user-guide.md) for a walkthrough of all dashboard features
 
 3. **Understand the Project**
-   - Read the [main README](../README.md) for overview
+   - Read the [main README](https://github.com/rh-aiservices-bu/sardeenz#readme) for overview
    - Review [architecture.md](./architecture.md) for system design
 
 4. **Develop Locally**
@@ -69,7 +69,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 - [Backend Architecture](./architecture/backend-architecture.md) - Backend component details
 - [Frontend Architecture](./architecture/frontend-architecture.md) - Frontend component specs
 - [API Guide](./api-guide.md#code-examples) - Integration code examples
-- [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
+- [Specifications](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/spec.md) - Feature requirements
 
 **Key Files:**
 
@@ -92,9 +92,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 - GPU-enabled OpenShift cluster setup
 - App Data PVC (required for SQLite)
-- Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](../deployment/README.md#storage-configuration))
+- Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration))
 - OAuth 2.0 integration with Kubernetes RBAC (see [rbac-setup.md](./rbac-setup.md))
-- Kubernetes manifests for multi-pod cluster (see [deploy/kubernetes/](../deploy/kubernetes/))
+- Kubernetes manifests for multi-pod cluster (see [deploy/kubernetes/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/kubernetes/))
 
 ### 📊 Data Scientists / ML Engineers
 
@@ -105,7 +105,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 - [API Guide: Model Move API](./api-guide.md#model-move-api) - Move models between GPUs without downtime
 - [API Guide: Cluster API](./api-guide.md#cluster-api) - Multi-pod cluster management (load, move, sleep models across pods)
 - [API Guide: Proxy API](./api-guide.md#proxy-api) - Inference requests (OpenAI-compatible)
-- [kvcached Documentation](./kvcached/) - GPU memory sharing for multi-model hosting
+- [kvcached Documentation](./kvcached/README.md) - GPU memory sharing for multi-model hosting
 - [Architecture: Memory Management](./architecture.md#memory-management) - GPU allocation strategy
 
 **Supported Models:**
@@ -121,7 +121,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 - [PatternFly 6 Guide](./development/pf6-guide/README.md) - Complete local UI development guide
 - [Frontend API Client](./development/frontend-api-client.md) - API client integration
 - [PatternFly 6 Documentation](https://www.patternfly.org/v6/) - Official UI component library
-- [CLAUDE.md](../CLAUDE.md#common-commands) - Frontend development commands
+- [CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/CLAUDE.md#common-commands) - Frontend development commands
 
 **Key Files:**
 
@@ -138,18 +138,18 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [architecture.md](./architecture.md)                                             | System overview, technology stack, component architecture, data model, security, performance |
 | [architecture/backend-architecture.md](./architecture/backend-architecture.md)   | Backend components, model loading flows, process management, GPU memory tracking             |
 | [architecture/frontend-architecture.md](./architecture/frontend-architecture.md) | Frontend components, state management, routing, API integration, real-time updates           |
-| [specs/spec.md](../specs/001-multi-model-platform/spec.md)                       | Feature requirements, priorities, user stories                                               |
-| [specs/plan.md](../specs/001-multi-model-platform/plan.md)                       | Implementation plan, milestones, timeline                                                    |
-| [specs/data-model.md](../specs/001-multi-model-platform/data-model.md)           | Entity schemas, relationships, validation rules                                              |
+| [specs/spec.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/spec.md) | Feature requirements, priorities, user stories |
+| [specs/plan.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/plan.md) | Implementation plan, milestones, timeline |
+| [specs/data-model.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/data-model.md) | Entity schemas, relationships, validation rules |
 
 ### API & Integration
 
 | Document                                                         | Topics Covered                                                                                                                                                  |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [api-guide.md](./api-guide.md)                                   | Controller API (load/unload/move models), Proxy API (inference), Cluster API (multi-pod), Internal API (inter-pod), authentication, error handling, code examples |
-| [specs/contracts/](../specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available)                                                                                                                     |
-| [Cluster Admin API](../specs/004-school-orchestration/contracts/cluster-admin-api.yaml) | OpenAPI spec for cluster management endpoints                                                                                                  |
-| [Internal API](../specs/004-school-orchestration/contracts/internal-api.yaml)           | OpenAPI spec for inter-pod communication endpoints                                                                                             |
+| [specs/contracts/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/contracts/) | OpenAPI 3.1 specifications (when available) |
+| [Cluster Admin API](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/cluster-admin-api.yaml) | OpenAPI spec for cluster management endpoints |
+| [Internal API](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/internal-api.yaml) | OpenAPI spec for inter-pod communication endpoints |
 
 ### Deployment & Operations
 
@@ -157,8 +157,8 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | [deployment.md](./deployment.md)                   | Container build, Docker Compose, OpenShift deployment, multi-pod cluster deployment, configuration, health checks, monitoring, troubleshooting |
 | [rbac-setup.md](./rbac-setup.md)                   | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions                                |
-| [kvcached/](./kvcached/)                           | kvcached installation, configuration, memory segment management                                                                        |
-| [deploy/kubernetes/](../deploy/kubernetes/)         | Kubernetes manifests for multi-pod cluster: StatefulSet, Services, RBAC, ConfigMap, Secret                                             |
+| [kvcached/](./kvcached/README.md)                           | kvcached installation, configuration, memory segment management                                                                        |
+| [deploy/kubernetes/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/kubernetes/) | Kubernetes manifests for multi-pod cluster: StatefulSet, Services, RBAC, ConfigMap, Secret |
 
 ### Development Guides
 
@@ -173,9 +173,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document                                                               | Topics Covered                                                      |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [CLAUDE.md](../CLAUDE.md)                                              | Project overview, quick start, common commands, active technologies |
-| [CHANGELOG.md](../CHANGELOG.md)                                        | Project change history, feature additions, bug fixes                |
-| [specs/quickstart.md](../specs/001-multi-model-platform/quickstart.md) | Developer quickstart guide                                          |
+| [CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/CLAUDE.md) | Project overview, quick start, common commands, active technologies |
+| [CHANGELOG.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/CHANGELOG.md) | Project change history, feature additions, bug fixes |
+| [specs/quickstart.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/quickstart.md) | Developer quickstart guide |
 
 ## Key Concepts
 
@@ -326,7 +326,7 @@ Yes, an App Data PVC (1Gi) is required for the SQLite database that stores bench
 - Mount pre-downloaded models via `LOCAL_MODELS_PATH` (optional)
 - Or use both sources simultaneously
 
-See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for details.
+See [deployment/README.md Storage Configuration](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration) for details.
 
 </details>
 
@@ -359,7 +359,7 @@ See [api-guide.md](./api-guide.md#authentication) and [deployment.md](./deployme
 
 ## Contributing
 
-This project follows the principles defined in [`.specify/memory/constitution.md`](../specs/001-multi-model-platform/):
+This project follows the principles defined in [`.specify/memory/constitution.md`](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/):
 
 - **Type Safety**: TypeScript strict mode
 - **Performance-First**: <50ms routing overhead
@@ -370,13 +370,13 @@ This project follows the principles defined in [`.specify/memory/constitution.md
 Before contributing, read:
 
 1. [Architecture](./architecture.md) - System design
-2. [Specifications](../specs/001-multi-model-platform/spec.md) - Feature requirements
-3. [CLAUDE.md](../CLAUDE.md) - Development setup
+2. [Specifications](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/spec.md) - Feature requirements
+3. [CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/CLAUDE.md) - Development setup
 
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/rh-aiservices-bu/sardeenz/issues) (if public repo)
-- **Specifications**: See [specs/001-multi-model-platform/](../specs/001-multi-model-platform/)
+- **Specifications**: See [specs/001-multi-model-platform/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/)
 - **Documentation**: This directory
 
 ## License

@@ -408,7 +408,7 @@ Clients can subscribe to real-time events via `/api/v1/models/instances/{id}/eve
 
 ## Data Model
 
-See [`specs/001-multi-model-platform/data-model.md`](../specs/001-multi-model-platform/data-model.md) for detailed schema definitions.
+See [`specs/001-multi-model-platform/data-model.md`](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/001-multi-model-platform/data-model.md) for detailed schema definitions.
 
 ### Core Entities
 
@@ -767,7 +767,7 @@ Expose Prometheus metrics for:
 
 ## Design Principles
 
-This architecture follows the principles defined in [`.specify/memory/constitution.md`](../specs/001-multi-model-platform/):
+This architecture follows the principles defined in [`.specify/memory/constitution.md`](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/):
 
 1. **Type Safety & Monorepo**: TypeScript strict mode, workspace structure
 2. **Performance-First**: <50ms routing, streaming support, connection pooling
@@ -793,4 +793,4 @@ This architecture follows the principles defined in [`.specify/memory/constituti
 - [Frontend Architecture](./architecture/frontend-architecture.md) - Detailed frontend component documentation
 - [API Guide](./api-guide.md) - API usage examples
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
-- [kvcached Documentation](./kvcached/) - GPU memory sharing details
+- [kvcached Documentation](./kvcached/README.md) - GPU memory sharing details

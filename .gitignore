@@ -59,6 +59,7 @@ logs/
 tmp/
 temp/
 .cache/
+site/
 
 # OS
 .DS_Store

@@ -709,4 +709,4 @@ interface FastifyContextConfig {
 - [Architecture Overview](../architecture.md) - High-level system architecture
 - [Frontend Architecture](./frontend-architecture.md) - Frontend component specs
 - [API Guide](../api-guide.md) - API usage examples
-- [kvcached Documentation](../kvcached/) - GPU memory sharing details
+- [kvcached Documentation](../kvcached/README.md) - GPU memory sharing details
