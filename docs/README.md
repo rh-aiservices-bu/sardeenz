@@ -8,6 +8,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 | Document                                                             | Description                                                             |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [**User Guide**](./user-guide.md)                                    | Dashboard walkthrough — loading models, benchmarks, cluster management |
 | [**Architecture Overview**](./architecture.md)                       | High-level system architecture, design decisions, and technical details |
 | [**Backend Architecture**](./architecture/backend-architecture.md)   | Detailed backend components, flows, and process management              |
 | [**Frontend Architecture**](./architecture/frontend-architecture.md) | Frontend component specs, state management, and API integration         |
@@ -41,16 +42,19 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
    - Pre-built images at `quay.io/rh-aiservices-bu/sardeenz`
    - See [deployment.md](./deployment.md) for OpenShift/Kubernetes setup
 
-2. **Understand the Project**
+2. **Use the Dashboard**
+   - Read the [User Guide](./user-guide.md) for a walkthrough of all dashboard features
+
+3. **Understand the Project**
    - Read the [main README](../README.md) for overview
    - Review [architecture.md](./architecture.md) for system design
 
-3. **Develop Locally**
+4. **Develop Locally**
    - Follow the [Development Guide](./development/README.md)
    - See [GPU Setup](./dev-setup.md) for vLLM/kvcached configuration
    - No GPU? Use the [Inference Simulator](./dev-setup.md#gpu-free-development-inference-simulator) for GPU-free development
 
-4. **Use the APIs**
+5. **Use the APIs**
    - Explore [api-guide.md](./api-guide.md) for API examples
    - Test with provided code snippets (Python, JavaScript, curl)
 
@@ -96,6 +100,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 **Loading and using models?**
 
+- [User Guide](./user-guide.md) - Dashboard walkthrough for loading, benchmarking, and managing models
 - [API Guide: Controller API](./api-guide.md#controller-api) - Load/unload models
 - [API Guide: Model Move API](./api-guide.md#model-move-api) - Move models between GPUs without downtime
 - [API Guide: Cluster API](./api-guide.md#cluster-api) - Multi-pod cluster management (load, move, sleep models across pods)

@@ -36,6 +36,10 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 - **Web dashboard** - Manage models, monitor GPU memory, run benchmarks
 - **Memory sharing** - kvcached integration for efficient GPU utilization
 
+## User Guide
+
+New to the dashboard? The **[User Guide](./docs/user-guide.md)** walks you through loading models, monitoring GPUs, running benchmarks, using the chatbot playground, and managing a multi-pod cluster.
+
 ## Screenshots
 
 ### Model Management Dashboard
@@ -58,6 +62,7 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 
 |                                                       |                                    |
 | ----------------------------------------------------- | ---------------------------------- |
+| **[User Guide](./docs/user-guide.md)**                 | Dashboard walkthrough for end users |
 | **[Full Documentation](./docs/README.md)**            | Complete documentation index       |
 | **[Deployment Guide](./docs/deployment.md)**          | Container and OpenShift deployment |
 | **[Development Guide](./docs/development/README.md)** | Build from source, contribute      |
