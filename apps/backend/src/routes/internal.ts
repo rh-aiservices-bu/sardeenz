@@ -4,6 +4,8 @@ import type { HeartbeatMessage, ClusterEvent, SSEEvent, SSEEventType, SavedModel
 import { getClusterManager } from '../services/cluster-manager.js'
 import { getModelManager } from '../services/model-manager.js'
 import { MemoryMonitor } from '../services/memory-monitor.js'
+import { GpuSelector } from '../services/gpu-selector.js'
+import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 import { eventBus, type SSEConnection } from '../services/event-bus.js'
 import { processLogBuffer } from '../services/process-log-buffer.js'
 import { peerStore } from '../stores/peer-store.js'
@@ -11,6 +13,8 @@ import { modelStore } from '../stores/model-store.js'
 import { clusterRoutingStore } from '../stores/cluster-routing-store.js'
 import { getModelConfigurationStore } from '../stores/model-configuration-store.js'
 import { getMemoryProfileStore, type CreateProfileData } from '../stores/memory-profile-store.js'
+import { toModelDTO } from '../utils/model-dto.js'
+import { getModelMover } from '../services/model-mover.js'
 
 export default async function internalRoutes(fastify: FastifyInstance) {
   // Apply cluster HMAC auth to all routes in this plugin
@@ -605,6 +609,28 @@ export default async function internalRoutes(fastify: FastifyInstance) {
   )
 
   // ---------------------------------------------------------------------------
+  // GET /internal/gpu/available — GPU availability for cluster proxying
+  // ---------------------------------------------------------------------------
+  fastify.get(
+    '/internal/gpu/available',
+    {
+      schema: {
+        description: 'Get GPU availability for cluster proxying',
+      },
+      config: { logRequests: false },
+    },
+    async (_request, reply) => {
+      const gpuSelector = new GpuSelector(fastify.log)
+      try {
+        return await gpuSelector.getGpuAvailability()
+      } catch (err) {
+        fastify.log.error({ err }, 'Failed to get GPU availability for cluster proxy')
+        return reply.code(500).send({ error: (err as Error).message })
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
   // GET /internal/memory/multi-gpu — GPU memory usage for cluster proxying
   // ---------------------------------------------------------------------------
   fastify.get(
@@ -624,6 +650,214 @@ export default async function internalRoutes(fastify: FastifyInstance) {
         fastify.log.error({ err }, 'Failed to get memory usage for cluster proxy')
         return reply.code(500).send({ error: (err as Error).message })
       }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // GET /internal/gpu/info — full GPU info (NvidiaSmiInfo) for cluster proxying
+  // ---------------------------------------------------------------------------
+  fastify.get(
+    '/internal/gpu/info',
+    {
+      schema: {
+        description: 'Get full GPU info for cluster proxying',
+      },
+      config: { logRequests: false },
+    },
+    async (_request, reply) => {
+      try {
+        return await getNvidiaSmiInfo()
+      } catch (err) {
+        fastify.log.error({ err }, 'Failed to get GPU info for cluster proxy')
+        return reply.code(500).send({ error: (err as Error).message })
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // GET /internal/models — full model list (ModelInstanceDTO[]) for cluster proxying
+  // ---------------------------------------------------------------------------
+  fastify.get(
+    '/internal/models',
+    {
+      schema: {
+        description: 'List all models with full DTO for cluster proxying',
+      },
+      config: { logRequests: false },
+    },
+    async () => {
+      const modelManager = getModelManager(fastify.log)
+      const instances = modelManager.listModels()
+      return {
+        models: instances.map(toModelDTO),
+        total: instances.length,
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // POST /internal/models/:id/sleep — receive remote sleep command
+  // ---------------------------------------------------------------------------
+  fastify.post<{ Params: { id: string }; Body: { level?: number } }>(
+    '/internal/models/:id/sleep',
+    {
+      schema: {
+        description: 'Receive remote model sleep command',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string' } },
+        },
+        body: {
+          type: 'object',
+          properties: { level: { type: 'integer' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const modelManager = getModelManager(fastify.log)
+      const { id } = request.params
+      const { level = 1 } = request.body ?? {}
+
+      try {
+        await modelManager.sleepModel(id, level as 1 | 2)
+        const instance = modelStore.get(id)
+        return {
+          status: 'success',
+          instance_id: id,
+          sleep_level: level,
+          slept_at: instance?.sleptAt?.toISOString() ?? new Date().toISOString(),
+        }
+      } catch (err) {
+        const message = (err as Error).message
+        if (message?.includes('not found')) {
+          return reply.code(404).send({ error: message })
+        }
+        fastify.log.error({ err, instanceId: id }, 'Remote sleep command failed')
+        return reply.code(500).send({ error: message })
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // POST /internal/models/:id/wake — receive remote wake command
+  // ---------------------------------------------------------------------------
+  fastify.post<{ Params: { id: string }; Body: { tags?: string } }>(
+    '/internal/models/:id/wake',
+    {
+      schema: {
+        description: 'Receive remote model wake command',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string' } },
+        },
+        body: {
+          type: 'object',
+          properties: { tags: { type: 'string' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const modelManager = getModelManager(fastify.log)
+      const { id } = request.params
+      const { tags } = request.body ?? {}
+
+      try {
+        await modelManager.wakeModel(id, tags as 'weights' | 'kv_cache' | undefined)
+        const instance = modelStore.get(id)
+        return {
+          status: 'success',
+          instance_id: id,
+          model_path: instance?.modelPath,
+          woke_at: new Date().toISOString(),
+        }
+      } catch (err) {
+        const message = (err as Error).message
+        if (message?.includes('not found')) {
+          return reply.code(404).send({ error: message })
+        }
+        fastify.log.error({ err, instanceId: id }, 'Remote wake command failed')
+        return reply.code(500).send({ error: message })
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // GET /internal/models/:id/logs — return process logs for remote instance
+  // ---------------------------------------------------------------------------
+  fastify.get<{ Params: { id: string } }>(
+    '/internal/models/:id/logs',
+    {
+      schema: {
+        description: 'Get process logs for a model instance (cluster proxying)',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const modelManager = getModelManager(fastify.log)
+      const { id } = request.params
+      const instance = modelManager.getModelStatus(id)
+      const { logs, lineCount } = modelManager.getLogs(id)
+      if (!instance && lineCount === 0) {
+        return reply.code(404).send({ error: `No logs found for instance ${id}` })
+      }
+      return { instance_id: id, logs, line_count: lineCount }
+    }
+  )
+
+  // GET /internal/moves/:moveId/events — SSE stream for move progress (cluster proxying)
+  fastify.get<{ Params: { moveId: string } }>(
+    '/internal/moves/:moveId/events',
+    {
+      schema: {
+        description: 'SSE stream for move operation progress (cluster proxying)',
+        params: {
+          type: 'object',
+          required: ['moveId'],
+          properties: { moveId: { type: 'string' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const modelMover = getModelMover(fastify.log)
+      const { moveId } = request.params
+      const op = modelMover.getMove(moveId)
+      if (!op) {
+        return reply.code(404).send({ error: `Move operation ${moveId} not found` })
+      }
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+
+      const connectionId = randomUUID()
+      const sendEvent = (event: { id: string; phase: string; message: string; progress?: number; error?: string }): void => {
+        try {
+          reply.raw.write(`id: ${event.id}\nevent: move_progress\ndata: ${JSON.stringify(event)}\n\n`)
+        } catch { /* connection closed */ }
+      }
+
+      const connection = { id: connectionId, send: sendEvent }
+      modelMover.subscribeMoveEvents(moveId, connection)
+
+      sendEvent({ id: randomUUID(), phase: op.phase, message: `Move in phase: ${op.phase}`, error: op.error })
+
+      const heartbeat = setInterval(() => {
+        try { reply.raw.write(': heartbeat\n\n') } catch { /* closed */ }
+      }, 15000)
+
+      request.raw.on('close', () => {
+        clearInterval(heartbeat)
+        modelMover.unsubscribeMoveEvents(moveId, connection)
+      })
     }
   )
 }

@@ -214,8 +214,12 @@ export class ModelManager extends EventEmitter {
       if (isInferenceSimMode()) {
         // inference-sim mode: simple arg list, minimal environment
         spawnBinary = config.inferenceSimBinary
+        // Prefix the model path so the binary's HuggingFace existence check fails and
+        // it falls back to its built-in SimpleTokenizer. SimpleTokenizer works locally
+        // with no render server. The real API-facing name comes from --served-model-name.
+        const simModelArg = `local/${modelPath}`
         const simArgs = [
-          '--model', modelPath,
+          '--model', simModelArg,
           '--port', String(port),
           '--served-model-name', effectiveModelName,
           '--max-model-len', String(maxTokens),

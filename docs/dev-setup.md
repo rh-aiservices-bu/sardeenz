@@ -279,6 +279,27 @@ The simulator estimates GPU memory usage from the model name:
 | Actual GPU memory pressure | No |
 | kvcached memory sharing | No |
 
+### Multi-Pod Cluster Development
+
+You can simulate a multi-pod cluster locally using the inference simulator and `CLUSTER_PEERS`:
+
+```bash
+make dev:cluster:sim              # 2 pods × 2 GPUs (default)
+make dev:cluster:sim PODS=3 GPUS=4  # 3 pods × 4 GPUs
+```
+
+This launches multiple backend instances on sequential ports (3001, 3002, ...) plus the frontend.
+
+**Port isolation**: vLLM serving ports are automatically partitioned per pod to avoid collisions on localhost. Each pod gets a range of 100 ports based on its position in the `CLUSTER_PEERS` list:
+
+| Pod | API Port | vLLM Port Range |
+|-----|----------|-----------------|
+| 0   | 3001     | 12346–12445     |
+| 1   | 3002     | 12446–12545     |
+| 2   | 3003     | 12546–12645     |
+
+This is automatic when `CLUSTER_PEERS` is set and `VLLM_BASE_PORT` is not explicitly configured. Set `VLLM_BASE_PORT` to override.
+
 ### Frontend-Only Development
 
 If you only need the frontend (no backend at all):

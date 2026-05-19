@@ -9,6 +9,7 @@ import pLimit from 'p-limit'
 import { EventBus } from './event-bus.js'
 import { getBenchmarkStore } from '../stores/benchmark-store.js'
 import { modelStore } from '../stores/model-store.js'
+import { peerStore } from '../stores/peer-store.js'
 import { generateChatMessages } from '../utils/prompt-generator.js'
 import { config } from '../config.js'
 import type {
@@ -23,6 +24,30 @@ import type {
 
 // Running benchmarks map for cancellation support
 const runningBenchmarks = new Map<string, AbortController>()
+
+/**
+ * Resolve the base URL for a benchmark scenario.
+ * - Local model: use proxy port (routingMode=proxy) or direct port (routingMode=direct).
+ * - Remote model: always route through the local proxy (only proxy mode is valid for remote).
+ * Returns null if the model cannot be found.
+ */
+function resolveBaseUrl(scenario: BenchmarkScenario): string | null {
+  const local = modelStore.get(scenario.instanceId)
+  if (local) {
+    return scenario.routingMode === 'proxy'
+      ? `http://localhost:${config.port}`
+      : `http://localhost:${local.port}`
+  }
+
+  // Remote model — should only reach here in proxy routing mode
+  for (const peer of peerStore.getHealthyPeers()) {
+    if (peer.models.some((m) => m.instanceId === scenario.instanceId)) {
+      return `http://localhost:${config.port}`
+    }
+  }
+
+  return null
+}
 
 interface RequestResult {
   sequence: number
@@ -319,9 +344,9 @@ async function executeWarmupPhase(
   abortController: AbortController,
   onComplete: () => void
 ): Promise<WarmupResult> {
-  const instance = modelStore.get(scenario.instanceId)
+  const baseUrl = resolveBaseUrl(scenario)
 
-  if (!instance) {
+  if (!baseUrl) {
     return {
       scenarioId: scenario.id,
       success: false,
@@ -334,12 +359,6 @@ async function executeWarmupPhase(
     onComplete()
     return { scenarioId: scenario.id, success: true }
   }
-
-  // Determine base URL based on routing mode
-  const baseUrl =
-    scenario.routingMode === 'proxy'
-      ? `http://localhost:${config.port}`
-      : `http://localhost:${instance.port}`
 
   const limit = pLimit(scenario.concurrency)
   let inFlightRequests = 0
@@ -375,7 +394,7 @@ async function executeWarmupPhase(
 
         await executeStreamingRequest(
           baseUrl,
-          instance.modelName,
+          scenario.modelName,
           scenario.inputTokens,
           scenario.outputTokens,
           abortController.signal
@@ -423,20 +442,14 @@ async function executeMeasuredPhase(
   abortController: AbortController
 ): Promise<void> {
   const store = getBenchmarkStore()
-  const instance = modelStore.get(scenario.instanceId)
+  const baseUrl = resolveBaseUrl(scenario)
 
-  if (!instance) {
+  if (!baseUrl) {
     store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
       errorMessage: `Model instance not found: ${scenario.instanceId}`,
     })
     return
   }
-
-  // Determine base URL based on routing mode
-  const baseUrl =
-    scenario.routingMode === 'proxy'
-      ? `http://localhost:${config.port}`
-      : `http://localhost:${instance.port}`
 
   const results: RequestResult[] = []
   const limit = pLimit(scenario.concurrency)
@@ -482,7 +495,7 @@ async function executeMeasuredPhase(
 
       const result = await executeStreamingRequest(
         baseUrl,
-        instance.modelName,
+        scenario.modelName,
         scenario.inputTokens,
         scenario.outputTokens,
         abortController.signal

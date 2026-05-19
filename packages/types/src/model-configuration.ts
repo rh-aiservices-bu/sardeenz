@@ -23,6 +23,7 @@ export interface ModelConfigurationEntry {
   sleepModeEnabled?: boolean
   gpuTypeConstraint?: string
   minVramMb?: number
+  podId?: string
 }
 
 /**

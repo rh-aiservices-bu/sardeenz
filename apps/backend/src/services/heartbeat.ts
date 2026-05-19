@@ -184,11 +184,12 @@ export class HeartbeatService {
       })
     }
 
-    // Check for routing table version drift
-    const localVersion = clusterRoutingStore.getVersion()
-    if (message.clusterVersion !== localVersion) {
-      this.scheduleRebuild()
-    }
+    // Always rebuild routing table from latest peer state.
+    // Version-number comparison is unreliable: each pod increments its own counter
+    // independently, so two pods can reach the same version number with different
+    // routing contents (e.g. both at v1 after independently loading different models).
+    // The rebuild is debounced (500ms) so burst heartbeats only cause one rebuild.
+    this.scheduleRebuild()
 
     return {
       podId: this.podId,

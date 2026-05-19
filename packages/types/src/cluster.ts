@@ -1,6 +1,11 @@
 import type { ModelStatus } from './models.js'
 
 // Peer and cluster roles/status
+//
+// `term` (present on PeerInfo, ClusterState, HeartbeatMessage, HeartbeatAck, ClusterEvent)
+// is the Raft election term — a monotonically increasing counter incremented each time the
+// cluster elects a new leader. Term 1 means the cluster completed its initial election.
+// A rapidly increasing term indicates leader instability (frequent re-elections).
 
 export type PeerRole = 'leader' | 'follower'
 
@@ -35,6 +40,7 @@ export interface PeerModelEntry {
   status: ModelStatus
   gpuIds: number[]
   tensorParallelSize: number
+  maxTokens: number
 }
 
 // A known peer in the cluster
@@ -46,6 +52,7 @@ export interface PeerInfo {
   role: PeerRole
   status: PeerStatus
   lastHeartbeat: number
+  /** Raft election term last reported by this peer. */
   term: number
   models: PeerModelEntry[]
   gpus: PeerGpuInfo[]
@@ -71,6 +78,7 @@ export interface ClusterRoutingTable {
 
 export interface ClusterState {
   clusterId: string
+  /** Current Raft election term for the cluster. Increments on every leader election. */
   term: number
   leaderId: string
   peers: Map<string, PeerInfo>
@@ -83,6 +91,7 @@ export interface ClusterState {
 export interface HeartbeatMessage {
   podId: string
   role: PeerRole
+  /** Sender's current Raft election term. Receivers reject messages from stale terms. */
   term: number
   timestamp: number
   models: PeerModelEntry[]
@@ -92,6 +101,7 @@ export interface HeartbeatMessage {
 
 export interface HeartbeatAck {
   podId: string
+  /** Acknowledging pod's current Raft election term. */
   term: number
   role: PeerRole
   clusterVersion: number
@@ -102,6 +112,7 @@ export interface HeartbeatAck {
 export interface ClusterEvent {
   type: ClusterEventType
   podId: string
+  /** Raft election term at the time this event was emitted. */
   term: number
   timestamp: number
   payload: Record<string, unknown>

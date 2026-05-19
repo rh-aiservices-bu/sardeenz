@@ -1,5 +1,5 @@
 import React from 'react'
-import { Label, Spinner, Tooltip, Content } from '@patternfly/react-core'
+import { Label, Spinner, Tooltip } from '@patternfly/react-core'
 import { useOperations } from '../contexts/OperationsContext'
 
 export const OperationsIndicator: React.FC = () => {
@@ -11,12 +11,9 @@ export const OperationsIndicator: React.FC = () => {
 
   const tooltipContent = (
     <div>
-      <Content
-        component="p"
-        style={{ fontWeight: 'bold', marginBottom: 'var(--pf-t--global--spacer--xs)' }}
-      >
+      <p style={{ fontWeight: 'bold', margin: 0, marginBottom: 'var(--pf-t--global--spacer--xs)' }}>
         Active operations:
-      </Content>
+      </p>
       <ul style={{ margin: 0, paddingLeft: 'var(--pf-t--global--spacer--md)' }}>
         {operations.map((op) => (
           <li key={op.id}>{op.label}</li>

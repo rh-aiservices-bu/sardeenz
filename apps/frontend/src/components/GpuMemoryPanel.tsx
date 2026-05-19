@@ -11,12 +11,9 @@ import {
   Spinner,
   Content,
   Alert,
-  Tabs,
-  Tab,
-  TabTitleText,
   Label,
 } from '@patternfly/react-core'
-import { MoonIcon } from '@patternfly/react-icons'
+import { MoonIcon, ServerIcon } from '@patternfly/react-icons'
 import { ResponsiveBar } from '@nivo/bar'
 import type { MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient } from '../services/api'
@@ -69,26 +66,357 @@ const getTooltipTheme = () => {
   }
 }
 
+const formatGb = (value: number) => `${value.toFixed(2)} GB`
+
+function buildGpuBarData(gpu: PerGpuMetrics) {
+  const { models } = gpu
+  const modelsMemory = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
+  const otherMemory = Math.max(0, gpu.used_gb - modelsMemory)
+  const freeMemory = gpu.free_gb
+
+  const dataObj: Record<string, number | string> = { id: 'GPU' }
+  const keys: string[] = []
+  const colors: Record<string, string> = {}
+  const fill: Array<{ match: { id: string }; id: string }> = []
+
+  models.forEach((model) => {
+    const key = model.display_name
+    dataObj[key] = Number(model.gpu_memory_gb.toFixed(2))
+    keys.push(key)
+    colors[key] = model.color
+
+    if (model.is_sleeping) {
+      fill.push({ match: { id: key }, id: 'sleeping-pattern' })
+    }
+  })
+
+  if (otherMemory > 0.01) {
+    dataObj['Other'] = Number(otherMemory.toFixed(2))
+    keys.push('Other')
+    colors['Other'] = '#8B8D8F'
+  }
+
+  dataObj['Free'] = Number(freeMemory.toFixed(2))
+  keys.push('Free')
+  colors['Free'] = FREE_COLOR
+
+  return { data: [dataObj], keys, colors, fill }
+}
+
+function buildKvcacheData(gpu: PerGpuMetrics) {
+  const kvcache = gpu.kvcache
+  const hasModels = gpu.models.length > 0
+  if (!kvcache || kvcache.total_gb === 0 || !hasModels) return null
+
+  return [
+    {
+      id: 'KVCache',
+      Prealloc: Number(kvcache.prealloc_gb.toFixed(2)),
+      Used: Number(kvcache.used_gb.toFixed(2)),
+      Free: Number(kvcache.free_gb.toFixed(2)),
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// GpuCard — renders one GPU as a compact card with stacked VRAM bar
+// ---------------------------------------------------------------------------
+function GpuCard({
+  gpu,
+  onModelClick,
+}: {
+  gpu: PerGpuMetrics
+  onModelClick?: (instanceId: string) => void
+}) {
+  const gpuData = useMemo(() => buildGpuBarData(gpu), [gpu])
+  const kvcacheData = useMemo(() => buildKvcacheData(gpu), [gpu])
+  const usedPct = gpu.total_gb > 0 ? Math.round((gpu.used_gb / gpu.total_gb) * 100) : 0
+
+  return (
+    <div
+      style={{
+        border: '1px solid var(--pf-t--global--border--color--default)',
+        borderRadius: '6px',
+        padding: '10px 12px',
+        background: 'var(--pf-t--global--background--color--primary--default)',
+      }}
+    >
+      {/* Header */}
+      <Flex justifyContent={{ default: 'justifyContentSpaceBetween' }} alignItems={{ default: 'alignItemsCenter' }}>
+        <FlexItem>
+          <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)', fontWeight: 'var(--pf-t--global--font--weight--bold)' }}>
+            GPU {gpu.gpu_index}: {gpu.name}
+          </span>
+        </FlexItem>
+        <FlexItem>
+          <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)', color: 'var(--pf-t--global--text--color--subtle)' }}>
+            {gpu.utilization_percent.toFixed(0)}% util · {(gpu as PerGpuMetrics & { temperature?: number }).temperature ?? '—'}°C
+          </span>
+        </FlexItem>
+      </Flex>
+
+      {/* VRAM info */}
+      <div style={{ fontSize: 'var(--pf-t--global--font--size--xs)', color: 'var(--pf-t--global--text--color--subtle)', margin: '4px 0' }}>
+        VRAM: {formatGb(gpu.used_gb)} / {formatGb(gpu.total_gb)} — {usedPct}%
+      </div>
+
+      {/* Stacked VRAM bar */}
+      <div style={{ height: '24px' }}>
+        <ResponsiveBar
+          data={gpuData.data}
+          keys={gpuData.keys}
+          indexBy="id"
+          layout="horizontal"
+          margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
+          padding={0}
+          colors={(bar) => gpuData.colors[bar.id as string] || '#ccc'}
+          defs={SLEEPING_PATTERN_DEFS}
+          fill={gpuData.fill}
+          borderRadius={4}
+          enableLabel={false}
+          enableGridY={false}
+          enableGridX={false}
+          axisTop={null}
+          axisRight={null}
+          axisBottom={null}
+          axisLeft={null}
+          theme={getTooltipTheme()}
+          onClick={(bar) => {
+            const model = gpu.models.find((m) => m.display_name === bar.id)
+            if (model && onModelClick) {
+              onModelClick(model.instance_id)
+            }
+          }}
+          onMouseEnter={(_bar, event) => {
+            const isClickable = gpu.models.some((m) => m.display_name === (_bar as { id: string }).id)
+            if (isClickable && onModelClick) {
+              ;(event.target as HTMLElement).style.cursor = 'pointer'
+            }
+          }}
+          onMouseLeave={(_bar, event) => {
+            ;(event.target as HTMLElement).style.cursor = 'default'
+          }}
+        />
+      </div>
+
+      {/* Model legend */}
+      <Flex
+        flexWrap={{ default: 'wrap' }}
+        style={{
+          marginTop: '4px',
+          columnGap: 'var(--pf-t--global--spacer--sm)',
+          rowGap: '2px',
+        }}
+      >
+        {gpu.models.map((model) => (
+          <FlexItem key={`${model.instance_id}-${model.model_path}`}>
+            <span
+              onClick={() => onModelClick?.(model.instance_id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') onModelClick?.(model.instance_id)
+              }}
+              role={onModelClick ? 'button' : undefined}
+              tabIndex={onModelClick ? 0 : undefined}
+              aria-label={onModelClick ? `Go to ${model.display_name}` : undefined}
+              style={{
+                cursor: onModelClick ? 'pointer' : 'default',
+                fontSize: 'var(--pf-t--global--font--size--xs)',
+                opacity: model.is_sleeping ? 0.7 : 1,
+              }}
+            >
+              <span style={{ color: model.color }}>●</span> {model.display_name}
+              {model.is_sleeping && (
+                <MoonIcon
+                  style={{
+                    marginLeft: '3px',
+                    fontSize: '10px',
+                    color: 'var(--pf-t--global--text--color--subtle)',
+                  }}
+                />
+              )}{' '}
+              ({formatGb(model.gpu_memory_gb)})
+            </span>
+          </FlexItem>
+        ))}
+        {gpuData.keys.includes('Other') && (
+          <FlexItem>
+            <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)' }}>
+              <span style={{ color: '#8B8D8F' }}>●</span> Other
+            </span>
+          </FlexItem>
+        )}
+        <FlexItem>
+          <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)' }}>
+            <span style={{ color: FREE_COLOR }}>●</span> Free ({formatGb(gpu.free_gb)})
+          </span>
+        </FlexItem>
+      </Flex>
+
+      {/* KVCache mini-bar */}
+      {kvcacheData && gpu.kvcache && (
+        <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--pf-t--global--border--color--default)' }}>
+          <div style={{ fontSize: 'var(--pf-t--global--font--size--xs)', color: 'var(--pf-t--global--text--color--subtle)', marginBottom: '2px' }}>
+            KVCache: {formatGb(gpu.kvcache.used_gb)} / {formatGb(gpu.kvcache.total_gb)}
+          </div>
+          <div style={{ height: '12px' }}>
+            <ResponsiveBar
+              data={kvcacheData}
+              keys={['Prealloc', 'Used', 'Free']}
+              indexBy="id"
+              layout="horizontal"
+              margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
+              padding={0}
+              colors={(bar) => KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'}
+              borderRadius={3}
+              enableLabel={false}
+              enableGridY={false}
+              enableGridX={false}
+              axisTop={null}
+              axisRight={null}
+              axisBottom={null}
+              axisLeft={null}
+              theme={getTooltipTheme()}
+            />
+          </div>
+          <Flex gap={{ default: 'gapSm' }} style={{ marginTop: '2px' }}>
+            <FlexItem>
+              <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)' }}>
+                <span style={{ color: KVCACHE_COLORS.Prealloc }}>●</span> Prealloc ({formatGb(gpu.kvcache.prealloc_gb)})
+              </span>
+            </FlexItem>
+            <FlexItem>
+              <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)' }}>
+                <span style={{ color: KVCACHE_COLORS.Used }}>●</span> Used ({formatGb(gpu.kvcache.used_gb)})
+              </span>
+            </FlexItem>
+            <FlexItem>
+              <span style={{ fontSize: 'var(--pf-t--global--font--size--xs)' }}>
+                <span style={{ color: KVCACHE_COLORS.Free }}>●</span> Free ({formatGb(gpu.kvcache.free_gb)})
+              </span>
+            </FlexItem>
+          </Flex>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// GpuGrid — responsive CSS grid of GpuCards
+// ---------------------------------------------------------------------------
+function GpuGrid({
+  gpus,
+  onModelClick,
+}: {
+  gpus: PerGpuMetrics[]
+  onModelClick?: (instanceId: string) => void
+}) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gap: 'var(--pf-t--global--spacer--sm)',
+      }}
+    >
+      {gpus.map((gpu) => (
+        <GpuCard key={gpu.gpu_index} gpu={gpu} onModelClick={onModelClick} />
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// NodeGroup — collapsible group header + GPU grid for one pod
+// ---------------------------------------------------------------------------
+function NodeGroup({
+  podId,
+  data,
+  isLeader,
+  isExpanded,
+  onToggle,
+  onModelClick,
+}: {
+  podId: string
+  data: MultiGpuMemoryUsageResponse
+  isLeader: boolean
+  isExpanded: boolean
+  onToggle: () => void
+  onModelClick?: (instanceId: string, podId: string) => void
+}) {
+  const handleModelClick = useCallback(
+    (instanceId: string) => onModelClick?.(instanceId, podId),
+    [onModelClick, podId]
+  )
+  const totalVram = data.gpus.reduce((s, g) => s + g.total_gb, 0)
+  const usedVram = data.gpus.reduce((s, g) => s + g.used_gb, 0)
+  const vramPct = totalVram > 0 ? Math.round((usedVram / totalVram) * 100) : 0
+  const modelCount = data.gpus.reduce((s, g) => s + g.models.length, 0)
+
+  return (
+    <div style={{ marginBottom: 'var(--pf-t--global--spacer--sm)' }}>
+      {/* Header */}
+      <div
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle() }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--pf-t--global--spacer--sm)',
+          padding: '8px 12px',
+          background: 'var(--pf-t--global--background--color--secondary--default)',
+          border: '1px solid var(--pf-t--global--border--color--default)',
+          borderRadius: isExpanded ? '6px 6px 0 0' : '6px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontSize: '10px', color: 'var(--pf-t--global--text--color--subtle)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', width: '14px' }}>
+          ▼
+        </span>
+        <ServerIcon style={{ color: 'var(--pf-t--global--text--color--subtle)' }} />
+        <span style={{ fontFamily: 'var(--pf-t--global--font--family--mono)', fontSize: 'var(--pf-t--global--font--size--sm)', fontWeight: 'var(--pf-t--global--font--weight--bold)' }}>
+          {podId}
+        </span>
+        <Label color="green" isCompact>healthy</Label>
+        {isLeader && <Label color="blue" isCompact>leader</Label>}
+        <span style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: 'var(--pf-t--global--font--size--xs)', marginLeft: 'auto' }}>
+          {data.gpus.length} GPU{data.gpus.length !== 1 ? 's' : ''} · {modelCount} model{modelCount !== 1 ? 's' : ''} · VRAM {vramPct}%
+        </span>
+      </div>
+
+      {/* GPU grid */}
+      {isExpanded && (
+        <div
+          style={{
+            padding: 'var(--pf-t--global--spacer--sm)',
+            border: '1px solid var(--pf-t--global--border--color--default)',
+            borderTop: 'none',
+            borderRadius: '0 0 6px 6px',
+          }}
+        >
+          <GpuGrid gpus={data.gpus} onModelClick={handleModelClick} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// GpuMemoryPanel — main export
+// ---------------------------------------------------------------------------
 interface GpuMemoryPanelProps {
   defaultRefreshInterval?: number | null
-  onModelClick?: (instanceId: string) => void
+  onModelClick?: (instanceId: string, podId?: string) => void
   refreshTrigger?: number
-  /** Callback when memory data is fetched/updated - exposes data for other components */
   onMemoryDataChange?: (data: MultiGpuMemoryUsageResponse) => void
-  /** Local pod ID (cluster mode) */
   localPodId?: string | null
-  /** All pod IDs in the cluster (enables pod tabs when provided) */
   clusterPodIds?: string[]
 }
 
-/**
- * Panel displaying GPU and KVCache memory usage with Nivo bar charts.
- * In cluster mode, shows pod-level tabs to switch between pods.
- * Supports multiple GPUs with tabs for switching between them.
- * Shows two horizontal stacked bars:
- * - KVCache: shared pool (Prealloc / Used / Free)
- * - GPU: per-model breakdown with colors
- */
 export function GpuMemoryPanel({
   defaultRefreshInterval = 5000,
   onModelClick,
@@ -98,48 +426,51 @@ export function GpuMemoryPanel({
   clusterPodIds,
 }: GpuMemoryPanelProps) {
   const [memoryData, setMemoryData] = useState<MultiGpuMemoryUsageResponse | null>(null)
+  const [allPodsData, setAllPodsData] = useState<Record<string, MultiGpuMemoryUsageResponse>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshInterval, setRefreshInterval] = useState<number | null>(defaultRefreshInterval)
   const [isSelectOpen, setIsSelectOpen] = useState(false)
-  const [activeGpuIndex, setActiveGpuIndex] = useState(0)
-  const [activePodId, setActivePodId] = useState<string | null>(null)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
-  // Cache remote pod memory data to avoid flicker on tab switch
-  const remotePodCache = useRef<Record<string, MultiGpuMemoryUsageResponse>>({})
+  const isClusterMode = clusterPodIds && clusterPodIds.length > 1
 
-  // Determine if we're viewing a remote pod
-  const isRemotePod = activePodId !== null && activePodId !== localPodId
-  const effectivePodId = activePodId ?? localPodId ?? null
-
-  // Initialize activePodId when localPodId first becomes available
-  useEffect(() => {
-    if (localPodId && activePodId === null) {
-      setActivePodId(localPodId)
-    }
-  }, [localPodId, activePodId])
+  // Stable ref for onMemoryDataChange to avoid re-triggering fetch
+  const onMemoryDataChangeRef = useRef(onMemoryDataChange)
+  useEffect(() => { onMemoryDataChangeRef.current = onMemoryDataChange })
 
   const fetchMemoryUsage = useCallback(async () => {
     try {
-      let data: MultiGpuMemoryUsageResponse
-      if (isRemotePod && effectivePodId) {
-        data = await apiClient.getClusterPodMemory(effectivePodId)
-        remotePodCache.current[effectivePodId] = data
-      } else {
-        data = await apiClient.getMultiGpuMemoryUsage()
-      }
-      setMemoryData(data)
+      // Always fetch local pod data
+      const localData = await apiClient.getMultiGpuMemoryUsage()
+      setMemoryData(localData)
       setError(null)
-      // Only call onMemoryDataChange for local pod data (used by move dialog etc.)
-      if (!isRemotePod) {
-        onMemoryDataChange?.(data)
+      onMemoryDataChangeRef.current?.(localData)
+
+      if (isClusterMode && clusterPodIds) {
+        // Fetch all remote pods in parallel
+        const results: Record<string, MultiGpuMemoryUsageResponse> = {}
+        if (localPodId) results[localPodId] = localData
+
+        const remotePods = clusterPodIds.filter((id) => id !== localPodId)
+        const fetches = remotePods.map(async (podId) => {
+          try {
+            const data = await apiClient.getClusterPodMemory(podId)
+            results[podId] = data
+          } catch {
+            // Keep stale data for this pod if available
+          }
+        })
+        await Promise.all(fetches)
+
+        setAllPodsData((prev) => ({ ...prev, ...results }))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch memory usage')
     } finally {
       setLoading(false)
     }
-  }, [onMemoryDataChange, isRemotePod, effectivePodId])
+  }, [isClusterMode, clusterPodIds, localPodId])
 
   // Initial fetch and polling
   useEffect(() => {
@@ -152,89 +483,6 @@ export function GpuMemoryPanel({
     return () => clearInterval(interval)
   }, [fetchMemoryUsage, refreshInterval, refreshTrigger])
 
-  // Handle pod tab switch
-  const handlePodTabSelect = useCallback((_event: React.MouseEvent, podId: string | number) => {
-    const pod = String(podId)
-    setActivePodId(pod)
-    setActiveGpuIndex(0)
-    // Show cached data immediately while fetching fresh data
-    if (remotePodCache.current[pod]) {
-      setMemoryData(remotePodCache.current[pod])
-    } else {
-      setMemoryData(null)
-      setLoading(true)
-    }
-  }, [])
-
-  // Get the currently selected GPU data
-  const selectedGpu: PerGpuMetrics | null = useMemo(() => {
-    if (!memoryData || memoryData.gpus.length === 0) return null
-    const gpu = memoryData.gpus.find((g) => g.gpu_index === activeGpuIndex)
-    return gpu || memoryData.gpus[0]
-  }, [memoryData, activeGpuIndex])
-
-  // Build KVCache bar data from per-GPU metrics
-  const kvcacheData = useMemo(() => {
-    const kvcache = selectedGpu?.kvcache
-    const hasModels = selectedGpu?.models && selectedGpu.models.length > 0
-    if (!kvcache || kvcache.total_gb === 0 || !hasModels) return []
-
-    return [
-      {
-        id: 'KVCache',
-        Prealloc: Number(kvcache.prealloc_gb.toFixed(2)),
-        Used: Number(kvcache.used_gb.toFixed(2)),
-        Free: Number(kvcache.free_gb.toFixed(2)),
-      },
-    ]
-  }, [selectedGpu])
-
-  // Build GPU bar data with per-model breakdown for selected GPU
-  const gpuData = useMemo(() => {
-    if (!selectedGpu)
-      return {
-        data: [],
-        keys: [],
-        colors: {} as Record<string, string>,
-        fill: [] as Array<{ match: { id: string }; id: string }>,
-      }
-
-    const { models } = selectedGpu
-    const modelsMemory = models.reduce((sum, m) => sum + m.gpu_memory_gb, 0)
-    const otherMemory = Math.max(0, selectedGpu.used_gb - modelsMemory)
-    const freeMemory = selectedGpu.free_gb
-
-    const dataObj: Record<string, number | string> = { id: 'GPU' }
-    const keys: string[] = []
-    const colors: Record<string, string> = {}
-    const fill: Array<{ match: { id: string }; id: string }> = []
-
-    models.forEach((model) => {
-      const key = model.display_name
-      dataObj[key] = Number(model.gpu_memory_gb.toFixed(2))
-      keys.push(key)
-      colors[key] = model.color
-
-      if (model.is_sleeping) {
-        fill.push({ match: { id: key }, id: 'sleeping-pattern' })
-      }
-    })
-
-    if (otherMemory > 0.01) {
-      dataObj['Other'] = Number(otherMemory.toFixed(2))
-      keys.push('Other')
-      colors['Other'] = '#8B8D8F'
-    }
-
-    dataObj['Free'] = Number(freeMemory.toFixed(2))
-    keys.push('Free')
-    colors['Free'] = FREE_COLOR
-
-    return { data: [dataObj], keys, colors, fill }
-  }, [selectedGpu])
-
-  const formatGb = (value: number) => `${value.toFixed(2)} GB`
-
   const handleRefreshSelect = (
     _event: React.MouseEvent<Element, MouseEvent> | undefined,
     value: string | number | undefined
@@ -246,8 +494,40 @@ export function GpuMemoryPanel({
 
   const selectedLabel = REFRESH_OPTIONS.find((opt) => opt.value === refreshInterval)?.label || '5s'
 
-  const isClusterMode = clusterPodIds && clusterPodIds.length > 1
+  const toggleNode = useCallback((podId: string) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev)
+      if (next.has(podId)) next.delete(podId)
+      else next.add(podId)
+      return next
+    })
+  }, [])
 
+  // Compute total free across all visible data
+  const totalFreeGb = useMemo(() => {
+    if (isClusterMode) {
+      return Object.values(allPodsData).reduce((sum, pod) => sum + pod.total_system_free_gb, 0)
+    }
+    return memoryData?.total_system_free_gb ?? 0
+  }, [isClusterMode, allPodsData, memoryData])
+
+  const totalGpuCount = useMemo(() => {
+    if (isClusterMode) {
+      return Object.values(allPodsData).reduce((sum, pod) => sum + pod.gpus.length, 0)
+    }
+    return memoryData?.gpus.length ?? 0
+  }, [isClusterMode, allPodsData, memoryData])
+
+  // Determine leader pod ID from cluster data
+  const leaderPodId = useMemo(() => {
+    // The local pod's cluster status is the source of truth but we don't have it here.
+    // Convention: first pod in the list is typically the leader, but we show the label
+    // based on what ClusterOverview already displays. For now, skip leader detection
+    // (ClusterOverview handles it). We'll just pass localPodId as a hint.
+    return localPodId
+  }, [localPodId])
+
+  // Loading state
   if (loading && !memoryData) {
     return (
       <Card>
@@ -255,26 +535,6 @@ export function GpuMemoryPanel({
           <Content component="h2">GPU Memory Overview</Content>
         </CardHeader>
         <CardBody>
-          {isClusterMode && (
-            <Tabs
-              activeKey={effectivePodId ?? ''}
-              onSelect={handlePodTabSelect}
-              aria-label="Pod selection tabs"
-              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
-            >
-              {clusterPodIds.map((podId) => (
-                <Tab
-                  key={podId}
-                  eventKey={podId}
-                  title={
-                    <TabTitleText>
-                      {podId}{podId === localPodId ? ' (this pod)' : ''}
-                    </TabTitleText>
-                  }
-                />
-              ))}
-            </Tabs>
-          )}
           <Flex justifyContent={{ default: 'justifyContentCenter' }}>
             <FlexItem>
               <Spinner size="lg" aria-label="Loading memory data" />
@@ -285,6 +545,7 @@ export function GpuMemoryPanel({
     )
   }
 
+  // Error state
   if (error && !memoryData) {
     return (
       <Card>
@@ -292,26 +553,6 @@ export function GpuMemoryPanel({
           <Content component="h2">GPU Memory Overview</Content>
         </CardHeader>
         <CardBody>
-          {isClusterMode && (
-            <Tabs
-              activeKey={effectivePodId ?? ''}
-              onSelect={handlePodTabSelect}
-              aria-label="Pod selection tabs"
-              style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
-            >
-              {clusterPodIds.map((podId) => (
-                <Tab
-                  key={podId}
-                  eventKey={podId}
-                  title={
-                    <TabTitleText>
-                      {podId}{podId === localPodId ? ' (this pod)' : ''}
-                    </TabTitleText>
-                  }
-                />
-              ))}
-            </Tabs>
-          )}
           <Alert variant="warning" title="Memory data unavailable" isInline>
             {error}
           </Alert>
@@ -319,9 +560,6 @@ export function GpuMemoryPanel({
       </Card>
     )
   }
-
-  // Disable model click for remote pods (models aren't in local model list)
-  const effectiveOnModelClick = isRemotePod ? undefined : onModelClick
 
   return (
     <Card>
@@ -356,255 +594,44 @@ export function GpuMemoryPanel({
           ),
         }}
       >
-        <Content component="h2">
-          GPU Memory Overview
-          {isRemotePod && effectivePodId && (
-            <Label color="blue" isCompact style={{ marginLeft: 'var(--pf-t--global--spacer--sm)', verticalAlign: 'middle' }}>
-              {effectivePodId}
-            </Label>
-          )}
-        </Content>
+        <Content component="h2">GPU Memory Overview</Content>
       </CardHeader>
       <CardBody>
-        {/* Pod Tabs for cluster mode */}
-        {isClusterMode && (
-          <Tabs
-            activeKey={effectivePodId ?? ''}
-            onSelect={handlePodTabSelect}
-            aria-label="Pod selection tabs"
-            style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
-          >
-            {clusterPodIds.map((podId) => (
-              <Tab
-                key={podId}
-                eventKey={podId}
-                title={
-                  <TabTitleText>
-                    {podId}{podId === localPodId ? ' (this pod)' : ''}
-                  </TabTitleText>
-                }
-              />
-            ))}
-          </Tabs>
+        {isClusterMode ? (
+          // Cluster mode: one collapsible NodeGroup per pod
+          <>
+            {clusterPodIds.map((podId) => {
+              const podData = allPodsData[podId]
+              if (!podData) return null
+              return (
+                <NodeGroup
+                  key={podId}
+                  podId={podId}
+                  data={podData}
+                  isLeader={podId === leaderPodId}
+                  isExpanded={expandedNodes.has(podId)}
+                  onToggle={() => toggleNode(podId)}
+                  onModelClick={onModelClick}
+                />
+              )
+            })}
+          </>
+        ) : (
+          // Single-pod mode: GPU grid directly
+          memoryData && (
+            <GpuGrid
+              gpus={memoryData.gpus}
+              onModelClick={
+                onModelClick
+                  ? (instanceId) => onModelClick(instanceId, localPodId ?? undefined)
+                  : undefined
+              }
+            />
+          )
         )}
 
-        {/* GPU Tabs for multi-GPU systems */}
-        {memoryData && memoryData.gpus.length > 1 && (
-          <Tabs
-            activeKey={activeGpuIndex}
-            onSelect={(_event, tabIndex) => setActiveGpuIndex(tabIndex as number)}
-            aria-label="GPU selection tabs"
-            style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
-          >
-            {memoryData.gpus.map((gpu) => (
-              <Tab
-                key={gpu.gpu_index}
-                eventKey={gpu.gpu_index}
-                title={
-                  <TabTitleText>
-                    GPU {gpu.gpu_index}: {gpu.name}
-                  </TabTitleText>
-                }
-              />
-            ))}
-          </Tabs>
-        )}
-
-        <Flex direction={{ default: 'row' }} gap={{ default: 'gapLg' }}>
-          {/* GPU Memory Bar - Column 1 */}
-          <FlexItem flex={{ default: 'flex_2' }}>
-            <Content
-              component="small"
-              style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
-            >
-              {memoryData && memoryData.gpus.length === 1 && selectedGpu && (
-                <>{selectedGpu.name} — </>
-              )}
-              VRAM: {formatGb(selectedGpu?.used_gb ?? 0)} / {formatGb(selectedGpu?.total_gb ?? 0)}
-              {' — '}
-              GPU Load: {selectedGpu?.utilization_percent.toFixed(0) ?? 0}%
-            </Content>
-            <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
-              <ResponsiveBar
-                data={gpuData.data}
-                keys={gpuData.keys}
-                indexBy="id"
-                layout="horizontal"
-                margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
-                padding={0}
-                colors={(bar) => gpuData.colors[bar.id as string] || '#ccc'}
-                defs={SLEEPING_PATTERN_DEFS}
-                fill={gpuData.fill}
-                borderRadius={4}
-                enableLabel={false}
-                enableGridY={false}
-                enableGridX={false}
-                axisTop={null}
-                axisRight={null}
-                axisBottom={null}
-                axisLeft={null}
-                theme={getTooltipTheme()}
-                onClick={(bar) => {
-                  const model = selectedGpu?.models.find((m) => m.display_name === bar.id)
-                  if (model && effectiveOnModelClick) {
-                    effectiveOnModelClick(model.instance_id)
-                  }
-                }}
-                onMouseEnter={(_bar, event) => {
-                  const isClickable = selectedGpu?.models.some(
-                    (m) => m.display_name === (_bar as { id: string }).id
-                  )
-                  if (isClickable && effectiveOnModelClick) {
-                    ;(event.target as HTMLElement).style.cursor = 'pointer'
-                  }
-                }}
-                onMouseLeave={(_bar, event) => {
-                  ;(event.target as HTMLElement).style.cursor = 'default'
-                }}
-              />
-            </div>
-            <Flex
-              flexWrap={{ default: 'wrap' }}
-              style={{
-                marginTop: 'var(--pf-t--global--spacer--xs)',
-                columnGap: 'var(--pf-t--global--spacer--md)',
-                rowGap: 'var(--pf-t--global--spacer--xs)',
-              }}
-            >
-              {selectedGpu?.models.map((model) => (
-                <FlexItem key={`${model.instance_id}-${model.model_path}`}>
-                  <span
-                    onClick={() => effectiveOnModelClick?.(model.instance_id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        effectiveOnModelClick?.(model.instance_id)
-                      }
-                    }}
-                    role={effectiveOnModelClick ? 'button' : undefined}
-                    tabIndex={effectiveOnModelClick ? 0 : undefined}
-                    aria-label={effectiveOnModelClick ? `Go to ${model.display_name}` : undefined}
-                    style={{
-                      cursor: effectiveOnModelClick ? 'pointer' : 'default',
-                      fontSize: 'var(--pf-t--global--font--size--sm)',
-                      opacity: model.is_sleeping ? 0.7 : 1,
-                    }}
-                  >
-                    <span style={{ color: model.color }}>●</span> {model.display_name}
-                    {model.is_sleeping && (
-                      <MoonIcon
-                        style={{
-                          marginLeft: '4px',
-                          fontSize: 'var(--pf-t--global--font--size--xs)',
-                          color: 'var(--pf-t--global--text--color--subtle)',
-                        }}
-                      />
-                    )}{' '}
-                    ({formatGb(model.gpu_memory_gb)})
-                  </span>
-                </FlexItem>
-              ))}
-              {gpuData.keys.includes('Other') && (
-                <FlexItem>
-                  <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
-                    <span style={{ color: '#8B8D8F' }}>●</span> Other
-                  </span>
-                </FlexItem>
-              )}
-              <FlexItem>
-                <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)' }}>
-                  <span style={{ color: FREE_COLOR }}>●</span> Free (
-                  {formatGb(selectedGpu?.free_gb ?? 0)})
-                </span>
-              </FlexItem>
-            </Flex>
-          </FlexItem>
-
-          {/* KVCache Memory Bar - Column 2 (Per-GPU) */}
-          <FlexItem flex={{ default: 'flex_1' }}>
-            <Content
-              component="small"
-              style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
-            >
-              {memoryData && memoryData.gpus.length > 1 && `GPU ${selectedGpu?.gpu_index} `}
-              KVCache Memory —{' '}
-              {selectedGpu?.kvcache &&
-              selectedGpu.kvcache.total_gb > 0 &&
-              selectedGpu.models.length > 0
-                ? `${formatGb(selectedGpu.kvcache.used_gb)} / ${formatGb(selectedGpu.kvcache.total_gb)}`
-                : 'No KVCache active'}
-            </Content>
-            {selectedGpu?.kvcache &&
-            selectedGpu.kvcache.total_gb > 0 &&
-            selectedGpu.models.length > 0 ? (
-              <>
-                <div style={{ height: '40px', marginTop: 'var(--pf-t--global--spacer--xs)' }}>
-                  <ResponsiveBar
-                    data={kvcacheData}
-                    keys={['Prealloc', 'Used', 'Free']}
-                    indexBy="id"
-                    layout="horizontal"
-                    margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
-                    padding={0}
-                    colors={(bar) =>
-                      KVCACHE_COLORS[bar.id as keyof typeof KVCACHE_COLORS] || '#ccc'
-                    }
-                    borderRadius={4}
-                    enableLabel={false}
-                    enableGridY={false}
-                    enableGridX={false}
-                    axisTop={null}
-                    axisRight={null}
-                    axisBottom={null}
-                    axisLeft={null}
-                    theme={getTooltipTheme()}
-                  />
-                </div>
-                <Flex
-                  gap={{ default: 'gapSm' }}
-                  style={{ marginTop: 'var(--pf-t--global--spacer--xs)' }}
-                >
-                  <FlexItem>
-                    <span style={{ color: KVCACHE_COLORS.Prealloc }}>●</span>{' '}
-                    <Content component="small">
-                      Prealloc ({formatGb(selectedGpu.kvcache.prealloc_gb)})
-                    </Content>
-                  </FlexItem>
-                  <FlexItem>
-                    <span style={{ color: KVCACHE_COLORS.Used }}>●</span>{' '}
-                    <Content component="small">
-                      Used ({formatGb(selectedGpu.kvcache.used_gb)})
-                    </Content>
-                  </FlexItem>
-                  <FlexItem>
-                    <span style={{ color: KVCACHE_COLORS.Free }}>●</span>{' '}
-                    <Content component="small">
-                      Free ({formatGb(selectedGpu.kvcache.free_gb)})
-                    </Content>
-                  </FlexItem>
-                </Flex>
-              </>
-            ) : (
-              <div
-                style={{
-                  height: '40px',
-                  marginTop: 'var(--pf-t--global--spacer--xs)',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <Content
-                  component="small"
-                  style={{ fontStyle: 'italic', color: 'var(--pf-t--global--text--color--subtle)' }}
-                >
-                  No models with kvcached enabled on this GPU
-                </Content>
-              </div>
-            )}
-          </FlexItem>
-        </Flex>
-
-        {/* Total system memory summary for multi-GPU */}
-        {memoryData && memoryData.gpus.length > 1 && (
+        {/* Total free summary */}
+        {totalGpuCount > 1 && (
           <div
             style={{
               marginTop: 'var(--pf-t--global--spacer--md)',
@@ -616,8 +643,7 @@ export function GpuMemoryPanel({
               component="small"
               style={{ color: 'var(--pf-t--global--text--color--subtle)' }}
             >
-              Total system free GPU memory: {formatGb(memoryData.total_system_free_gb)} across{' '}
-              {memoryData.gpus.length} GPUs
+              Total system free GPU memory: {formatGb(totalFreeGb)} across {totalGpuCount} GPUs
             </Content>
           </div>
         )}

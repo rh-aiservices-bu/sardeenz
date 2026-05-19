@@ -18,6 +18,7 @@ function ChatbotPlayground() {
         style={{
           padding: 'var(--pf-t--global--spacer--md) var(--pf-t--global--spacer--lg)',
           borderBottom: '1px solid var(--pf-t--global--border--color--default)',
+          background: 'var(--pf-t--global--background--color--primary--default)',
         }}
       >
         <FlexItem>

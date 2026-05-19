@@ -29,6 +29,8 @@ import {
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table'
 import { SyncIcon, ExclamationCircleIcon } from '@patternfly/react-icons'
 import { apiClient, type NvidiaSmiInfo, type GpuStatus, type GpuProcess } from '../services/api'
+import { useClusterStatus } from '../hooks/useClusterStatus'
+import { PodSelector } from '../components/PodSelector'
 
 type RefreshInterval = 'none' | '5s' | '15s' | '30s' | '1min'
 
@@ -217,11 +219,23 @@ function GpuInfo() {
   const [isRefreshSelectOpen, setIsRefreshSelectOpen] = useState(false)
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [selectedPodId, setSelectedPodId] = useState<string | undefined>(undefined)
+
+  const { isClusterMode, clusterStatus } = useClusterStatus()
+
+  // Auto-select local pod on first cluster status load
+  useEffect(() => {
+    if (isClusterMode && clusterStatus?.localPodId && !selectedPodId) {
+      setSelectedPodId(clusterStatus.localPodId)
+    }
+  }, [isClusterMode, clusterStatus?.localPodId, selectedPodId])
 
   const fetchGpuInfo = useCallback(async () => {
     try {
       setError(null)
-      const info = await apiClient.getGpuInfo()
+      const info = isClusterMode && selectedPodId
+        ? await apiClient.getClusterPodGpuInfo(selectedPodId)
+        : await apiClient.getGpuInfo()
       setGpuInfo(info)
       setSecondsSinceUpdate(0)
     } catch (err) {
@@ -229,10 +243,12 @@ function GpuInfo() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isClusterMode, selectedPodId])
 
-  // Initial fetch
+  // Fetch on mount and when selected pod changes
   useEffect(() => {
+    setLoading(true)
+    setGpuInfo(null)
     fetchGpuInfo()
   }, [fetchGpuInfo])
 
@@ -307,13 +323,27 @@ function GpuInfo() {
 
   return (
     <>
-      <PageSection>
+      <PageSection hasShadowBottom>
         <Flex
           justifyContent={{ default: 'justifyContentSpaceBetween' }}
           alignItems={{ default: 'alignItemsCenter' }}
         >
           <FlexItem>
-            <Content component="h1">GPU Info</Content>
+            <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapMd' }}>
+              <FlexItem>
+                <Content component="h1">GPU Info</Content>
+              </FlexItem>
+              {isClusterMode && (
+                <FlexItem>
+                  <PodSelector
+                    selectedPodId={selectedPodId}
+                    onSelect={(podId) => setSelectedPodId(podId)}
+                    isClusterMode={isClusterMode}
+                    label="Select pod"
+                  />
+                </FlexItem>
+              )}
+            </Flex>
           </FlexItem>
           <FlexItem>
             <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapMd' }}>

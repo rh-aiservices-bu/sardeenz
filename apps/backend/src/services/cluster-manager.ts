@@ -55,6 +55,8 @@ export class ClusterManager implements HeartbeatDataProvider {
     // Wire up leader election callback
     this.election.onLeaderChange = (leaderId: string, term: number) => {
       this.logger.info({ leaderId, term }, 'Leader changed')
+      const role = leaderId === this.podId ? 'leader' : 'follower'
+      peerStore.updatePeer(this.podId, { role, term })
     }
   }
 
@@ -174,6 +176,7 @@ export class ClusterManager implements HeartbeatDataProvider {
       status: instance.status,
       gpuIds: instance.gpuIds,
       tensorParallelSize: instance.tensorParallelSize,
+      maxTokens: instance.maxTokens,
     }))
   }
 
@@ -196,6 +199,7 @@ export class ClusterManager implements HeartbeatDataProvider {
         temperature: parseInt(gpu.temperature) || 0,
         utilization: parseInt(gpu.gpuUtilization) || 0,
       }))
+      peerStore.updatePeer(this.podId, { gpus: this.cachedGpus, models: this.getModels() })
     } catch {
       // Keep previous cached data on failure
     }

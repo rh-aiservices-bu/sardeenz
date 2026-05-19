@@ -18,6 +18,7 @@ import {
 } from '@sardeenz/types'
 import { getBenchmarkStore } from '../stores/benchmark-store.js'
 import { modelStore } from '../stores/model-store.js'
+import { peerStore } from '../stores/peer-store.js'
 import { config } from '../config.js'
 import { startBenchmark, cancelBenchmark } from '../services/benchmark-runner.js'
 import { eventBus, type SSEConnection } from '../services/event-bus.js'
@@ -46,6 +47,17 @@ const ScenarioResultsParamsSchema = Type.Object({
   sid: Type.String({ format: 'uuid' }),
 })
 
+import type { PeerModelEntry, PeerInfo } from '@sardeenz/types'
+
+/** Look up a model by instanceId across all healthy remote peers. */
+function findModelInCluster(instanceId: string): { entry: PeerModelEntry; peer: PeerInfo } | null {
+  for (const peer of peerStore.getHealthyPeers()) {
+    const entry = peer.models.find((m) => m.instanceId === instanceId)
+    if (entry) return { entry, peer }
+  }
+  return null
+}
+
 export default async function benchmarkRoutes(fastify: FastifyInstance) {
   const store = getBenchmarkStore()
 
@@ -71,24 +83,44 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       try {
         const { name, mode, scenarios } = request.body
 
-        // Validate all instance IDs exist
+        // Validate all instance IDs exist (locally or on a healthy remote peer)
         for (const scenario of scenarios) {
-          const instance = modelStore.get(scenario.instanceId)
-          if (!instance) {
-            return reply.status(400).send({
-              error: {
-                message: `Model instance not found: ${scenario.instanceId}`,
-                type: 'validation_error',
-              },
-            })
-          }
-          if (instance.status !== 'running') {
-            return reply.status(400).send({
-              error: {
-                message: `Model instance is not running: ${scenario.instanceId} (status: ${instance.status})`,
-                type: 'validation_error',
-              },
-            })
+          const local = modelStore.get(scenario.instanceId)
+          if (local) {
+            if (local.status !== 'running') {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance is not running: ${scenario.instanceId} (status: ${local.status})`,
+                  type: 'validation_error',
+                },
+              })
+            }
+          } else {
+            const remote = findModelInCluster(scenario.instanceId)
+            if (!remote) {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance not found: ${scenario.instanceId}`,
+                  type: 'validation_error',
+                },
+              })
+            }
+            if (remote.entry.status !== 'running') {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance is not running: ${scenario.instanceId} (status: ${remote.entry.status})`,
+                  type: 'validation_error',
+                },
+              })
+            }
+            if (scenario.routingMode === 'direct') {
+              return reply.status(400).send({
+                error: {
+                  message: `Direct routing mode is not supported for models on remote pods. Use proxy mode for ${scenario.instanceId}.`,
+                  type: 'validation_error',
+                },
+              })
+            }
           }
         }
 
@@ -101,13 +133,16 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
 
         // Create scenarios
         for (const scenarioConfig of scenarios) {
-          const instance = modelStore.get(scenarioConfig.instanceId)!
+          const local = modelStore.get(scenarioConfig.instanceId)
+          const remote = local ? null : findModelInCluster(scenarioConfig.instanceId)
+          const modelPath = local ? local.modelPath : remote!.entry.modelPath
+          const modelName = local ? local.modelName : remote!.entry.modelName
           store.createScenario({
             runId: run.id,
             instanceId: scenarioConfig.instanceId,
             routingMode: scenarioConfig.routingMode || 'direct',
-            modelPath: instance.modelPath,
-            modelName: instance.modelName,
+            modelPath,
+            modelName,
             inputTokens: scenarioConfig.inputTokens,
             outputTokens: scenarioConfig.outputTokens,
             concurrency: scenarioConfig.concurrency,

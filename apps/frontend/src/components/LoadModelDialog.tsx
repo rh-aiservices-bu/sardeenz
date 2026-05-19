@@ -121,6 +121,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
     eventTypes: ['log', 'status', 'progress'],
     replayLogs: true,
     useClusterEndpoint: isClusterMode && !!selectedPodId,
+    podId: selectedPodId,
     onStatusChange: (status) => {
       if (status.data.currentStatus === ('running' as ModelStatus)) {
         setPhase('success')
@@ -136,26 +137,30 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
     },
   })
 
-  // Fetch GPU info and availability when dialog opens
+  // Fetch GPU info and availability when dialog opens or target pod changes
   useEffect(() => {
-    if (isOpen) {
-      // Fetch GPU availability for selection UI
-      if (!gpuAvailability) {
-        setIsLoadingGpus(true)
-        apiClient
-          .getAvailableGpus()
-          .then((availability) => {
-            setGpuAvailability(availability)
-            // Set GPU name for memory check from first GPU
-            if (availability.gpus.length > 0) {
-              setGpuName(availability.gpus[0].name)
-            }
-          })
-          .catch((err) => console.error('Failed to fetch GPU availability:', err))
-          .finally(() => setIsLoadingGpus(false))
-      }
-    }
-  }, [isOpen, gpuAvailability])
+    if (!isOpen) return
+
+    setIsLoadingGpus(true)
+    setGpuAvailability(null)
+    setGpuSelectionMode('auto')
+    setSelectedGpuIds([])
+    setTensorParallelSize(1)
+
+    const fetchGpus = isClusterMode && selectedPodId
+      ? apiClient.getClusterPodGpuAvailability(selectedPodId)
+      : apiClient.getAvailableGpus()
+
+    fetchGpus
+      .then((availability) => {
+        setGpuAvailability(availability)
+        if (availability.gpus.length > 0) {
+          setGpuName(availability.gpus[0].name)
+        }
+      })
+      .catch((err) => console.error('Failed to fetch GPU availability:', err))
+      .finally(() => setIsLoadingGpus(false))
+  }, [isOpen, selectedPodId, isClusterMode])
 
   // Check local models availability when dialog opens
   useEffect(() => {

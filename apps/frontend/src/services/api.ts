@@ -114,6 +114,7 @@ export interface ModelConfigurationEntryResponse {
   gpu_ids?: number[]
   tensor_parallel_size: number
   load_order: number
+  pod_id?: string
 }
 
 export interface SavedModelConfigurationResponse {
@@ -156,6 +157,8 @@ export interface LoadModelConfigurationResponse {
   configuration_id: string
   configuration_name: string
   message: string
+  skipped_pods?: string[]
+  loaded_model_count?: number
 }
 
 // Benchmark types for API responses
@@ -538,12 +541,36 @@ class ApiClient {
     }
   }
 
+  /** Subscribe to move progress via the cluster-aware relay (works for moves on any pod). */
+  subscribeClusterMoveEvents(
+    moveId: string,
+    onProgress: (event: MoveProgressEvent) => void,
+    onError?: (error: Event) => void
+  ): () => void {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+    const params = new URLSearchParams()
+    const token = this.authToken
+    if (token) params.set('token', token)
+    const url = `${baseURL}/api/cluster/moves/${moveId}/events?${params}`
+    const eventSource = new EventSource(url)
+    eventSource.addEventListener('move_progress', (e: MessageEvent) => {
+      onProgress(JSON.parse(e.data) as MoveProgressEvent)
+    })
+    eventSource.onerror = (e) => onError?.(e)
+    return () => eventSource.close()
+  }
+
   async cancelMove(moveId: string, force: boolean = false): Promise<void> {
     await this.client.delete(`/api/models/moves/${moveId}${force ? '?force=true' : ''}`)
   }
 
   async listModels(): Promise<ListModelsResponse> {
     const response = await this.client.get<ListModelsResponse>('/api/models')
+    return response.data
+  }
+
+  async listClusterModels(): Promise<ListModelsResponse> {
+    const response = await this.client.get<ListModelsResponse>('/api/models?scope=cluster')
     return response.data
   }
 
@@ -1053,6 +1080,20 @@ class ApiClient {
     return response.data
   }
 
+  async getClusterPodGpuAvailability(podId: string): Promise<GpuAvailabilityResponse> {
+    const response = await this.client.get<GpuAvailabilityResponse>(
+      `/api/cluster/pods/${encodeURIComponent(podId)}/gpu/available`
+    )
+    return response.data
+  }
+
+  async getClusterPodGpuInfo(podId: string): Promise<NvidiaSmiInfo> {
+    const response = await this.client.get<NvidiaSmiInfo>(
+      `/api/cluster/pods/${encodeURIComponent(podId)}/gpu/info`
+    )
+    return response.data
+  }
+
   async getClusterPodMemory(podId: string): Promise<MultiGpuMemoryUsageResponse> {
     const response = await this.client.get<MultiGpuMemoryUsageResponse>(
       `/api/cluster/pods/${encodeURIComponent(podId)}/memory`
@@ -1079,6 +1120,36 @@ class ApiClient {
     const response = await this.client.post<{ moveId: string }>(
       `/api/cluster/models/${instanceId}/move`,
       request
+    )
+    return response.data
+  }
+
+  async clusterSleepModel(instanceId: string, level: 1 | 2 = 1): Promise<SleepModelResponse> {
+    const response = await this.client.post<SleepModelResponse>(
+      `/api/cluster/models/${instanceId}/sleep`,
+      { level }
+    )
+    return response.data
+  }
+
+  async clusterWakeModel(instanceId: string, tags?: 'weights' | 'kv_cache'): Promise<WakeModelResponse> {
+    const response = await this.client.post<WakeModelResponse>(
+      `/api/cluster/models/${instanceId}/wake`,
+      tags ? { tags } : {}
+    )
+    return response.data
+  }
+
+  async getClusterModelLogs(instanceId: string): Promise<GetInstanceLogsResponse> {
+    const response = await this.client.get<GetInstanceLogsResponse>(
+      `/api/cluster/models/${instanceId}/logs`
+    )
+    return response.data
+  }
+
+  async getClusterPodModelsFull(podId: string): Promise<ListModelsResponse> {
+    const response = await this.client.get<ListModelsResponse>(
+      `/api/cluster/pods/${encodeURIComponent(podId)}/models/full`
     )
     return response.data
   }

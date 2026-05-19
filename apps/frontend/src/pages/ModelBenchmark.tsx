@@ -234,7 +234,7 @@ function ModelBenchmark() {
   }
 
   return (
-    <PageSection>
+    <PageSection hasShadowBottom>
       <Content component="h1" style={{ marginBottom: 'var(--pf-t--global--spacer--lg)' }}>
         Model Benchmark
       </Content>

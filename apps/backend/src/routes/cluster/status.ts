@@ -1,11 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import { Type } from '@sinclair/typebox'
-import type { MultiGpuMemoryUsageResponse } from '@sardeenz/types'
+import type { MultiGpuMemoryUsageResponse, GpuAvailabilityResponse, ListModelsResponse } from '@sardeenz/types'
+import { getNvidiaSmiInfo, type NvidiaSmiInfo } from '../../utils/gpu-info.js'
 import { getClusterManager } from '../../services/cluster-manager.js'
+import { getModelManager } from '../../services/model-manager.js'
 import { MemoryMonitor } from '../../services/memory-monitor.js'
+import { GpuSelector } from '../../services/gpu-selector.js'
 import { buildSignedHeaders } from '../../services/cluster-auth.js'
 import { peerStore } from '../../stores/peer-store.js'
 import { clusterRoutingStore } from '../../stores/cluster-routing-store.js'
+import { toModelDTO } from '../../utils/model-dto.js'
 
 function computeClusterHealth(podCount: number, healthyCount: number): 'healthy' | 'degraded' | 'critical' {
   if (healthyCount === 0) return 'critical'
@@ -209,6 +213,60 @@ export default async function clusterStatusRoutes(fastify: FastifyInstance) {
     }
   )
 
+  // GET /api/cluster/pods/:podId/gpu/available — GPU availability for a specific pod
+  fastify.get<{ Params: { podId: string } }>(
+    '/api/cluster/pods/:podId/gpu/available',
+    {
+      schema: {
+        tags: ['cluster'],
+        description: 'Get GPU availability for a specific pod (proxies to remote pod if needed)',
+        params: PodIdParamsSchema,
+        response: {
+          404: Type.Object({ error: Type.String() }),
+          502: Type.Object({ error: Type.String() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { podId } = request.params
+      const localPodId = clusterManager.getPodId()
+
+      if (podId === localPodId) {
+        const gpuSelector = new GpuSelector(fastify.log)
+        try {
+          return await gpuSelector.getGpuAvailability()
+        } catch (err) {
+          fastify.log.error({ err }, 'Failed to get local GPU availability')
+          return reply.code(500).send({ error: (err as Error).message })
+        }
+      }
+
+      const peer = peerStore.getPeer(podId)
+      if (!peer) {
+        return reply.code(404).send({ error: `Pod ${podId} not found` })
+      }
+
+      const internalPath = '/internal/gpu/available'
+      const headers = buildSignedHeaders('GET', internalPath, '')
+
+      try {
+        const response = await fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+          headers,
+          signal: AbortSignal.timeout(5_000),
+        })
+
+        if (!response.ok) {
+          return reply.code(response.status).send({ error: 'Failed to fetch GPU availability from remote pod' })
+        }
+
+        return await response.json() as GpuAvailabilityResponse
+      } catch (err) {
+        fastify.log.error({ err, podId }, 'Failed to proxy GPU availability to remote pod')
+        return reply.code(502).send({ error: `Failed to reach pod ${podId}` })
+      }
+    }
+  )
+
   // GET /api/cluster/pods/:podId/memory — GPU memory usage for a specific pod
   fastify.get<{ Params: { podId: string } }>(
     '/api/cluster/pods/:podId/memory',
@@ -260,6 +318,110 @@ export default async function clusterStatusRoutes(fastify: FastifyInstance) {
         return await response.json() as MultiGpuMemoryUsageResponse
       } catch (err) {
         fastify.log.error({ err, podId }, 'Failed to proxy memory request to remote pod')
+        return reply.code(502).send({ error: `Failed to reach pod ${podId}` })
+      }
+    }
+  )
+
+  // GET /api/cluster/pods/:podId/gpu/info — full NvidiaSmiInfo from any pod
+  fastify.get<{ Params: { podId: string } }>(
+    '/api/cluster/pods/:podId/gpu/info',
+    {
+      schema: {
+        tags: ['cluster'],
+        description: 'Get full GPU info for a specific pod (proxies to remote pod if needed)',
+        params: PodIdParamsSchema,
+        response: {
+          404: Type.Object({ error: Type.String() }),
+          502: Type.Object({ error: Type.String() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { podId } = request.params
+      const localPodId = clusterManager.getPodId()
+
+      if (podId === localPodId) {
+        try {
+          return await getNvidiaSmiInfo()
+        } catch (err) {
+          fastify.log.error({ err }, 'Failed to get local GPU info')
+          return reply.code(500).send({ error: (err as Error).message })
+        }
+      }
+
+      const peer = peerStore.getPeer(podId)
+      if (!peer) {
+        return reply.code(404).send({ error: `Pod ${podId} not found` })
+      }
+
+      const internalPath = '/internal/gpu/info'
+      const headers = buildSignedHeaders('GET', internalPath, '')
+
+      try {
+        const response = await fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+          headers,
+          signal: AbortSignal.timeout(5_000),
+        })
+
+        if (!response.ok) {
+          return reply.code(response.status).send({ error: 'Failed to fetch GPU info from remote pod' })
+        }
+
+        return await response.json() as NvidiaSmiInfo
+      } catch (err) {
+        fastify.log.error({ err, podId }, 'Failed to proxy GPU info to remote pod')
+        return reply.code(502).send({ error: `Failed to reach pod ${podId}` })
+      }
+    }
+  )
+
+  // GET /api/cluster/pods/:podId/models/full — full ModelInstanceDTO list from any pod
+  fastify.get<{ Params: { podId: string } }>(
+    '/api/cluster/pods/:podId/models/full',
+    {
+      schema: {
+        tags: ['cluster'],
+        description: 'Get full model instance list from a specific pod (proxies to remote pod)',
+        params: PodIdParamsSchema,
+        response: {
+          404: Type.Object({ error: Type.String() }),
+          502: Type.Object({ error: Type.String() }),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { podId } = request.params
+      const clusterManager = getClusterManager(fastify.log)
+      const isLocal = podId === clusterManager.getPodId()
+
+      if (isLocal) {
+        const modelManager = getModelManager(fastify.log)
+        const instances = modelManager.listModels()
+        return { models: instances.map(toModelDTO), total: instances.length }
+      }
+
+      const peer = peerStore.getPeer(podId)
+      if (!peer) {
+        return reply.code(404).send({ error: `Pod ${podId} not found` })
+      }
+
+      const internalPath = '/internal/models'
+      const headers = buildSignedHeaders('GET', internalPath, '')
+
+      try {
+        const response = await fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+          headers,
+          signal: AbortSignal.timeout(5_000),
+        })
+
+        if (!response.ok) {
+          return reply.code(response.status).send({ error: 'Failed to fetch models from remote pod' })
+        }
+
+        return await response.json() as ListModelsResponse
+      } catch (err) {
+        fastify.log.error({ err, podId }, 'Failed to proxy model list request to remote pod')
         return reply.code(502).send({ error: `Failed to reach pod ${podId}` })
       }
     }

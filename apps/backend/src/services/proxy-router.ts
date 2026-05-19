@@ -93,38 +93,51 @@ class CircuitBreaker {
 // ── T044: Per-pod connection pool management ──────────────────────
 
 class PodPoolManager {
-  private pools: Map<string, Pool> = new Map()  // keyed by podId
+  // Keyed by "podId:port" so each vLLM port on a pod gets its own pool.
+  // Using podId alone would reuse the pool (and its fixed baseUrl) for a
+  // different port when two models run on the same pod, causing the wrong
+  // vLLM instance to receive requests and return "model does not exist".
+  private pools: Map<string, Pool> = new Map()
+
+  private poolKey(podId: string, baseUrl: string): string {
+    return `${podId}|${baseUrl}`
+  }
 
   getOrCreate(podId: string, baseUrl: string): Pool {
-    let pool = this.pools.get(podId)
+    const key = this.poolKey(podId, baseUrl)
+    let pool = this.pools.get(key)
     if (!pool) {
       pool = new Pool(baseUrl, {
         connections: 64,
         pipelining: 1,
         keepAliveTimeout: 120_000,
       })
-      this.pools.set(podId, pool)
+      this.pools.set(key, pool)
     }
     return pool
   }
 
   async destroyPool(podId: string): Promise<void> {
-    const pool = this.pools.get(podId)
-    if (pool) {
-      await pool.close()
-      this.pools.delete(podId)
+    for (const [key, pool] of this.pools) {
+      if (key.startsWith(`${podId}|`)) {
+        await pool.close()
+        this.pools.delete(key)
+      }
     }
   }
 
   async destroyAll(): Promise<void> {
-    for (const [podId, pool] of this.pools) {
+    for (const [key, pool] of this.pools) {
       await pool.close()
-      this.pools.delete(podId)
+      this.pools.delete(key)
     }
   }
 
   hasPod(podId: string): boolean {
-    return this.pools.has(podId)
+    for (const key of this.pools.keys()) {
+      if (key.startsWith(`${podId}|`)) return true
+    }
+    return false
   }
 }
 

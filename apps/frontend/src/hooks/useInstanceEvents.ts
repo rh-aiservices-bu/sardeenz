@@ -11,6 +11,8 @@ export interface UseInstanceEventsOptions {
   replayLogs?: boolean
   /** Use cluster events endpoint (proxies to remote pod if needed) */
   useClusterEndpoint?: boolean
+  /** Pod ID hint for cluster events (avoids race with heartbeat sync) */
+  podId?: string
   /** Callback for any event */
   onEvent?: (event: SSEEvent) => void
   /** Callback for connection errors */
@@ -48,6 +50,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     eventTypes = ['log', 'status', 'memory', 'progress', 'error'],
     replayLogs = true,
     useClusterEndpoint = false,
+    podId,
     onEvent,
     onError,
     onStatusChange,
@@ -72,6 +75,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
   const eventTypesRef = useRef(eventTypes)
   const replayLogsRef = useRef(replayLogs)
   const useClusterEndpointRef = useRef(useClusterEndpoint)
+  const podIdRef = useRef(podId)
 
   // Sync refs on each render (no cleanup needed, won't cause reconnection)
   useEffect(() => {
@@ -81,6 +85,7 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     eventTypesRef.current = eventTypes
     replayLogsRef.current = replayLogs
     useClusterEndpointRef.current = useClusterEndpoint
+    podIdRef.current = podId
   })
 
   const connect = useCallback(() => {
@@ -113,6 +118,9 @@ export function useInstanceEvents(options: UseInstanceEventsOptions): UseInstanc
     const eventsPath = useClusterEndpointRef.current
       ? `/api/cluster/models/${instanceId}/events`
       : `/api/models/instances/${instanceId}/events`
+    if (useClusterEndpointRef.current && podIdRef.current) {
+      params.set('podId', podIdRef.current)
+    }
     const url = `${baseURL}${eventsPath}?${params}`
 
     const eventSource = new EventSource(url)

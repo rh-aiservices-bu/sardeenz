@@ -307,6 +307,7 @@ async function start() {
     })
     logger.info(`Server listening on http://${config.host}:${config.port}`)
     logger.info(`Documentation available at http://${config.host}:${config.port}/docs`)
+    logger.info({ vllmBasePort: config.vllmBasePort, portRange: `${config.vllmBasePort}–${config.vllmBasePort + 99}` }, 'vLLM port range')
 
     // FR-027: Perform startup orphan detection
     const orphanDetector = new OrphanDetector(logger)

@@ -67,6 +67,8 @@ npm run dev -w apps/backend
 
 Open the dashboard pointing at either pod. Load models, verify cross-pod routing, test model moves.
 
+> **Port ranges**: vLLM serving ports are automatically partitioned per pod (stride of 100) to avoid collisions on localhost. Pod A uses ports 12346–12445, Pod B uses 12446–12545, etc. Set `VLLM_BASE_PORT` explicitly to override.
+
 ## Configuration Reference
 
 | Variable | Default | Description |

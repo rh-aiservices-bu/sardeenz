@@ -14,6 +14,7 @@ import type {
   CreateModelConfigurationInput,
   UpdateModelConfigurationInput,
   ModelInstance,
+  ModelInstanceDTO,
   ModelSourceType,
 } from '@sardeenz/types'
 import { peerStore } from './peer-store.js'
@@ -47,6 +48,7 @@ interface EntryRow {
   sleep_mode_enabled: number // SQLite stores booleans as 0/1
   gpu_type_constraint: string | null
   min_vram_mb: number | null
+  pod_id: string | null
 }
 
 // Convert row to domain object
@@ -79,6 +81,7 @@ function rowToEntry(row: EntryRow): ModelConfigurationEntry {
     sleepModeEnabled: row.sleep_mode_enabled === 1,
     gpuTypeConstraint: row.gpu_type_constraint ?? undefined,
     minVramMb: row.min_vram_mb ?? undefined,
+    podId: row.pod_id ?? undefined,
   }
 }
 
@@ -94,7 +97,9 @@ class ModelConfigurationStore {
    */
   createFromRunningModels(
     input: CreateModelConfigurationInput,
-    instances: ModelInstance[]
+    instances: ModelInstance[],
+    localPodId?: string,
+    remoteModels?: Array<{ dto: ModelInstanceDTO; podId: string }>
   ): SavedModelConfiguration {
     const id = randomUUID()
     const now = new Date().toISOString()
@@ -103,6 +108,10 @@ class ModelConfigurationStore {
     const activeInstances = instances.filter(
       (i) => i.status === 'running' || i.status === 'sleeping'
     )
+    const activeRemote = (remoteModels ?? []).filter(
+      (r) => r.dto.status === 'running' || r.dto.status === 'sleeping'
+    )
+    const totalCount = activeInstances.length + activeRemote.length
 
     const insertConfig = this.db.prepare(`
       INSERT INTO model_configurations (id, name, description, model_count, created_at)
@@ -111,30 +120,42 @@ class ModelConfigurationStore {
 
     const insertEntry = this.db.prepare(`
       INSERT INTO model_configuration_entries
-      (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled, pod_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const transaction = this.db.transaction(() => {
-      insertConfig.run(id, input.name, input.description ?? null, activeInstances.length, now)
+      insertConfig.run(id, input.name, input.description ?? null, totalCount, now)
 
-      activeInstances.forEach((instance, index) => {
-        // Determine if served_model_name differs from model path
+      let loadOrder = 0
+
+      activeInstances.forEach((instance) => {
         const servedModelName =
           instance.modelName !== instance.modelPath ? instance.modelName : null
 
         insertEntry.run(
-          randomUUID(),
-          id,
-          instance.modelPath,
-          servedModelName,
-          instance.maxTokens,
-          'huggingface', // Default source type
-          null, // Extra args not captured from running instance
+          randomUUID(), id,
+          instance.modelPath, servedModelName,
+          instance.maxTokens, 'huggingface', null,
           instance.gpuIds.length > 0 ? JSON.stringify(instance.gpuIds) : null,
-          instance.tensorParallelSize,
-          index,
-          instance.sleepModeEnabled ? 1 : 0
+          instance.tensorParallelSize, loadOrder++,
+          instance.sleepModeEnabled ? 1 : 0,
+          localPodId ?? null
+        )
+      })
+
+      activeRemote.forEach(({ dto, podId }) => {
+        const servedModelName =
+          dto.model_name !== dto.model_path ? dto.model_name : null
+
+        insertEntry.run(
+          randomUUID(), id,
+          dto.model_path, servedModelName,
+          dto.max_tokens, 'huggingface', null,
+          dto.gpu_ids && dto.gpu_ids.length > 0 ? JSON.stringify(dto.gpu_ids) : null,
+          dto.tensor_parallel_size, loadOrder++,
+          dto.sleep_mode_enabled ? 1 : 0,
+          podId
         )
       })
     })
@@ -145,7 +166,7 @@ class ModelConfigurationStore {
       id,
       name: input.name,
       description: input.description,
-      modelCount: activeInstances.length,
+      modelCount: totalCount,
       createdAt: now,
     }
   }
@@ -302,8 +323,8 @@ class ModelConfigurationStore {
     if (preset.entries) {
       const insertEntry = this.db.prepare(`
         INSERT INTO model_configuration_entries
-        (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled, gpu_type_constraint, min_vram_mb)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, config_id, model_path, served_model_name, max_tokens, source_type, extra_args, gpu_ids, tensor_parallel_size, load_order, sleep_mode_enabled, gpu_type_constraint, min_vram_mb, pod_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       for (const entry of preset.entries) {
@@ -320,7 +341,8 @@ class ModelConfigurationStore {
           entry.loadOrder,
           entry.sleepModeEnabled ? 1 : 0,
           entry.gpuTypeConstraint ?? null,
-          entry.minVramMb ?? null
+          entry.minVramMb ?? null,
+          entry.podId ?? null
         )
       }
     }

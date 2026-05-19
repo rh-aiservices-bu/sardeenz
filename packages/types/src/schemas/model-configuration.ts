@@ -21,6 +21,7 @@ export const ModelConfigurationEntrySchema = Type.Object({
   tensor_parallel_size: Type.Integer(),
   load_order: Type.Integer(),
   sleep_mode_enabled: Type.Optional(Type.Boolean()),
+  pod_id: Type.Optional(Type.String()),
 })
 
 // Configuration schema for API responses
@@ -77,6 +78,8 @@ export const LoadConfigurationResponseSchema = Type.Object({
   configuration_id: Type.String({ format: 'uuid' }),
   configuration_name: Type.String(),
   message: Type.String(),
+  skipped_pods: Type.Optional(Type.Array(Type.String())),
+  loaded_model_count: Type.Optional(Type.Integer()),
 })
 
 // Error response schema (reuse from existing if available)

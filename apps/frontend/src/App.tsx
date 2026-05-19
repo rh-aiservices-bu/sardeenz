@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import {
   Page,
@@ -67,6 +67,8 @@ import Login from './pages/Login'
 import OAuthCallback from './pages/OAuthCallback'
 import AccessDenied from './pages/AccessDenied'
 import { InferenceWorkspaceProvider } from './contexts/InferenceWorkspaceContext'
+import { AquaBg } from './components/AquaBg'
+import { useKeySeq } from './hooks/useKeySeq'
 import axios from 'axios'
 
 function App() {
@@ -81,6 +83,10 @@ function App() {
     if (stored) return stored === 'dark'
     return window.matchMedia('(prefers-color-scheme: dark)').matches
   })
+
+  const [spBck, setSpBck] = useState(false)
+  const toggleSpBck = useCallback(() => setSpBck((v) => !v), [])
+  useKeySeq('sardine', toggleSpBck)
 
   const { toastNotifications, removeToastNotification, unreadCount } = useNotifications()
   const { status, retryConnection, version } = useConnection()
@@ -415,6 +421,7 @@ function App() {
   return (
     <InferenceWorkspaceProvider>
       <AlertToastGroup notifications={toastNotifications} onRemove={removeToastNotification} />
+      <AquaBg active={spBck} />
       <Page masthead={masthead} sidebar={sidebar}>
         <Drawer isExpanded={isDrawerOpen} onExpand={() => setIsDrawerOpen(true)}>
           <DrawerContent panelContent={drawerPanelContent}>

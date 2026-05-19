@@ -145,7 +145,22 @@ export const config: Config = {
   inferenceApiKey: getEnv('INFERENCE_API_KEY', ''),
 
   // vLLM configuration
-  vllmBasePort: getEnvInt('VLLM_BASE_PORT', 12346),
+  // In cluster mode with CLUSTER_PEERS, auto-offset by pod index * 100 to avoid
+  // port collisions when multiple pods share the same host (local dev).
+  // Explicit VLLM_BASE_PORT always takes precedence.
+  vllmBasePort: (() => {
+    const STRIDE = 100
+    const base = getEnvInt('VLLM_BASE_PORT', 12346)
+    const peers = getEnv('CLUSTER_PEERS', '')
+    if (!peers) return base
+    const peerList = peers.split(',').map((p) => p.trim())
+    const selfPort = getEnvInt('PORT', 3000)
+    const podIndex = peerList.findIndex((entry) => {
+      const port = parseInt(entry.split(':')[1], 10)
+      return port === selfPort
+    })
+    return base + Math.max(podIndex, 0) * STRIDE
+  })(),
   vllmMaxInstances: getEnvInt('VLLM_MAX_INSTANCES', 10),
   vllmStartupTimeout: getEnvInt('VLLM_STARTUP_TIMEOUT', 1800000), // 30 minutes default
 

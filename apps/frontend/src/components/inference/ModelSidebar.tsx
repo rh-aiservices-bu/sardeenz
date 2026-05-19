@@ -10,6 +10,8 @@ import {
   FlexItem,
   Button,
   Tooltip,
+  ExpandableSection,
+  Label,
 } from '@patternfly/react-core'
 import { CubesIcon, TimesCircleIcon } from '@patternfly/react-icons'
 import type { ModelInstanceDTO } from '@sardeenz/types'
@@ -32,17 +34,22 @@ interface ModelSidebarProps {
   onCloseAllSessions?: () => void
 }
 
-/**
- * Format GPU key to display label.
- */
-function formatGpuLabel(gpuKey: string): string {
-  if (gpuKey === 'multi-gpu') return 'Multi-GPU'
-  return gpuKey.replace('gpu-', 'GPU ')
+function gpuKey(model: ModelInstanceDTO): string {
+  if (model.tensor_parallel_size && model.tensor_parallel_size > 1) return 'multi-gpu'
+  if (model.gpu_ids && model.gpu_ids.length > 0) return `gpu-${model.gpu_ids[0]}`
+  return 'gpu-0'
+}
+
+function formatGpuLabel(key: string): string {
+  if (key === 'multi-gpu') return 'Multi-GPU'
+  return key.replace('gpu-', 'GPU ')
 }
 
 /**
  * Sidebar component for model selection.
- * Shows search input and models grouped by GPU assignment.
+ *
+ * Single-pod mode: models grouped by GPU.
+ * Cluster mode (any model has pod_id): two-level grouping — pod → GPU.
  */
 export function ModelSidebar({
   models,
@@ -57,78 +64,87 @@ export function ModelSidebar({
   sessionCount,
   onCloseAllSessions,
 }: ModelSidebarProps) {
+  const isClusterMode = models.some((m) => m.pod_id)
+
   // Filter models by search term
   const filteredModels = useMemo(() => {
     if (!searchTerm.trim()) return models
-
     const term = searchTerm.toLowerCase()
     return models.filter((m) => {
-      const modelName = m.model_path.split('/').pop()?.toLowerCase() || ''
-      const modelPath = m.model_path.toLowerCase()
-      return modelName.includes(term) || modelPath.includes(term)
+      const name = m.model_path.split('/').pop()?.toLowerCase() || ''
+      return name.includes(term) || m.model_path.toLowerCase().includes(term)
     })
   }, [models, searchTerm])
 
-  // Group models by GPU
+  // Single-pod: group by GPU key
   const modelsByGpu = useMemo(() => {
+    if (isClusterMode) return new Map<string, ModelInstanceDTO[]>()
     const groups = new Map<string, ModelInstanceDTO[]>()
-
     for (const model of filteredModels) {
-      // Determine GPU key
-      let gpuKey: string
-      if (model.tensor_parallel_size && model.tensor_parallel_size > 1) {
-        gpuKey = 'multi-gpu'
-      } else if (model.gpu_ids && model.gpu_ids.length > 0) {
-        gpuKey = `gpu-${model.gpu_ids[0]}`
-      } else {
-        gpuKey = 'gpu-0'
-      }
-
-      if (!groups.has(gpuKey)) {
-        groups.set(gpuKey, [])
-      }
-      groups.get(gpuKey)!.push(model)
+      const key = gpuKey(model)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(model)
     }
-
-    // Sort groups by key
     return new Map([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])))
-  }, [filteredModels])
+  }, [filteredModels, isClusterMode])
+
+  // Cluster mode: group by pod → GPU
+  const modelsByPod = useMemo(() => {
+    if (!isClusterMode) return new Map<string, Map<string, ModelInstanceDTO[]>>()
+    const pods = new Map<string, Map<string, ModelInstanceDTO[]>>()
+    for (const model of filteredModels) {
+      const podId = model.pod_id ?? 'unknown'
+      if (!pods.has(podId)) pods.set(podId, new Map())
+      const gpuGroups = pods.get(podId)!
+      const key = gpuKey(model)
+      if (!gpuGroups.has(key)) gpuGroups.set(key, [])
+      gpuGroups.get(key)!.push(model)
+    }
+    return new Map([...pods.entries()].sort((a, b) => a[0].localeCompare(b[0])))
+  }, [filteredModels, isClusterMode])
+
+  // Compute all expandable keys for auto-expand logic
+  const allKeys = useMemo(() => {
+    if (!isClusterMode) return Array.from(modelsByGpu.keys())
+    const keys: string[] = []
+    for (const [podId, gpuGroups] of modelsByPod) {
+      keys.push(`pod:${podId}`)
+      for (const key of gpuGroups.keys()) {
+        keys.push(`${podId}:${key}`)
+      }
+    }
+    return keys
+  }, [isClusterMode, modelsByGpu, modelsByPod])
 
   // Ref to maintain stable Set references across renders
   const expandedGroupsRef = useRef<Set<string>>(new Set())
 
-  // Auto-expand groups when searching or when there's only one
   const effectiveExpandedGroups = useMemo(() => {
-    const gpuKeys = Array.from(modelsByGpu.keys())
+    const shouldAutoExpand =
+      searchTerm.trim() ||
+      (isClusterMode ? modelsByPod.size === 1 : modelsByGpu.size === 1)
 
-    if (searchTerm.trim() || modelsByGpu.size === 1) {
-      // Auto-expand all when searching or single group
-      // Check if keys are the same to avoid creating new Set
-      const currentKeys = Array.from(expandedGroupsRef.current)
+    if (shouldAutoExpand) {
       const keysMatch =
-        currentKeys.length === gpuKeys.length &&
-        gpuKeys.every((k) => expandedGroupsRef.current.has(k))
+        allKeys.length === expandedGroupsRef.current.size &&
+        allKeys.every((k) => expandedGroupsRef.current.has(k))
       if (!keysMatch) {
-        expandedGroupsRef.current = new Set(gpuKeys)
+        expandedGroupsRef.current = new Set(allKeys)
       }
       return expandedGroupsRef.current
     }
 
-    // Use user-controlled expansion if set
-    if (expandedGpuGroups.size > 0) {
-      return expandedGpuGroups
-    }
+    if (expandedGpuGroups.size > 0) return expandedGpuGroups
 
-    // Default to all expanded (but keep stable reference)
-    const currentKeys = Array.from(expandedGroupsRef.current)
+    // Default: all expanded
     const keysMatch =
-      currentKeys.length === gpuKeys.length &&
-      gpuKeys.every((k) => expandedGroupsRef.current.has(k))
+      allKeys.length === expandedGroupsRef.current.size &&
+      allKeys.every((k) => expandedGroupsRef.current.has(k))
     if (!keysMatch) {
-      expandedGroupsRef.current = new Set(gpuKeys)
+      expandedGroupsRef.current = new Set(allKeys)
     }
     return expandedGroupsRef.current
-  }, [searchTerm, modelsByGpu, expandedGpuGroups])
+  }, [searchTerm, isClusterMode, modelsByPod, modelsByGpu, expandedGpuGroups, allKeys])
 
   const handleSearchChange = (_event: React.FormEvent<HTMLInputElement>, value: string) => {
     onSearchChange(value)
@@ -223,15 +239,82 @@ export function ModelSidebar({
           <EmptyState titleText="No matches" variant="sm">
             <EmptyStateBody>No models match your search.</EmptyStateBody>
           </EmptyState>
-        ) : (
+        ) : isClusterMode ? (
+          // Cluster mode: pod → GPU grouping
           <Stack>
-            {Array.from(modelsByGpu.entries()).map(([gpuKey, gpuModels]) => (
-              <StackItem key={gpuKey}>
+            {Array.from(modelsByPod.entries()).map(([podId, gpuGroups]) => {
+              const podKey = `pod:${podId}`
+              const podModelCount = Array.from(gpuGroups.values()).reduce(
+                (sum, ms) => sum + ms.length,
+                0
+              )
+              return (
+                <StackItem key={podId}>
+                  <ExpandableSection
+                    toggleContent={
+                      <Flex
+                        gap={{ default: 'gapMd' }}
+                        alignItems={{ default: 'alignItemsCenter' }}
+                      >
+                        <FlexItem>
+                          <strong
+                            style={{
+                              fontSize: 'var(--pf-t--global--font--size--body--default)',
+                            }}
+                          >
+                            {podId}
+                          </strong>
+                        </FlexItem>
+                        <FlexItem>
+                          <Label isCompact color="purple">
+                            {podModelCount}
+                          </Label>
+                        </FlexItem>
+                      </Flex>
+                    }
+                    isExpanded={effectiveExpandedGroups.has(podKey)}
+                    onToggle={() => onToggleGpuGroup(podKey)}
+                    displaySize="default"
+                    style={{ marginBottom: 'var(--pf-t--global--spacer--xs)' }}
+                  >
+                    <div style={{ paddingLeft: 'var(--pf-t--global--spacer--sm)' }}>
+                      {Array.from(
+                        new Map(
+                          [...gpuGroups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+                        ).entries()
+                      ).map(([key, gpuModels]) => {
+                        const compositeKey = `${podId}:${key}`
+                        return (
+                          <InferenceGpuGroup
+                            key={compositeKey}
+                            gpuKey={compositeKey}
+                            gpuLabel={formatGpuLabel(key)}
+                            models={gpuModels}
+                            isExpanded={effectiveExpandedGroups.has(compositeKey)}
+                            onToggle={onToggleGpuGroup}
+                            onModelSelect={onModelSelect}
+                            isModelOpen={isModelOpen}
+                            activeSessionId={activeSessionId}
+                            findSessionByModelId={findSessionByModelId}
+                          />
+                        )
+                      })}
+                    </div>
+                  </ExpandableSection>
+                </StackItem>
+              )
+            })}
+          </Stack>
+        ) : (
+          // Single-pod mode: flat GPU grouping
+          <Stack>
+            {Array.from(modelsByGpu.entries()).map(([key, gpuModels]) => (
+              <StackItem key={key}>
                 <InferenceGpuGroup
-                  gpuKey={gpuKey}
-                  gpuLabel={formatGpuLabel(gpuKey)}
+                  gpuKey={key}
+                  gpuLabel={formatGpuLabel(key)}
                   models={gpuModels}
-                  isExpanded={effectiveExpandedGroups.has(gpuKey)}
+                  isExpanded={effectiveExpandedGroups.has(key)}
                   onToggle={onToggleGpuGroup}
                   onModelSelect={onModelSelect}
                   isModelOpen={isModelOpen}
