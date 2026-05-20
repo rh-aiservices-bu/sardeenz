@@ -18,6 +18,7 @@ import {
 } from '@sardeenz/types'
 import { getBenchmarkStore } from '../stores/benchmark-store.js'
 import { modelStore } from '../stores/model-store.js'
+import { peerStore } from '../stores/peer-store.js'
 import { config } from '../config.js'
 import { startBenchmark, cancelBenchmark } from '../services/benchmark-runner.js'
 import { eventBus, type SSEConnection } from '../services/event-bus.js'
@@ -46,6 +47,17 @@ const ScenarioResultsParamsSchema = Type.Object({
   sid: Type.String({ format: 'uuid' }),
 })
 
+import type { PeerModelEntry, PeerInfo } from '@sardeenz/types'
+
+/** Look up a model by instanceId across all healthy remote peers. */
+function findModelInCluster(instanceId: string): { entry: PeerModelEntry; peer: PeerInfo } | null {
+  for (const peer of peerStore.getHealthyPeers()) {
+    const entry = peer.models.find((m) => m.instanceId === instanceId)
+    if (entry) return { entry, peer }
+  }
+  return null
+}
+
 export default async function benchmarkRoutes(fastify: FastifyInstance) {
   const store = getBenchmarkStore()
 
@@ -71,24 +83,44 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       try {
         const { name, mode, scenarios } = request.body
 
-        // Validate all instance IDs exist
+        // Validate all instance IDs exist (locally or on a healthy remote peer)
         for (const scenario of scenarios) {
-          const instance = modelStore.get(scenario.instanceId)
-          if (!instance) {
-            return reply.status(400).send({
-              error: {
-                message: `Model instance not found: ${scenario.instanceId}`,
-                type: 'validation_error',
-              },
-            })
-          }
-          if (instance.status !== 'running') {
-            return reply.status(400).send({
-              error: {
-                message: `Model instance is not running: ${scenario.instanceId} (status: ${instance.status})`,
-                type: 'validation_error',
-              },
-            })
+          const local = modelStore.get(scenario.instanceId)
+          if (local) {
+            if (local.status !== 'running') {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance is not running: ${scenario.instanceId} (status: ${local.status})`,
+                  type: 'validation_error',
+                },
+              })
+            }
+          } else {
+            const remote = findModelInCluster(scenario.instanceId)
+            if (!remote) {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance not found: ${scenario.instanceId}`,
+                  type: 'validation_error',
+                },
+              })
+            }
+            if (remote.entry.status !== 'running') {
+              return reply.status(400).send({
+                error: {
+                  message: `Model instance is not running: ${scenario.instanceId} (status: ${remote.entry.status})`,
+                  type: 'validation_error',
+                },
+              })
+            }
+            if (scenario.routingMode === 'direct') {
+              return reply.status(400).send({
+                error: {
+                  message: `Direct routing mode is not supported for models on remote pods. Use proxy mode for ${scenario.instanceId}.`,
+                  type: 'validation_error',
+                },
+              })
+            }
           }
         }
 
@@ -97,17 +129,20 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
 
         // Create the benchmark run
         const benchmarkConfig = { name, mode, scenarios, kvcachedEnabled }
-        const run = store.createRun(benchmarkConfig, kvcachedEnabled)
+        const run = await store.createRun(benchmarkConfig, kvcachedEnabled)
 
         // Create scenarios
         for (const scenarioConfig of scenarios) {
-          const instance = modelStore.get(scenarioConfig.instanceId)!
-          store.createScenario({
+          const local = modelStore.get(scenarioConfig.instanceId)
+          const remote = local ? null : findModelInCluster(scenarioConfig.instanceId)
+          const modelPath = local ? local.modelPath : remote!.entry.modelPath
+          const modelName = local ? local.modelName : remote!.entry.modelName
+          await store.createScenario({
             runId: run.id,
             instanceId: scenarioConfig.instanceId,
             routingMode: scenarioConfig.routingMode || 'direct',
-            modelPath: instance.modelPath,
-            modelName: instance.modelName,
+            modelPath,
+            modelName,
             inputTokens: scenarioConfig.inputTokens,
             outputTokens: scenarioConfig.outputTokens,
             concurrency: scenarioConfig.concurrency,
@@ -118,7 +153,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         }
 
         // Get the full run with details
-        const runWithDetails = store.getRunWithDetails(run.id)!
+        const runWithDetails = (await store.getRunWithDetails(run.id))!
 
         // Start the benchmark execution asynchronously
         startBenchmark(run.id).catch((err) => {
@@ -224,7 +259,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     async (request) => {
       const { page = 1, limit = 20, status } = request.query
 
-      const { runs, total } = store.listRuns({
+      const { runs, total } = await store.listRuns({
         page,
         limit,
         status: status as BenchmarkStatus | undefined,
@@ -272,7 +307,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params
-      const run = store.getRunWithDetails(id)
+      const run = await store.getRunWithDetails(id)
 
       if (!run) {
         return reply.status(404).send({
@@ -377,7 +412,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
 
       if (!run) {
         return reply.status(404).send({
@@ -390,10 +425,10 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
 
       // If running, cancel it first
       if (run.status === 'running') {
-        cancelBenchmark(id)
+        await cancelBenchmark(id)
       }
 
-      store.deleteRun(id)
+      await store.deleteRun(id)
 
       return {
         status: 'success' as const,
@@ -429,7 +464,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { page = 1, limit = 100 } = request.query
 
       // Verify run exists
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -439,7 +474,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         })
       }
 
-      const { results, total } = store.getResults(sid, { page, limit })
+      const { results, total } = await store.getResults(sid, { page, limit })
 
       return {
         results: results.map((r) => ({
@@ -490,7 +525,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { id } = request.params
       const { format = 'csv', include_warmup = false } = request.body
 
-      const run = store.getRunWithDetails(id)
+      const run = await store.getRunWithDetails(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -500,7 +535,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         })
       }
 
-      const results = store.getRunResults(id, !include_warmup)
+      const results = await store.getRunResults(id, !include_warmup)
       const filename = `benchmark-${run.name || run.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}`
 
       if (format === 'json') {
@@ -611,7 +646,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { id } = request.params
 
       // Verify run exists
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -657,7 +692,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       }
 
       // Send current status
-      const currentRun = store.getRun(id)
+      const currentRun = await store.getRun(id)
       if (currentRun) {
         const statusMessage =
           currentRun.status === 'pending'

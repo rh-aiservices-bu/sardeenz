@@ -472,7 +472,6 @@ it('should handle pagination with large dataset', () => {
 
 - **[Modal Testing](./modals.md)**: Similar async rendering patterns
 - **[Context-Dependent Components](./context-dependent-components.md)**: Components requiring parent context
-- **[Accessibility Testing](../../accessibility/)**: WCAG compliance for dropdowns
 
 ## Summary
 

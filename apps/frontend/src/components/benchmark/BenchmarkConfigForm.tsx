@@ -21,11 +21,13 @@ import {
   HelperTextItem,
   ToggleGroup,
   ToggleGroupItem,
+  Label,
 } from '@patternfly/react-core'
 import { CopyIcon } from '@patternfly/react-icons'
 import { apiClient, extractErrorMessage } from '../../services/api'
 import type { ModelInstanceDTO, RoutingMode } from '@sardeenz/types'
 import { useAuth } from '../../contexts/AuthContext'
+import { useClusterStatus } from '../../hooks/useClusterStatus'
 
 /** Token step values for logarithmic-like distribution on sliders */
 const INPUT_TOKEN_STEPS = [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
@@ -113,6 +115,8 @@ export function BenchmarkConfigForm({
   initialConfig,
 }: BenchmarkConfigFormProps) {
   const { canWrite } = useAuth()
+  const { isClusterMode, clusterStatus } = useClusterStatus()
+  const localPodId = clusterStatus?.localPodId
 
   // Running instances
   const [runningInstances, setRunningInstances] = useState<ModelInstanceDTO[]>([])
@@ -128,13 +132,15 @@ export function BenchmarkConfigForm({
   // Track if initial config has been applied (to avoid re-applying on re-renders)
   const [hasAppliedInitialConfig, setHasAppliedInitialConfig] = useState(false)
 
-  // Fetch running instances
+  // Fetch running instances (cluster-wide when in cluster mode)
   useEffect(() => {
     const fetchInstances = async () => {
       setIsLoadingInstances(true)
       setLoadError(null)
       try {
-        const response = await apiClient.listModels()
+        const response = isClusterMode
+          ? await apiClient.listClusterModels()
+          : await apiClient.listModels()
         const running = response.models.filter((m) => m.status === 'running')
         setRunningInstances(running)
 
@@ -178,13 +184,18 @@ export function BenchmarkConfigForm({
     }
 
     fetchInstances()
-  }, [initialConfig, hasAppliedInitialConfig])
+  }, [initialConfig, hasAppliedInitialConfig, isClusterMode])
+
+  const isRemotePod = (instance: ModelInstanceDTO): boolean =>
+    isClusterMode && !!instance.pod_id && instance.pod_id !== localPodId
 
   const handleInstanceToggle = (instanceId: string, checked: boolean) => {
     if (checked) {
+      const instance = runningInstances.find((i) => i.id === instanceId)
+      const routingMode: RoutingMode = instance && isRemotePod(instance) ? 'proxy' : 'direct'
       setSelectedModels([
         ...selectedModels,
-        { instanceId, routingMode: 'direct', ...DEFAULT_PARAMS },
+        { instanceId, routingMode, ...DEFAULT_PARAMS },
       ])
       // Auto-expand the newly selected model
       setExpandedModels((prev) => new Set([...prev, instanceId]))
@@ -308,6 +319,8 @@ export function BenchmarkConfigForm({
                   const isExpanded = expandedModels.has(instance.id)
                   const modelConfig = selectedModels.find((m) => m.instanceId === instance.id)
 
+                  const isRemote = isRemotePod(instance)
+
                   return (
                     <div
                       key={instance.id}
@@ -328,6 +341,11 @@ export function BenchmarkConfigForm({
                             }
                           />
                         </FlexItem>
+                        {isRemote && instance.pod_id && (
+                          <FlexItem>
+                            <Label isCompact color="blue">{instance.pod_id}</Label>
+                          </FlexItem>
+                        )}
                         {isSelected && (
                           <>
                             <FlexItem>
@@ -336,6 +354,7 @@ export function BenchmarkConfigForm({
                                   text="Direct"
                                   buttonId={`routing-direct-${instance.id}`}
                                   isSelected={getRoutingMode(instance.id) === 'direct'}
+                                  isDisabled={isRemote}
                                   onChange={() => handleRoutingModeChange(instance.id, 'direct')}
                                 />
                                 <ToggleGroupItem

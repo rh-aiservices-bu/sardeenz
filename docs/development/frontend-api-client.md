@@ -876,6 +876,6 @@ test('displays model list', async () => {
 ## Related Documentation
 
 - [Frontend Architecture](../architecture/frontend-architecture.md) - Component architecture and state management
-- [Frontend CLAUDE.md](../../apps/frontend/CLAUDE.md) - Development context and guidelines
+- [Frontend CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/apps/frontend/CLAUDE.md) - Development context and guidelines
 - [API Guide](../api-guide.md) - Complete Controller API reference
-- [Backend CLAUDE.md](../../apps/backend/CLAUDE.md) - Backend API implementation
+- [Backend CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/apps/backend/CLAUDE.md) - Backend API implementation

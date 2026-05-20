@@ -66,8 +66,8 @@ npm run dev -w apps/frontend
 
 | Component        | Guide                                                    | Description                                               |
 | ---------------- | -------------------------------------------------------- | --------------------------------------------------------- |
-| **Backend**      | [apps/backend/CLAUDE.md](../../apps/backend/CLAUDE.md)   | Backend architecture, API patterns, process management    |
-| **Frontend**     | [apps/frontend/CLAUDE.md](../../apps/frontend/CLAUDE.md) | React patterns, PatternFly 6 components, state management |
+| **Backend**      | [apps/backend/CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/apps/backend/CLAUDE.md) | Backend architecture, API patterns, process management |
+| **Frontend**     | [apps/frontend/CLAUDE.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/apps/frontend/CLAUDE.md) | React patterns, PatternFly 6 components, state management |
 | **GPU Setup**    | [dev-setup.md](../dev-setup.md)                          | vLLM, kvcached, Python environment                        |
 | **PatternFly 6** | [pf6-guide/](./pf6-guide/README.md)                      | UI component guide and best practices                     |
 | **API Client**   | [frontend-api-client.md](./frontend-api-client.md)       | Frontend API integration                                  |

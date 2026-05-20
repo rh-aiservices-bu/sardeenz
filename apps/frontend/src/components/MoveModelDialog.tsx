@@ -24,6 +24,7 @@ import {
 } from '@patternfly/react-core'
 import type { ModelInstanceDTO, MultiGpuMemoryUsageResponse, PerGpuMetrics } from '@sardeenz/types'
 import { apiClient, extractErrorDetails, type ErrorDetails } from '../services/api'
+import { PodSelector } from './PodSelector'
 import { useMoveEvents } from '../hooks/useMoveEvents'
 import { useNotifications } from '../contexts/NotificationContext'
 
@@ -57,8 +58,12 @@ interface MoveModelDialogProps {
   onClose: () => void
   model: ModelInstanceDTO | null
   preselectedGpuIds?: number[]
+  preselectedPodId?: string
+  /** Pod ID where the model currently lives — used to determine if a target is truly cross-pod */
+  sourcePodId?: string
   gpuMemoryData: MultiGpuMemoryUsageResponse | null
   onMoveComplete?: () => void
+  isClusterMode?: boolean
 }
 
 export function MoveModelDialog({
@@ -66,11 +71,15 @@ export function MoveModelDialog({
   onClose,
   model,
   preselectedGpuIds,
+  preselectedPodId,
+  sourcePodId,
   gpuMemoryData,
   onMoveComplete,
+  isClusterMode,
 }: MoveModelDialogProps) {
   const { addNotification } = useNotifications()
   const [selectedGpuIds, setSelectedGpuIds] = useState<number[]>([])
+  const [selectedPodId, setSelectedPodId] = useState<string | undefined>(undefined)
   const [drainTimeoutSeconds, setDrainTimeoutSeconds] = useState(60)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [moveId, setMoveId] = useState<string | null>(null)
@@ -88,6 +97,7 @@ export function MoveModelDialog({
     error: moveError,
   } = useMoveEvents({
     moveId,
+    clusterMode: isClusterMode,
     onComplete: (event) => {
       if (event.phase === 'completed') {
         addNotification({
@@ -115,15 +125,27 @@ export function MoveModelDialog({
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (isOpen && model) {
-      // If preselected GPUs provided (from drag-drop), use them
-      // Otherwise default to empty
       setSelectedGpuIds(preselectedGpuIds || [])
+      setSelectedPodId(preselectedPodId)
       setDrainTimeoutSeconds(60)
       setSubmitError(null)
       setMoveId(null)
       setIsSubmitting(false)
     }
-  }, [isOpen, model, preselectedGpuIds])
+  }, [isOpen, model, preselectedGpuIds, preselectedPodId])
+
+  // When pod selection changes, deselect any GPUs that are now source GPUs.
+  // Skip when selectedPodId is undefined — that's the uninitialized state before the
+  // reset effect has run. Guarding here prevents Effect 1 and Effect 2 from racing
+  // on the first open and incorrectly clearing a cross-pod preselection.
+  useEffect(() => {
+    const activeModel = freshModel ?? model
+    if (!activeModel || selectedPodId === undefined) return
+    const isCrossPod = selectedPodId !== sourcePodId
+    if (!isCrossPod) {
+      setSelectedGpuIds((prev) => prev.filter((id) => !activeModel.gpu_ids.includes(id)))
+    }
+  }, [selectedPodId, sourcePodId, freshModel, model])
 
   // Fetch fresh model data when dialog opens to get accurate memory metrics
   useEffect(() => {
@@ -162,11 +184,22 @@ export function MoveModelDialog({
     setSubmitError(null)
 
     try {
-      const response = await apiClient.moveModel(model.id, {
-        target_gpu_ids: selectedGpuIds,
-        drain_timeout_ms: drainTimeoutSeconds * 1000,
-      })
-      setMoveId(response.move_id)
+      if (isClusterMode && selectedPodId) {
+        // Cross-pod move via cluster API
+        const response = await apiClient.clusterMoveModel(model.id, {
+          targetPodId: selectedPodId,
+          targetGpuIds: selectedGpuIds,
+          drainTimeoutMs: drainTimeoutSeconds * 1000,
+        })
+        setMoveId(response.moveId)
+      } else {
+        // Intra-pod move (local)
+        const response = await apiClient.moveModel(model.id, {
+          target_gpu_ids: selectedGpuIds,
+          drain_timeout_ms: drainTimeoutSeconds * 1000,
+        })
+        setMoveId(response.move_id)
+      }
     } catch (err) {
       const errorDetails = extractErrorDetails(err)
       setSubmitError(errorDetails)
@@ -291,8 +324,13 @@ export function MoveModelDialog({
     return gpu.free_gb >= requiredMemoryGb
   }
 
-  // Check if GPU is source GPU (can't move to same GPU)
-  const isSourceGpu = (gpuIndex: number) => currentModel?.gpu_ids.includes(gpuIndex) ?? false
+  // Check if GPU is source GPU (can't move to same GPU on same pod).
+  // Only bypass when target pod is genuinely different from source pod.
+  const isSourceGpu = (gpuIndex: number) => {
+    const isCrossPod = selectedPodId && selectedPodId !== sourcePodId
+    if (isCrossPod) return false
+    return currentModel?.gpu_ids.includes(gpuIndex) ?? false
+  }
 
   // Validate selection
   const isValidSelection =
@@ -347,6 +385,23 @@ export function MoveModelDialog({
                 <p>{submitError.message}</p>
                 {isGpuMemoryError(submitError) && renderGpuMemoryErrorDetails(submitError.details)}
               </Alert>
+            )}
+
+            {isClusterMode && (
+              <FormGroup label="Target Pod" fieldId="target-pod">
+                <PodSelector
+                  selectedPodId={selectedPodId}
+                  onSelect={setSelectedPodId}
+                  isClusterMode={true}
+                />
+                <FormHelperText>
+                  <HelperText>
+                    <HelperTextItem>
+                      Select a pod for cross-pod move, or leave empty for local move
+                    </HelperTextItem>
+                  </HelperText>
+                </FormHelperText>
+              </FormGroup>
             )}
 
             <FormGroup label="Current GPU(s)" fieldId="current-gpu">

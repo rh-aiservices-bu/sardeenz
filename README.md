@@ -4,6 +4,8 @@
 
 # Sardeenz
 
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://rh-aiservices-bu.github.io/sardeenz/)
+
 Sardeenz is a proof-of-concept application that allows you to load more than one model on a given GPU. It allows you to add more and more models onto the GPU, until it is fully utilized. You can also do this for a set of GPUs on the same machine or visible by the same Pod in a Kubernetes environment.
 
 > **Status:** Early development (PoC phase)
@@ -36,6 +38,10 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 - **Web dashboard** - Manage models, monitor GPU memory, run benchmarks
 - **Memory sharing** - kvcached integration for efficient GPU utilization
 
+## User Guide
+
+New to the dashboard? The **[User Guide](./docs/user-guide.md)** walks you through loading models, monitoring GPUs, running benchmarks, using the chatbot playground, and managing a multi-pod cluster.
+
 ## Screenshots
 
 ### Model Management Dashboard
@@ -58,11 +64,13 @@ See the [Deployment Guide](./docs/deployment.md) for full configuration options,
 
 |                                                       |                                    |
 | ----------------------------------------------------- | ---------------------------------- |
+| **[User Guide](./docs/user-guide.md)**                 | Dashboard walkthrough for end users |
 | **[Full Documentation](./docs/README.md)**            | Complete documentation index       |
 | **[Deployment Guide](./docs/deployment.md)**          | Container and OpenShift deployment |
 | **[Development Guide](./docs/development/README.md)** | Build from source, contribute      |
 | **[API Guide](./docs/api-guide.md)**                  | API reference with code examples   |
 | **[Architecture](./docs/architecture.md)**            | System design and components       |
+| **[Architecture Visualizer](./docs/architecture-visualizer.html)** | Interactive animated flow diagrams |
 
 ## License
 

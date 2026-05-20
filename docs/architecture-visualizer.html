@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sardeenz — Architecture Flow Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;height:100vh}
+body.light{background:#fff;color:#1f2328}
+canvas{position:fixed;top:0;left:0}
+.title-bar{position:fixed;top:10px;left:50%;transform:translateX(calc(-50% - 190px));z-index:10;text-align:center;pointer-events:none}
+.title-text{font-size:20px;font-weight:700;background:linear-gradient(135deg,#58a6ff,#39d353,#d2a8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.title-sub{font-size:12px;color:#8b949e;margin-top:2px}
+body.light .title-sub{color:#656d76}
+.theme-toggle{position:fixed;top:12px;z-index:20;width:36px;height:36px;border-radius:8px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.theme-toggle:hover{background:#21262d}
+body.light .theme-toggle{background:#f6f8fa;border-color:#d0d7de;color:#1f2328}
+body.light .theme-toggle:hover{background:#eaeef2}
+
+/* Right Panel */
+.right-panel{position:fixed;top:0;right:0;width:380px;height:100vh;background:#161b22;border-left:1px solid #30363d;display:flex;flex-direction:column;z-index:15;overflow:hidden}
+body.light .right-panel{background:#f6f8fa;border-color:#d0d7de}
+.panel-header{padding:14px 16px 10px;border-bottom:1px solid #30363d;flex-shrink:0}
+body.light .panel-header{border-color:#d0d7de}
+.panel-header select{width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:13px;font-family:inherit;cursor:pointer;margin-bottom:10px}
+body.light .panel-header select{background:#fff;border-color:#d0d7de;color:#1f2328}
+.controls{display:flex;gap:6px;flex-wrap:wrap}
+.controls button{padding:5px 10px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;font-size:12px;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap}
+.controls button:hover{background:#30363d;border-color:#484f58}
+.controls button.active{background:#1a3a5c;border-color:#58a6ff;color:#58a6ff}
+body.light .controls button{background:#eaeef2;border-color:#d0d7de;color:#1f2328}
+body.light .controls button:hover{background:#d0d7de}
+body.light .controls button.active{background:#ddf4ff;border-color:#58a6ff;color:#0969da}
+
+/* Steps section */
+.panel-section{padding:0;display:flex;flex-direction:column;min-height:0}
+.panel-section h3{padding:10px 16px 6px;font-size:13px;font-weight:600;color:#8b949e;flex-shrink:0}
+body.light .panel-section h3{color:#656d76}
+.step-hint{font-weight:400;font-size:11px;color:#484f58}
+.steps-container{overflow-y:auto;padding:0 8px 8px;flex:1 1 0;min-height:80px}
+.step{display:flex;align-items:flex-start;padding:5px 8px;cursor:pointer;border-radius:5px;transition:background .15s}
+.step:hover{background:rgba(88,166,255,.08)}
+.step-marker{flex-shrink:0;width:18px;margin-right:6px;margin-top:2px;text-align:center;font-size:14px;line-height:1}
+.step.pending .step-marker::before{content:'○';color:#484f58}
+.step.active .step-marker::before{content:'●';color:#58a6ff}
+.step.done .step-marker::before{content:'✓';color:#3fb950}
+.step-text{font-size:12.5px;line-height:1.4;color:#c9d1d9}
+body.light .step-text{color:#1f2328}
+.step.active .step-text{color:#58a6ff;font-weight:500}
+.step.done .step-text{color:#8b949e}
+body.light .step.done .step-text{color:#656d76}
+
+/* Detail section */
+.detail-section{border-top:1px solid #30363d;flex:0 1 auto;min-height:120px;max-height:40vh;display:flex;flex-direction:column}
+body.light .detail-section{border-color:#d0d7de}
+.detail-section h3{padding:10px 16px 4px;font-size:13px;font-weight:600;color:#8b949e;flex-shrink:0}
+.detail-content{overflow-y:auto;padding:0 16px 12px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11.5px;line-height:1.6}
+.detail-line{padding:1px 6px;border-radius:3px;white-space:pre-wrap;word-break:break-all}
+.detail-line.keep{color:#c9d1d9}
+body.light .detail-line.keep{color:#1f2328}
+.detail-line.highlight{background:rgba(88,166,255,.12);color:#58a6ff;border-left:3px solid #58a6ff;padding-left:8px}
+body.light .detail-line.highlight{background:rgba(9,105,218,.08);color:#0969da}
+.detail-line.add{background:rgba(63,185,80,.1);color:#3fb950;border-left:3px solid #3fb950;padding-left:8px}
+body.light .detail-line.add{background:rgba(26,127,55,.08);color:#1a7f37}
+.detail-line.warn{background:rgba(240,136,62,.1);color:#f0883e;border-left:3px solid #f0883e;padding-left:8px}
+body.light .detail-line.warn{background:rgba(191,87,0,.08);color:#bf5700}
+.detail-line.err{background:rgba(248,81,73,.1);color:#f85149;border-left:3px solid #f85149;padding-left:8px}
+body.light .detail-line.err{background:rgba(207,34,46,.08);color:#cf222e}
+.detail-empty{color:#484f58;font-style:italic;font-family:inherit;font-size:12px;padding:8px 0}
+.detail-pre{white-space:pre-wrap;word-break:break-word}
+
+/* Legend */
+.legend{position:fixed;bottom:12px;left:12px;z-index:10;display:flex;gap:14px;padding:6px 12px;border-radius:6px;background:rgba(22,27,34,.85);border:1px solid #30363d;backdrop-filter:blur(4px)}
+body.light .legend{background:rgba(246,248,250,.9);border-color:#d0d7de}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#8b949e}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* Mobile */
+.mobile-splash{display:none;position:fixed;inset:0;background:#0d1117;z-index:100;justify-content:center;align-items:center;text-align:center;padding:40px}
+.mobile-splash h1{font-size:22px;margin-bottom:16px;background:linear-gradient(135deg,#58a6ff,#39d353);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.mobile-splash p{color:#8b949e;font-size:14px;line-height:1.6;max-width:350px}
+@media(max-width:899px){.mobile-splash{display:flex!important}.right-panel,.title-bar,.theme-toggle,.legend,canvas{display:none!important}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#484f58}
+body.light ::-webkit-scrollbar-thumb{background:#d0d7de}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="title-bar">
+  <div class="title-text">Sardeenz — Architecture Flow Visualizer</div>
+  <div class="title-sub">Multi-pod cluster orchestration for LLM serving</div>
+</div>
+
+<div class="right-panel">
+  <div class="panel-header">
+    <select id="flow-select"></select>
+    <div class="controls">
+      <button id="btn-run" title="Play / Pause">▶ Start</button>
+      <button id="btn-step" title="Step forward">⏭</button>
+      <button id="btn-speed" title="Playback speed">1x</button>
+      <button id="btn-loop" title="Loop through all flows">↻ Loop</button>
+      <button id="btn-reset" title="Reset">Reset</button>
+    </div>
+  </div>
+  <div class="panel-section" style="flex:1 1 0;min-height:0">
+    <h3>Flow Steps <span class="step-hint">· click to jump</span></h3>
+    <div id="steps-container" class="steps-container"></div>
+  </div>
+  <div class="detail-section">
+    <h3 id="detail-title">Details</h3>
+    <div id="detail-content" class="detail-content">
+      <div class="detail-empty">Click ▶ Start to begin the animation</div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>Inference</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#3fb950"></span>Admin</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f0883e"></span>Auth / HMAC</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#d2a8ff"></span>Cluster</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f85149"></span>Error</span>
+</div>
+
+<div class="mobile-splash">
+  <div>
+    <h1>Sardeenz Architecture Visualizer</h1>
+    <p>This interactive visualization requires a desktop browser with at least 900 px width.</p>
+    <p style="margin-top:12px">Please open on a larger screen to explore the multi-pod cluster architecture.</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   CONFIGURATION
+   ================================================================ */
+const LW = 1300, LH = 950;
+const PANEL_W = 380;
+
+/* ================================================================
+   STATE
+   ================================================================ */
+let isDark = true;
+let playbackSpeed = 1;
+let loopMode = false;
+let running = false, paused = false;
+let activeFlowIdx = 0;
+let runStepIdx = -1;
+let stepTimer = null;
+let animFrame = null;
+let stepOnceMode = false;
+
+let activeNodes = new Set();
+let badges = {};
+let lines = [];
+let dots = [];
+let snapshots = {};
+
+let gpuState = {};
+let podRoles = { A:{role:'Leader',symbol:'★'}, B:{role:'Follower',symbol:''} };
+
+function resetGpuDefault() {
+  gpuState = {
+    gpuA0:{model:'llama-3.2-1b',vram:65,status:'active'},
+    gpuA1:{model:'',vram:0,status:'free'},
+    gpuA2:{model:'qwen-0.6b',vram:35,status:'active'},
+    gpuA3:{model:'',vram:0,status:'free'},
+    gpuB0:{model:'mistral-7b',vram:85,status:'active'},
+    gpuB1:{model:'',vram:0,status:'free'},
+    gpuB2:{model:'',vram:0,status:'free'},
+    gpuB3:{model:'',vram:0,status:'free'},
+  };
+}
+function resetGpuEmpty() {
+  gpuState = {};
+  for (const k of gpuKeys) gpuState[k] = {model:'',vram:0,status:'free'};
+}
+const gpuKeys = ['gpuA0','gpuA1','gpuA2','gpuA3','gpuB0','gpuB1','gpuB2','gpuB3'];
+
+/* ================================================================
+   COLOR SYSTEM
+   ================================================================ */
+function C() {
+  return isDark
+    ? {bg:'#0d1117',box:'#161b22',boxA:'#1a2332',bdr:'#30363d',txt:'#c9d1d9',dim:'#8b949e',brt:'#fff',gpuFree:'#21262d',gpuAct:'#0f2d1a'}
+    : {bg:'#ffffff',box:'#f6f8fa',boxA:'#ddf4ff',bdr:'#d0d7de',txt:'#1f2328',dim:'#656d76',brt:'#000',gpuFree:'#eaeef2',gpuAct:'#dafbe1'};
+}
+
+/* ================================================================
+   NODE DEFINITIONS
+   ================================================================ */
+const N = {
+  admin:  {x:100, y:5,  w:200,h:55, label:'Admin Dashboard',icon:'🖥️',color:'#3fb950',type:'actor'},
+  client: {x:500, y:5,  w:180,h:55, label:'Client / App',   icon:'👤',color:'#58a6ff',type:'actor'},
+
+  cluster:{x:50,  y:80, w:1200,h:835,label:'Kubernetes Cluster',type:'boundary',color:'#30363d'},
+
+  podA:   {x:80,  y:115,w:1140,h:300,label:'Sardeenz Pod A',type:'container',color:'#58a6ff'},
+  ctrlA:  {x:110, y:150,w:255, h:70, label:'Controller',sublabel:'API',          color:'#3fb950'},
+  proxyA: {x:385, y:150,w:255, h:70, label:'Proxy',     sublabel:'Router',       color:'#58a6ff'},
+  hbA:    {x:660, y:150,w:255, h:70, label:'Heartbeat', sublabel:'+ HMAC Auth',  color:'#f0883e'},
+  routeA: {x:935, y:150,w:255, h:70, label:'Routing',   sublabel:'Table',        color:'#d2a8ff'},
+  gpuA0:  {x:110, y:255,w:255, h:85, label:'GPU 0',type:'gpu'},
+  gpuA1:  {x:385, y:255,w:255, h:85, label:'GPU 1',type:'gpu'},
+  gpuA2:  {x:660, y:255,w:255, h:85, label:'GPU 2',type:'gpu'},
+  gpuA3:  {x:935, y:255,w:255, h:85, label:'GPU 3',type:'gpu'},
+
+  podB:   {x:80,  y:465,w:1140,h:300,label:'Sardeenz Pod B',type:'container',color:'#8b949e'},
+  ctrlB:  {x:110, y:500,w:255, h:70, label:'Controller',sublabel:'(redirect)',   color:'#8b949e'},
+  proxyB: {x:385, y:500,w:255, h:70, label:'Proxy',     sublabel:'Router',       color:'#58a6ff'},
+  hbB:    {x:660, y:500,w:255, h:70, label:'Heartbeat', sublabel:'+ HMAC Auth',  color:'#f0883e'},
+  routeB: {x:935, y:500,w:255, h:70, label:'Routing',   sublabel:'Table',        color:'#d2a8ff'},
+  gpuB0:  {x:110, y:605,w:255, h:85, label:'GPU 0',type:'gpu'},
+  gpuB1:  {x:385, y:605,w:255, h:85, label:'GPU 1',type:'gpu'},
+  gpuB2:  {x:660, y:605,w:255, h:85, label:'GPU 2',type:'gpu'},
+  gpuB3:  {x:935, y:605,w:255, h:85, label:'GPU 3',type:'gpu'},
+
+  k8sApi: {x:110, y:825,w:260, h:55, label:'K8s API',sublabel:'Lease: sardeenz-leader',color:'#d2a8ff'},
+};
+
+/* ================================================================
+   CANVAS SETUP
+   ================================================================ */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, sc, ox, oy;
+
+function resize() {
+  W = window.innerWidth - PANEL_W;
+  H = window.innerHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  const TOP_MARGIN = 52;
+  sc = Math.min(W / LW, (H - TOP_MARGIN) / LH) * 0.92;
+  ox = (W - LW * sc) / 2;
+  oy = TOP_MARGIN + ((H - TOP_MARGIN) - LH * sc) / 2;
+  const tog = document.querySelector('.theme-toggle');
+  if (tog) tog.style.right = (PANEL_W + 12) + 'px';
+}
+
+function tx(x) { return ox + x * sc; }
+function ty(y) { return oy + y * sc; }
+function ts(s) { return s * sc; }
+
+function nodeEdge(key, edge, off) {
+  const n = N[key]; const o = off || 0;
+  switch (edge) {
+    case 'top':    return {x: n.x + n.w/2 + o, y: n.y};
+    case 'bottom': return {x: n.x + n.w/2 + o, y: n.y + n.h};
+    case 'left':   return {x: n.x,              y: n.y + n.h/2 + o};
+    case 'right':  return {x: n.x + n.w,        y: n.y + n.h/2 + o};
+    default:       return {x: n.x + n.w/2,      y: n.y + n.h/2};
+  }
+}
+
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+/* ================================================================
+   DRAWING FUNCTIONS
+   ================================================================ */
+
+function drawBoundary(key) {
+  const n = N[key]; const col = C();
+  const x = tx(n.x), y = ty(n.y), w = ts(n.w), h = ts(n.h), r = ts(12);
+  ctx.setLineDash([ts(10), ts(6)]);
+  ctx.strokeStyle = activeNodes.has(key) ? '#58a6ff' : col.bdr;
+  ctx.lineWidth = ts(1.5);
+  rr(x, y, w, h, r); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = col.dim;
+  ctx.font = `500 ${ts(11)}px Inter,sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.fillText(n.label, x + w - ts(14), y + ts(18));
+}
+
+function drawContainer(key) {
+  const n = N[key]; const col = C();
+  const x = tx(n.x), y = ty(n.y), w = ts(n.w), h = ts(n.h), r = ts(10);
+  const isA = activeNodes.has(key);
+  const nc = isA ? n.color : col.bdr;
+  if (isA) {
+    ctx.fillStyle = isDark ? 'rgba(88,166,255,0.04)' : 'rgba(88,166,255,0.06)';
+    rr(x, y, w, h, r); ctx.fill();
+  }
+  ctx.setLineDash([ts(8), ts(5)]);
+  ctx.strokeStyle = nc; ctx.lineWidth = ts(isA ? 2 : 1.5);
+  if (isA) { ctx.shadowColor = n.color; ctx.shadowBlur = ts(8); }
+  rr(x, y, w, h, r); ctx.stroke();
+  ctx.shadowBlur = 0; ctx.setLineDash([]);
+
+  let lbl = n.label;
+  const pod = key === 'podA' ? 'A' : key === 'podB' ? 'B' : null;
+  if (pod && podRoles[pod].role) {
+    lbl += ' — ' + podRoles[pod].role;
+    if (podRoles[pod].symbol) lbl += ' ' + podRoles[pod].symbol;
+  }
+  ctx.fillStyle = isA ? n.color : (pod === 'A' ? '#58a6ff' : '#8b949e');
+  ctx.font = `600 ${ts(13)}px Inter,sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(lbl, x + ts(15), y + ts(22));
+}
+
+function drawBox(key) {
+  const n = N[key]; const col = C();
+  const x = tx(n.x), y = ty(n.y), w = ts(n.w), h = ts(n.h), r = ts(7);
+  const isA = activeNodes.has(key);
+  ctx.fillStyle = isA ? col.boxA : col.box;
+  if (isA) { ctx.shadowColor = n.color; ctx.shadowBlur = ts(12); }
+  rr(x, y, w, h, r); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = isA ? n.color : col.bdr;
+  ctx.lineWidth = ts(isA ? 1.8 : 1);
+  ctx.stroke();
+  ctx.fillStyle = isA ? col.brt : col.txt;
+  ctx.font = `600 ${ts(13)}px Inter,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(n.label, x + w/2, y + h/2 - (n.sublabel ? ts(4) : 0) + ts(1));
+  if (n.sublabel) {
+    ctx.fillStyle = col.dim;
+    ctx.font = `400 ${ts(11)}px Inter,sans-serif`;
+    ctx.fillText(n.sublabel, x + w/2, y + h/2 + ts(12));
+  }
+}
+
+function drawGpu(key) {
+  const n = N[key]; const col = C();
+  const gs = gpuState[key] || {model:'',vram:0,status:'free'};
+  const x = tx(n.x), y = ty(n.y), w = ts(n.w), h = ts(n.h), r = ts(7);
+  const has = gs.model && gs.status !== 'free';
+  const isA = activeNodes.has(key);
+  const isDrain = gs.status === 'draining';
+  const isErr = gs.status === 'error';
+  const isLoad = gs.status === 'loading';
+
+  ctx.fillStyle = has ? col.gpuAct : col.gpuFree;
+  if (isA) { ctx.shadowColor = isErr ? '#f85149' : (isDrain ? '#f0883e' : '#39d353'); ctx.shadowBlur = ts(12); }
+  rr(x, y, w, h, r); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const bc = isErr ? '#f85149' : isDrain ? '#f0883e' : isLoad ? '#58a6ff' : has ? '#39d353' : col.bdr;
+  ctx.strokeStyle = isA ? bc : (has ? '#39d353' : col.bdr);
+  ctx.lineWidth = ts(isA ? 2 : 1);
+  if (isDrain || isLoad) { ctx.setLineDash([ts(5), ts(4)]); }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = col.dim;
+  ctx.font = `500 ${ts(10)}px Inter,sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText(n.label, x + ts(10), y + ts(16));
+
+  ctx.font = `600 ${ts(12.5)}px Inter,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = has ? col.txt : col.dim;
+  const mLabel = isLoad ? gs.model + ' ...' : isDrain ? gs.model + ' ⏳' : (gs.model || 'free');
+  ctx.fillText(mLabel, x + w/2, y + h/2 + ts(2));
+
+  if (has && gs.vram > 0) {
+    const bx = x + ts(10), by = y + h - ts(18), bw = w - ts(20), bh = ts(8);
+    ctx.fillStyle = col.bdr;
+    rr(bx, by, bw, bh, ts(3)); ctx.fill();
+    const fc = gs.vram > 85 ? '#f85149' : gs.vram > 60 ? '#f0883e' : '#39d353';
+    ctx.fillStyle = fc;
+    rr(bx, by, bw * gs.vram / 100, bh, ts(3)); ctx.fill();
+    ctx.fillStyle = col.dim;
+    ctx.font = `${ts(9)}px Inter,sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(gs.vram + '%', x + w - ts(10), by - ts(2));
+  }
+}
+
+function drawActor(key) {
+  const n = N[key]; const col = C();
+  const x = tx(n.x), y = ty(n.y), w = ts(n.w), h = ts(n.h), r = ts(8);
+  const isA = activeNodes.has(key);
+  ctx.fillStyle = isA ? col.boxA : col.box;
+  if (isA) { ctx.shadowColor = n.color; ctx.shadowBlur = ts(14); }
+  rr(x, y, w, h, r); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = isA ? n.color : col.bdr;
+  ctx.lineWidth = ts(isA ? 2 : 1.2);
+  ctx.stroke();
+  ctx.font = `${ts(18)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(n.icon, x + ts(22), y + h/2 + ts(6));
+  ctx.fillStyle = isA ? col.brt : col.txt;
+  ctx.font = `500 ${ts(12)}px Inter,sans-serif`;
+  ctx.fillText(n.label, x + ts(28) + (w - ts(28))/2, y + h/2 + ts(4));
+}
+
+function drawBadge(lx, ly, num, color) {
+  const x = tx(lx), y = ty(ly), r = ts(11);
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
+  ctx.fillStyle = isDark ? '#0d1117' : '#fff';
+  ctx.font = `bold ${ts(11)}px Inter,sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(num), x, y);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawArrowLine(line) {
+  if (!line.points || line.points.length < 2) return;
+  const pts = line.points;
+  ctx.beginPath();
+  ctx.moveTo(tx(pts[0].x), ty(pts[0].y));
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(tx(pts[i].x), ty(pts[i].y));
+  ctx.strokeStyle = line.color;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = ts(2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+  const a = Math.atan2(ty(last.y) - ty(prev.y), tx(last.x) - tx(prev.x));
+  const al = ts(9);
+  ctx.beginPath();
+  ctx.moveTo(tx(last.x), ty(last.y));
+  ctx.lineTo(tx(last.x) - al * Math.cos(a - 0.45), ty(last.y) - al * Math.sin(a - 0.45));
+  ctx.moveTo(tx(last.x), ty(last.y));
+  ctx.lineTo(tx(last.x) - al * Math.cos(a + 0.45), ty(last.y) - al * Math.sin(a + 0.45));
+  ctx.strokeStyle = line.color;
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = ts(2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawHeartbeatLine() {
+  const col = C();
+  const hbAb = nodeEdge('hbA', 'bottom');
+  const hbBt = nodeEdge('hbB', 'top');
+  const mx = (hbAb.x + hbBt.x) / 2;
+  const my = (hbAb.y + hbBt.y) / 2;
+  ctx.setLineDash([ts(4), ts(4)]);
+  ctx.strokeStyle = col.dim;
+  ctx.lineWidth = ts(1);
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(tx(hbAb.x), ty(hbAb.y + 5));
+  ctx.lineTo(tx(hbBt.x), ty(hbBt.y - 5));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = col.dim;
+  ctx.font = `${ts(10)}px Inter,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('↕ heartbeat', tx(mx), ty(my + 2));
+}
+
+function drawScene() {
+  const col = C();
+  ctx.fillStyle = col.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  drawBoundary('cluster');
+  drawContainer('podA');
+  drawContainer('podB');
+  drawHeartbeatLine();
+
+  for (const k of ['ctrlA','proxyA','hbA','routeA','ctrlB','proxyB','hbB','routeB','k8sApi']) drawBox(k);
+  for (const k of gpuKeys) drawGpu(k);
+  drawActor('admin');
+  drawActor('client');
+
+  for (const line of lines) drawArrowLine(line);
+
+  for (const [key, bl] of Object.entries(badges)) {
+    const n = N[key]; if (!n) continue;
+    for (let i = 0; i < bl.length; i++) {
+      drawBadge(n.x - 5 + i * 20, n.y - 5, bl[i].num, bl[i].color);
+    }
+  }
+
+  for (const dot of dots) dot.draw(ctx);
+}
+
+/* ================================================================
+   DOT CLASS
+   ================================================================ */
+class Dot {
+  constructor(fromPt, toPt, waypoints, color, cb) {
+    this.color = color;
+    this.cb = cb;
+    this.alive = true;
+    this.t = 0;
+    this.speed = 0.018 * playbackSpeed;
+    const pts = [fromPt, ...(waypoints || []), toPt];
+    this.segments = [];
+    this.totalLen = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const sx = tx(pts[i].x), sy = ty(pts[i].y);
+      const ex = tx(pts[i+1].x), ey = ty(pts[i+1].y);
+      const len = Math.hypot(ex - sx, ey - sy);
+      this.segments.push({sx,sy,ex,ey,len});
+      this.totalLen += len;
+    }
+  }
+  update() {
+    this.t += this.speed;
+    if (this.t >= 1) { this.alive = false; if (this.cb) this.cb(); }
+  }
+  pos() {
+    const d = Math.min(this.t, 1) * this.totalLen;
+    let a = 0;
+    for (const s of this.segments) {
+      if (a + s.len >= d) {
+        const st = (d - a) / s.len;
+        return {x: s.sx + (s.ex - s.sx) * st, y: s.sy + (s.ey - s.sy) * st};
+      }
+      a += s.len;
+    }
+    const ls = this.segments[this.segments.length - 1];
+    return {x: ls.ex, y: ls.ey};
+  }
+  draw(ctx) {
+    const p = this.pos();
+    const d = Math.min(this.t, 1) * this.totalLen;
+    ctx.beginPath();
+    let a = 0, first = true;
+    for (const s of this.segments) {
+      if (first) { ctx.moveTo(s.sx, s.sy); first = false; }
+      if (a + s.len <= d) { ctx.lineTo(s.ex, s.ey); a += s.len; }
+      else {
+        const st = (d - a) / s.len;
+        ctx.lineTo(s.sx + (s.ex - s.sx) * st, s.sy + (s.ey - s.sy) * st);
+        break;
+      }
+    }
+    ctx.strokeStyle = this.color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = ts(2.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ts(6), 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = ts(16);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+/* ================================================================
+   FLOW DEFINITIONS
+   ================================================================ */
+
+const flows = [
+  /* ---------- Flow 0: Cluster Formation ---------- */
+  {
+    name: '1. Cluster Formation & Leader Election',
+    color: '#d2a8ff',
+    setup() {
+      resetGpuEmpty();
+      podRoles.A = {role:'',symbol:''};
+      podRoles.B = {role:'',symbol:''};
+    },
+    steps: [
+      {t:'1. Pod A starts — Sardeenz initializes', mode:'lightup', targets:['podA'], c:'#d2a8ff', badge:1,
+        detail:{title:'Pod Startup',lines:[
+          {v:'POD_NAME=sardeenz-0',s:'highlight'},
+          {v:'CLUSTER_SECRET=<32+ char secret>',s:'keep'},
+          {v:'CLUSTER_EXPECTED_PODS=2',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Starting Controller API...',s:'keep'},
+          {v:'Starting Proxy Router...',s:'keep'},
+          {v:'Starting HeartbeatService...',s:'keep'},
+        ]}},
+      {t:'2. Pod B starts — Sardeenz initializes', mode:'lightup', targets:['podB'], c:'#d2a8ff', badge:2,
+        detail:{title:'Pod Startup',lines:[
+          {v:'POD_NAME=sardeenz-1',s:'highlight'},
+          {v:'Joining cluster...',s:'keep'},
+        ]}},
+      {t:'3. K8s PeerDiscovery — Pod A detects Pod B', mode:'lightup', targets:['hbA','k8sApi'], c:'#d2a8ff', badge:3,
+        detail:{title:'Peer Discovery (K8s Watch)',lines:[
+          {v:'labelSelector: app=sardeenz',s:'keep'},
+          {v:'namespace: sardeenz',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Event: ADDED',s:'highlight'},
+          {v:'Pod: sardeenz-1 (Running)',s:'add'},
+          {v:'IP: 10.244.0.15',s:'add'},
+        ]}},
+      {t:'4. K8s PeerDiscovery — Pod B detects Pod A', mode:'lightup', targets:['hbB'], c:'#d2a8ff', badge:4,
+        detail:{title:'Peer Discovery',lines:[
+          {v:'Event: ADDED',s:'highlight'},
+          {v:'Pod: sardeenz-0 (Running)',s:'add'},
+          {v:'IP: 10.244.0.14',s:'add'},
+        ]}},
+      {t:'5. Pod A sends heartbeat to Pod B (HMAC-signed)', mode:'arrow',
+        f:'hbA', fEdge:'bottom', to:'hbB', toEdge:'top', c:'#f0883e', badge:5,
+        detail:{title:'Heartbeat Message',lines:[
+          {v:'POST /internal/heartbeat',s:'highlight'},
+          {v:'x-cluster-signature: a3f2c8...',s:'warn'},
+          {v:'x-cluster-timestamp: 171613440',s:'warn'},
+          {v:'',s:'keep'},
+          {v:'{ podId: "sardeenz-0",',s:'keep'},
+          {v:'  role: "unknown",',s:'keep'},
+          {v:'  term: 0,',s:'keep'},
+          {v:'  models: [],',s:'keep'},
+          {v:'  gpus: [...4 GPUs] }',s:'keep'},
+        ]}},
+      {t:'6. Pod B responds with heartbeat ack', mode:'arrow',
+        f:'hbB', fEdge:'top', to:'hbA', toEdge:'bottom', c:'#f0883e', badge:6,
+        detail:{title:'Heartbeat Ack',lines:[
+          {v:'{ podId: "sardeenz-1",',s:'keep'},
+          {v:'  term: 0,',s:'keep'},
+          {v:'  role: "unknown" }',s:'keep'},
+        ]}},
+      {t:'7. Pod A acquires K8s Lease → Leader ★', mode:'lightup', targets:['k8sApi','podA'], c:'#d2a8ff', badge:7,
+        effect() { podRoles.A = {role:'Leader',symbol:'★'}; },
+        detail:{title:'K8s Lease Acquired',lines:[
+          {v:'Lease: sardeenz-leader',s:'highlight'},
+          {v:'Holder: sardeenz-0',s:'add'},
+          {v:'Duration: 15s',s:'keep'},
+          {v:'Renew interval: 10s',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'→ Pod A becomes Leader ★',s:'add'},
+        ]}},
+      {t:'8. Pod B → 409 Conflict → Follower', mode:'lightup', targets:['podB'], c:'#8b949e', badge:8,
+        effect() { podRoles.B = {role:'Follower',symbol:''}; },
+        detail:{title:'Lease Conflict',lines:[
+          {v:'HTTP 409 Conflict',s:'warn'},
+          {v:'Lease held by: sardeenz-0',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'→ Pod B becomes Follower',s:'keep'},
+          {v:'Admin requests → 307 redirect to Leader',s:'keep'},
+        ]}},
+      {t:'9. Cluster ready — routing tables initialized', mode:'lightup', targets:['routeA','routeB'], c:'#d2a8ff', badge:9,
+        detail:{title:'Cluster Status',lines:[
+          {v:'✓ Pod A: Leader ★',s:'add'},
+          {v:'✓ Pod B: Follower',s:'add'},
+          {v:'✓ Heartbeat: active (5s interval)',s:'add'},
+          {v:'✓ Routing table: empty (no models)',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Ready to load models',s:'highlight'},
+        ]}},
+    ]
+  },
+
+  /* ---------- Flow 1: Model Loading ---------- */
+  {
+    name: '2. Model Loading (Remote)',
+    color: '#3fb950',
+    setup() {
+      resetGpuEmpty();
+      podRoles.A = {role:'Leader',symbol:'★'};
+      podRoles.B = {role:'Follower',symbol:''};
+    },
+    steps: [
+      {t:'1. Admin sends POST /api/cluster/models/load', mode:'arrow',
+        f:'admin', fEdge:'bottom', to:'ctrlA', toEdge:'top', c:'#3fb950', badge:1,
+        detail:{title:'HTTP Request',lines:[
+          {v:'POST /api/cluster/models/load',s:'highlight'},
+          {v:'Authorization: Bearer <jwt>',s:'keep'},
+          {v:'Content-Type: application/json',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'{',s:'keep'},
+          {v:'  "modelPath": "mistral-7b",',s:'add'},
+          {v:'  "gpuIds": [0]',s:'add'},
+          {v:'}',s:'keep'},
+        ]}},
+      {t:'2. Controller API receives request (Leader)', mode:'lightup', targets:['ctrlA'], c:'#3fb950', badge:2,
+        detail:{title:'Leader Validation',lines:[
+          {v:'✓ Request on Leader pod — no redirect',s:'add'},
+          {v:'✓ Model not already loaded',s:'add'},
+          {v:'✓ Authentication valid',s:'add'},
+        ]}},
+      {t:'3. PodScheduler evaluates GPU slots across pods', mode:'lightup', targets:['routeA'], c:'#d2a8ff', badge:3,
+        detail:{title:'PodScheduler — Balanced Strategy',lines:[
+          {v:'Evaluating GPU slots:',s:'highlight'},
+          {v:'  Pod A GPU 0: free (24 GB avail)',s:'keep'},
+          {v:'  Pod A GPU 1: free (24 GB avail)',s:'keep'},
+          {v:'  Pod A GPU 2: free (24 GB avail)',s:'keep'},
+          {v:'  Pod A GPU 3: free (24 GB avail)',s:'keep'},
+          {v:'  Pod B GPU 0: free (24 GB avail)',s:'keep'},
+          {v:'  Pod B GPU 1: free (24 GB avail)',s:'keep'},
+          {v:'  Pod B GPU 2: free (24 GB avail)',s:'keep'},
+          {v:'  Pod B GPU 3: free (24 GB avail)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Decision: Pod B GPU 0',s:'add'},
+          {v:'(balanced — spread across pods)',s:'add'},
+        ]}},
+      {t:'4. Decision: load mistral-7b on Pod B GPU 0', mode:'lightup', targets:['gpuB0'], c:'#58a6ff', badge:4,
+        effect() { gpuState.gpuB0 = {model:'mistral-7b',vram:0,status:'loading'}; },
+        detail:{title:'Target Selected',lines:[
+          {v:'Target: Pod B (sardeenz-1) GPU 0',s:'highlight'},
+          {v:'Model: mistral-7b',s:'keep'},
+          {v:'VRAM estimate: 14.2 GB',s:'keep'},
+        ]}},
+      {t:'5. HMAC-signed POST to Pod B /internal/models/load', mode:'arrow',
+        f:'hbA', fEdge:'bottom', to:'hbB', toEdge:'top', c:'#f0883e', badge:5,
+        detail:{title:'HMAC-SHA256 Signing',lines:[
+          {v:'Signed payload:',s:'highlight'},
+          {v:'POST',s:'keep'},
+          {v:'/internal/models/load',s:'keep'},
+          {v:'1716134400000  (timestamp)',s:'keep'},
+          {v:'{"modelPath":"mistral-7b",...}',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'x-cluster-signature: a3f2c8d1...',s:'warn'},
+          {v:'x-cluster-timestamp: 1716134400000',s:'warn'},
+        ]}},
+      {t:'6. Pod B validates HMAC signature ✓', mode:'lightup', targets:['hbB'], c:'#f0883e', badge:6,
+        detail:{title:'HMAC Verification',lines:[
+          {v:'✓ Timestamp within 30s window',s:'add'},
+          {v:'✓ HMAC-SHA256 signature valid',s:'add'},
+          {v:'✓ Timing-safe comparison passed',s:'add'},
+        ]}},
+      {t:'7. Pod B spawns vLLM process on GPU 0', mode:'arrow',
+        f:'ctrlB', fEdge:'bottom', to:'gpuB0', toEdge:'top', c:'#3fb950', badge:7,
+        effect() { gpuState.gpuB0 = {model:'mistral-7b',vram:40,status:'loading'}; },
+        detail:{title:'vLLM Spawn',lines:[
+          {v:'python -m vllm.entrypoints.openai.api_server',s:'highlight'},
+          {v:'  --model mistral-7b',s:'keep'},
+          {v:'  --tensor-parallel-size 1',s:'keep'},
+          {v:'  --gpu-memory-utilization 0.9',s:'keep'},
+          {v:'  --port 8001',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Loading model weights...',s:'warn'},
+        ]}},
+      {t:'8. Model loading complete — status: running', mode:'lightup', targets:['gpuB0'], c:'#39d353', badge:8,
+        effect() { gpuState.gpuB0 = {model:'mistral-7b',vram:85,status:'active'}; },
+        detail:{title:'Model Ready',lines:[
+          {v:'✓ Model loaded successfully',s:'add'},
+          {v:'✓ Health check passed',s:'add'},
+          {v:'✓ VRAM usage: 85% (14.2 GB / 16 GB)',s:'add'},
+          {v:'✓ Status: running',s:'add'},
+        ]}},
+      {t:'9. Heartbeat carries new model info to cluster', mode:'arrow',
+        f:'hbB', fEdge:'top', to:'hbA', toEdge:'bottom', c:'#f0883e', badge:9,
+        detail:{title:'Heartbeat Update',lines:[
+          {v:'{ podId: "sardeenz-1",',s:'keep'},
+          {v:'  models: [',s:'keep'},
+          {v:'    { name: "mistral-7b",',s:'add'},
+          {v:'      status: "running",',s:'add'},
+          {v:'      gpuIds: [0] }',s:'add'},
+          {v:'  ] }',s:'keep'},
+        ]}},
+      {t:'10. Routing table rebuilt — mistral-7b → Pod B', mode:'lightup', targets:['routeA','routeB'], c:'#d2a8ff', badge:10,
+        detail:{title:'ClusterRoutingStore',lines:[
+          {v:'rebuildFromPeers() called',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Routing Table:',s:'keep'},
+          {v:'┌─────────────┬────────┬────────┐',s:'keep'},
+          {v:'│ Model       │ Pod    │ Weight │',s:'keep'},
+          {v:'├─────────────┼────────┼────────┤',s:'keep'},
+          {v:'│ mistral-7b  │ Pod B  │ 2      │',s:'add'},
+          {v:'└─────────────┴────────┴────────┘',s:'keep'},
+        ]}},
+    ]
+  },
+
+  /* ---------- Flow 2: Local Inference ---------- */
+  {
+    name: '3. Local Inference Routing',
+    color: '#58a6ff',
+    setup() { resetGpuDefault(); podRoles.A={role:'Leader',symbol:'★'}; podRoles.B={role:'Follower',symbol:''}; },
+    steps: [
+      {t:'1. Client sends POST /v1/chat/completions', mode:'arrow',
+        f:'client', fEdge:'bottom', to:'proxyA', toEdge:'top', c:'#58a6ff', badge:1,
+        detail:{title:'Inference Request',lines:[
+          {v:'POST /v1/chat/completions',s:'highlight'},
+          {v:'Content-Type: application/json',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'{',s:'keep'},
+          {v:'  "model": "llama-3.2-1b",',s:'add'},
+          {v:'  "messages": [',s:'keep'},
+          {v:'    {"role":"user","content":"Hello"}',s:'keep'},
+          {v:'  ],',s:'keep'},
+          {v:'  "max_tokens": 100,',s:'keep'},
+          {v:'  "stream": true',s:'keep'},
+          {v:'}',s:'keep'},
+        ]}},
+      {t:'2. Proxy Router receives request', mode:'lightup', targets:['proxyA'], c:'#58a6ff', badge:2,
+        detail:{title:'Proxy Router',lines:[
+          {v:'Route: /v1/* (not redirected)',s:'highlight'},
+          {v:'Model requested: llama-3.2-1b',s:'keep'},
+          {v:'Checking local modelStore...',s:'keep'},
+        ]}},
+      {t:'3. ModelStore: llama-3.2-1b found locally', mode:'lightup', targets:['routeA'], c:'#d2a8ff', badge:3,
+        detail:{title:'Routing Decision',lines:[
+          {v:'modelStore.getRunningByName("llama-3.2-1b")',s:'highlight'},
+          {v:'→ Found: instanceId=abc123',s:'add'},
+          {v:'→ GPU: 0, Port: 8001',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Routing table: single entry (local)',s:'keep'},
+          {v:'→ Route locally (no forwarding)',s:'add'},
+        ]}},
+      {t:'4. Route to local vLLM on GPU 0', mode:'arrow',
+        f:'proxyA', fEdge:'bottom', to:'gpuA0', toEdge:'top', c:'#58a6ff', badge:4,
+        detail:{title:'Local Route',lines:[
+          {v:'Forwarding to localhost:8001',s:'highlight'},
+          {v:'Model: llama-3.2-1b on GPU 0',s:'keep'},
+        ]}},
+      {t:'5. vLLM generates streaming response', mode:'lightup', targets:['gpuA0'], c:'#39d353', badge:5,
+        detail:{title:'vLLM Response (SSE)',lines:[
+          {v:'data: {"choices":[{"delta":',s:'highlight'},
+          {v:'  {"content":"Hello"}}]}',s:'keep'},
+          {v:'data: {"choices":[{"delta":',s:'keep'},
+          {v:'  {"content":"!"}}]}',s:'keep'},
+          {v:'data: {"choices":[{"delta":',s:'keep'},
+          {v:'  {"content":" How"}}]}',s:'keep'},
+          {v:'data: [DONE]',s:'add'},
+        ]}},
+      {t:'6. Response streams back to Client', mode:'arrow',
+        f:'proxyA', fEdge:'top', to:'client', toEdge:'bottom', c:'#58a6ff', badge:6,
+        detail:{title:'Response',lines:[
+          {v:'HTTP/1.1 200 OK',s:'add'},
+          {v:'Content-Type: text/event-stream',s:'keep'},
+          {v:'Transfer-Encoding: chunked',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Latency: ~45ms (proxy overhead)',s:'highlight'},
+        ]}},
+    ]
+  },
+
+  /* ---------- Flow 3: Cross-Pod Inference ---------- */
+  {
+    name: '4. Cross-Pod Inference Routing',
+    color: '#58a6ff',
+    setup() { resetGpuDefault(); podRoles.A={role:'Leader',symbol:'★'}; podRoles.B={role:'Follower',symbol:''}; },
+    steps: [
+      {t:'1. Client sends request for mistral-7b to Pod A', mode:'arrow',
+        f:'client', fEdge:'bottom', to:'proxyA', toEdge:'top', c:'#58a6ff', badge:1,
+        detail:{title:'Inference Request',lines:[
+          {v:'POST /v1/chat/completions',s:'highlight'},
+          {v:'{',s:'keep'},
+          {v:'  "model": "mistral-7b",',s:'add'},
+          {v:'  "messages": [{"role":"user",',s:'keep'},
+          {v:'    "content":"Explain K8s"}]',s:'keep'},
+          {v:'}',s:'keep'},
+        ]}},
+      {t:'2. Proxy Router: no local mistral-7b instance', mode:'lightup', targets:['proxyA'], c:'#58a6ff', badge:2,
+        detail:{title:'Proxy Router',lines:[
+          {v:'modelStore.getRunningByName("mistral-7b")',s:'highlight'},
+          {v:'→ Not found locally',s:'warn'},
+          {v:'',s:'keep'},
+          {v:'Checking ClusterRoutingStore...',s:'keep'},
+        ]}},
+      {t:'3. ClusterRoutingStore: mistral-7b → Pod B', mode:'lightup', targets:['routeA'], c:'#d2a8ff', badge:3,
+        detail:{title:'Cluster Routing Lookup',lines:[
+          {v:'Routing entries for "mistral-7b":',s:'highlight'},
+          {v:'┌──────────┬─────────┬────────┐',s:'keep'},
+          {v:'│ Pod      │ Address │ Weight │',s:'keep'},
+          {v:'├──────────┼─────────┼────────┤',s:'keep'},
+          {v:'│ Pod B    │ :8001   │ 1      │',s:'add'},
+          {v:'└──────────┴─────────┴────────┘',s:'keep'},
+        ]}},
+      {t:'4. Circuit breaker check: Pod B healthy ✓', mode:'lightup', targets:['hbA'], c:'#f0883e', badge:4,
+        detail:{title:'Circuit Breaker',lines:[
+          {v:'Pod B circuit state: CLOSED ✓',s:'add'},
+          {v:'Recent failures: 0 / 3 threshold',s:'keep'},
+          {v:'Window: 30s',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'→ OK to forward request',s:'add'},
+        ]}},
+      {t:'5. Forward to Pod B with x-sardeenz-forwarded', mode:'arrow',
+        f:'proxyA', fEdge:'bottom', to:'proxyB', toEdge:'top',
+        wp:[{x:512,y:440}], c:'#58a6ff', badge:5,
+        detail:{title:'Cross-Pod Forward',lines:[
+          {v:'POST http://10.244.0.15:3000/',s:'highlight'},
+          {v:'     v1/chat/completions',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'x-sardeenz-forwarded: true',s:'warn'},
+          {v:'  ↑ Prevents forwarding loops',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'undici Pool: 64 connections',s:'keep'},
+          {v:'Keep-alive: 120s',s:'keep'},
+        ]}},
+      {t:'6. Pod B Proxy routes to local vLLM', mode:'arrow',
+        f:'proxyB', fEdge:'bottom', to:'gpuB0', toEdge:'top', c:'#58a6ff', badge:6,
+        detail:{title:'Local Route on Pod B',lines:[
+          {v:'x-sardeenz-forwarded detected',s:'warn'},
+          {v:'→ Route locally only (no re-forward)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'mistral-7b on GPU 0 → port 8001',s:'add'},
+        ]}},
+      {t:'7. vLLM generates response', mode:'lightup', targets:['gpuB0'], c:'#39d353', badge:7,
+        detail:{title:'vLLM Response',lines:[
+          {v:'Streaming SSE response...',s:'highlight'},
+          {v:'Model: mistral-7b',s:'keep'},
+          {v:'GPU 0, VRAM: 85%',s:'keep'},
+        ]}},
+      {t:'8. Response streams back: Pod B → Pod A → Client', mode:'arrow',
+        f:'proxyB', fEdge:'top', to:'client', toEdge:'bottom',
+        wp:[{x:512,y:440},{x:580,y:100},{x:580,y:70}], c:'#58a6ff', badge:8,
+        detail:{title:'Response Chain',lines:[
+          {v:'Pod B → Pod A (TCP passthrough)',s:'highlight'},
+          {v:'Pod A → Client (SSE stream)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'TCP_NODELAY enabled',s:'keep'},
+          {v:'SSE heartbeat: 15s interval',s:'keep'},
+          {v:'Total latency: ~95ms',s:'add'},
+          {v:'  (proxy: ~45ms + network: ~50ms)',s:'keep'},
+        ]}},
+    ]
+  },
+
+  /* ---------- Flow 4: Blue-Green Model Move ---------- */
+  {
+    name: '5. Blue-Green Model Move',
+    color: '#d2a8ff',
+    setup() { resetGpuDefault(); podRoles.A={role:'Leader',symbol:'★'}; podRoles.B={role:'Follower',symbol:''}; },
+    steps: [
+      {t:'1. Admin: move llama-3.2-1b from Pod A → Pod B', mode:'arrow',
+        f:'admin', fEdge:'bottom', to:'ctrlA', toEdge:'top', c:'#3fb950', badge:1,
+        detail:{title:'Move Request',lines:[
+          {v:'POST /api/cluster/models/move',s:'highlight'},
+          {v:'{',s:'keep'},
+          {v:'  "instanceId": "abc123",',s:'keep'},
+          {v:'  "targetPodId": "sardeenz-1",',s:'add'},
+          {v:'  "targetGpuIds": [1]',s:'add'},
+          {v:'}',s:'keep'},
+        ]}},
+      {t:'2. ModelMover validates: source exists, target OK', mode:'lightup', targets:['ctrlA'], c:'#3fb950', badge:2,
+        detail:{title:'Validation',lines:[
+          {v:'✓ Source: llama-3.2-1b on Pod A GPU 0',s:'add'},
+          {v:'✓ Status: running',s:'add'},
+          {v:'✓ Not already being moved',s:'add'},
+          {v:'✓ Target GPU 1 on Pod B: free',s:'add'},
+          {v:'✓ VRAM check passed',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Phase: validating → spawning',s:'highlight'},
+        ]}},
+      {t:'3. Phase: Spawning — load on Pod B GPU 1', mode:'arrow',
+        f:'hbA', fEdge:'bottom', to:'hbB', toEdge:'top', c:'#f0883e', badge:3,
+        effect() { gpuState.gpuB1 = {model:'llama-3.2-1b',vram:30,status:'loading'}; },
+        detail:{title:'Spawn on Target',lines:[
+          {v:'HMAC POST /internal/models/load',s:'warn'},
+          {v:'→ Pod B (sardeenz-1)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Target: GPU 1',s:'highlight'},
+          {v:'Model: llama-3.2-1b',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Phase: spawning',s:'highlight'},
+        ]}},
+      {t:'4. New vLLM instance reaches running status', mode:'lightup', targets:['gpuB1'], c:'#39d353', badge:4,
+        effect() { gpuState.gpuB1 = {model:'llama-3.2-1b',vram:65,status:'active'}; },
+        detail:{title:'Target Ready',lines:[
+          {v:'✓ vLLM process started on Pod B GPU 1',s:'add'},
+          {v:'✓ Health check passed',s:'add'},
+          {v:'✓ Status: running',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Now: 2 instances of llama-3.2-1b',s:'highlight'},
+          {v:'  Pod A GPU 0 (source)',s:'keep'},
+          {v:'  Pod B GPU 1 (target)',s:'keep'},
+        ]}},
+      {t:'5. swapEntry(): add Pod B route BEFORE removing Pod A', mode:'lightup', targets:['routeA','routeB'], c:'#d2a8ff', badge:5,
+        detail:{title:'Zero-Gap Routing Swap',lines:[
+          {v:'ClusterRoutingStore.swapEntry()',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Step 1: ADD target entry',s:'add'},
+          {v:'  llama-3.2-1b → Pod B (weight: 2)',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Step 2: KEEP source entry (still valid)',s:'keep'},
+          {v:'  llama-3.2-1b → Pod A (weight: 2)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'→ Zero routing gap guaranteed',s:'add'},
+          {v:'Phase: spawning → switching',s:'highlight'},
+        ]}},
+      {t:'6. Source on Pod A marked non-routable', mode:'lightup', targets:['gpuA0'], c:'#f0883e', badge:6,
+        effect() { gpuState.gpuA0.status = 'draining'; },
+        detail:{title:'Source Non-Routable',lines:[
+          {v:'modelStore.setRoutable(source, false)',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'New requests → Pod B only',s:'add'},
+          {v:'Active connections on Pod A: draining',s:'warn'},
+          {v:'',s:'keep'},
+          {v:'Phase: switching → draining',s:'highlight'},
+        ]}},
+      {t:'7. Draining — wait for active connections → 0', mode:'lightup', targets:['gpuA0'], c:'#f0883e', badge:7,
+        detail:{title:'Connection Drain',lines:[
+          {v:'Polling every 500ms:',s:'highlight'},
+          {v:'  metricsStore.getInstanceConnections()',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'Active connections: 3 → 2 → 1 → 0',s:'warn'},
+          {v:'Drain timeout: 60s (configurable)',s:'keep'},
+          {v:'',s:'keep'},
+          {v:'✓ All connections drained',s:'add'},
+        ]}},
+      {t:'8. Unload source on Pod A GPU 0', mode:'lightup', targets:['gpuA0'], c:'#f85149', badge:8,
+        effect() { gpuState.gpuA0 = {model:'',vram:0,status:'free'}; },
+        detail:{title:'Source Unloaded',lines:[
+          {v:'modelManager.unloadModel(sourceId)',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'✓ vLLM process terminated',s:'add'},
+          {v:'✓ GPU 0 memory freed',s:'add'},
+          {v:'✓ Routing entry removed',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Phase: draining → completed',s:'highlight'},
+        ]}},
+      {t:'9. Move complete — llama-3.2-1b now on Pod B', mode:'lightup', targets:['routeA','routeB','gpuB1'], c:'#39d353', badge:9,
+        detail:{title:'Final Routing Table',lines:[
+          {v:'Move completed successfully ✓',s:'add'},
+          {v:'',s:'keep'},
+          {v:'Routing Table:',s:'highlight'},
+          {v:'┌─────────────┬────────┬────────┐',s:'keep'},
+          {v:'│ Model       │ Pod    │ Weight │',s:'keep'},
+          {v:'├─────────────┼────────┼────────┤',s:'keep'},
+          {v:'│ qwen-0.6b   │ Pod A  │ 2      │',s:'keep'},
+          {v:'│ llama-3.2-1b│ Pod B  │ 2      │',s:'add'},
+          {v:'│ mistral-7b  │ Pod B  │ 2      │',s:'keep'},
+          {v:'└─────────────┴────────┴────────┘',s:'keep'},
+        ]}},
+    ]
+  },
+
+  /* ---------- Flow 5: Leader Failover ---------- */
+  {
+    name: '6. Leader Failover',
+    color: '#f85149',
+    setup() { resetGpuDefault(); podRoles.A={role:'Leader',symbol:'★'}; podRoles.B={role:'Follower',symbol:''}; },
+    steps: [
+      {t:'1. Pod A (Leader) goes down unexpectedly', mode:'lightup', targets:['podA'], c:'#f85149', badge:1,
+        effect() { podRoles.A = {role:'DOWN',symbol:'✕'}; gpuState.gpuA0.status='error'; gpuState.gpuA2.status='error'; },
+        detail:{title:'Pod Failure',lines:[
+          {v:'Pod A (sardeenz-0) unreachable',s:'err'},
+          {v:'',s:'keep'},
+          {v:'Possible causes:',s:'keep'},
+          {v:'  - Node failure',s:'keep'},
+          {v:'  - OOM kill',s:'keep'},
+          {v:'  - Network partition',s:'keep'},
+        ]}},
+      {t:'2. Pod B heartbeat to Pod A — no response', mode:'lightup', targets:['hbB'], c:'#f0883e', badge:2,
+        detail:{title:'Heartbeat Failure',lines:[
+          {v:'POST /internal/heartbeat → sardeenz-0',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Error: ECONNREFUSED',s:'err'},
+          {v:'Heartbeat failed',s:'err'},
+        ]}},
+      {t:'3. 10 seconds — Pod A status → suspect', mode:'lightup', targets:['hbB'], c:'#f0883e', badge:3,
+        detail:{title:'Health State: Suspect',lines:[
+          {v:'HeartbeatService reaper check:',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Last heartbeat: 10s ago',s:'warn'},
+          {v:'Threshold: 10s → suspect',s:'warn'},
+          {v:'',s:'keep'},
+          {v:'Pod A: healthy → suspect',s:'warn'},
+          {v:'(Still in routing table)',s:'keep'},
+        ]}},
+      {t:'4. 15 seconds — Pod A → unavailable', mode:'lightup', targets:['hbB'], c:'#f85149', badge:4,
+        detail:{title:'Health State: Unavailable',lines:[
+          {v:'Last heartbeat: 15s ago',s:'err'},
+          {v:'Threshold: 15s → unavailable',s:'err'},
+          {v:'',s:'keep'},
+          {v:'Pod A: suspect → unavailable',s:'err'},
+        ]}},
+      {t:'5. Routing entries for Pod A removed', mode:'lightup', targets:['routeB'], c:'#d2a8ff', badge:5,
+        detail:{title:'Routing Cleanup',lines:[
+          {v:'removeEntriesForPod("sardeenz-0")',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Removed:',s:'err'},
+          {v:'  llama-3.2-1b → Pod A  ✕',s:'err'},
+          {v:'  qwen-0.6b    → Pod A  ✕',s:'err'},
+          {v:'',s:'keep'},
+          {v:'Remaining:',s:'keep'},
+          {v:'  mistral-7b   → Pod B  ✓',s:'add'},
+        ]}},
+      {t:'6. K8s Lease expires (15s TTL)', mode:'lightup', targets:['k8sApi'], c:'#d2a8ff', badge:6,
+        detail:{title:'Lease Expiry',lines:[
+          {v:'Lease: sardeenz-leader',s:'highlight'},
+          {v:'Holder: sardeenz-0',s:'err'},
+          {v:'renewTime: 15s+ ago',s:'err'},
+          {v:'',s:'keep'},
+          {v:'→ Lease expired',s:'err'},
+        ]}},
+      {t:'7. Pod B acquires lease → new Leader ★', mode:'lightup', targets:['podB','k8sApi'], c:'#3fb950', badge:7,
+        effect() { podRoles.B = {role:'Leader',symbol:'★'}; },
+        detail:{title:'New Leader Elected',lines:[
+          {v:'Pod B acquires expired lease',s:'highlight'},
+          {v:'',s:'keep'},
+          {v:'Lease: sardeenz-leader',s:'keep'},
+          {v:'New holder: sardeenz-1',s:'add'},
+          {v:'',s:'keep'},
+          {v:'→ Pod B becomes Leader ★',s:'add'},
+          {v:'→ Controller API now active',s:'add'},
+        ]}},
+      {t:'8. Pod A models unavailable until recovery', mode:'lightup', targets:['gpuA0','gpuA2'], c:'#f85149', badge:8,
+        detail:{title:'Impact Assessment',lines:[
+          {v:'Unavailable models:',s:'err'},
+          {v:'  llama-3.2-1b (was on Pod A GPU 0)',s:'err'},
+          {v:'  qwen-0.6b    (was on Pod A GPU 2)',s:'err'},
+          {v:'',s:'keep'},
+          {v:'Available models:',s:'add'},
+          {v:'  mistral-7b   (Pod B GPU 0) ✓',s:'add'},
+          {v:'',s:'keep'},
+          {v:'When Pod A recovers:',s:'keep'},
+          {v:'  → Re-joins as Follower',s:'keep'},
+          {v:'  → Models must be reloaded',s:'keep'},
+        ]}},
+    ]
+  },
+];
+
+/* ================================================================
+   STEP EXECUTION ENGINE
+   ================================================================ */
+
+function clearTimers() {
+  if (stepTimer) { clearTimeout(stepTimer); stepTimer = null; }
+}
+
+function activateTargets(step) {
+  const tgts = step.targets || (step.target ? [step.target] : []);
+  for (const t of tgts) activeNodes.add(t);
+  if (step.glow) activeNodes.add(step.glow);
+}
+
+function assignBadge(step) {
+  if (!step.badge) return;
+  const tgts = step.targets || (step.target ? [step.target] : []);
+  const key = tgts[0];
+  if (!key) return;
+  if (!badges[key]) badges[key] = [];
+  badges[key].push({num: step.badge, color: step.c || '#58a6ff'});
+}
+
+function applyEffect(step) {
+  if (step.effect) step.effect();
+}
+
+function buildPath(step) {
+  const from = nodeEdge(step.f, step.fEdge || 'bottom');
+  const to = nodeEdge(step.to, step.toEdge || 'top');
+  return {from, to, wp: step.wp || []};
+}
+
+function addPermanentLine(step) {
+  const {from, to, wp} = buildPath(step);
+  lines.push({points: [from, ...(wp || []), to], color: step.c || '#58a6ff'});
+}
+
+function execStep(idx) {
+  const flow = flows[activeFlowIdx];
+  if (idx >= flow.steps.length) {
+    running = false; paused = false;
+    updateRunButton();
+    if (loopMode) {
+      stepTimer = setTimeout(() => {
+        activeFlowIdx = (activeFlowIdx + 1) % flows.length;
+        document.getElementById('flow-select').selectedIndex = activeFlowIdx;
+        switchFlow(activeFlowIdx);
+        setTimeout(() => run(), 400 / playbackSpeed);
+      }, 1500 / playbackSpeed);
+    }
+    return;
+  }
+  runStepIdx = idx;
+  const step = flow.steps[idx];
+
+  updateStepStates(idx);
+  renderDetails(step.detail);
+
+  if (step.mode === 'arrow') {
+    const {from, to, wp} = buildPath(step);
+    const dot = new Dot(from, to, wp, step.c || '#58a6ff', () => {
+      addPermanentLine(step);
+      activateTargets(step);
+      assignBadge(step);
+      applyEffect(step);
+      saveSnapshot(idx);
+      markStepDone(idx);
+      if (stepOnceMode) { stepOnceMode = false; paused = true; updateRunButton(); return; }
+      stepTimer = setTimeout(() => execStep(idx + 1), 400 / playbackSpeed);
+    });
+    dots.push(dot);
+  } else {
+    activateTargets(step);
+    assignBadge(step);
+    applyEffect(step);
+    saveSnapshot(idx);
+    markStepDone(idx);
+    if (stepOnceMode) { stepOnceMode = false; paused = true; updateRunButton(); return; }
+    stepTimer = setTimeout(() => execStep(idx + 1), (step.dur || 900) / playbackSpeed);
+  }
+}
+
+function saveSnapshot(idx) {
+  snapshots[idx] = {
+    activeNodes: new Set(activeNodes),
+    badges: JSON.parse(JSON.stringify(badges)),
+    lines: lines.map(l => ({...l, points: l.points.map(p => ({...p}))})),
+    gpuState: JSON.parse(JSON.stringify(gpuState)),
+    podRoles: JSON.parse(JSON.stringify(podRoles)),
+  };
+}
+
+function restoreSnapshot(idx) {
+  const s = snapshots[idx];
+  activeNodes = new Set(s.activeNodes);
+  badges = JSON.parse(JSON.stringify(s.badges));
+  lines = s.lines.map(l => ({...l, points: l.points.map(p => ({...p}))}));
+  gpuState = JSON.parse(JSON.stringify(s.gpuState));
+  podRoles = JSON.parse(JSON.stringify(s.podRoles));
+}
+
+function simulateUpTo(targetIdx) {
+  const flow = flows[activeFlowIdx];
+  flow.setup();
+  activeNodes = new Set(); badges = {}; lines = []; dots = []; snapshots = {};
+  for (let i = 0; i <= targetIdx && i < flow.steps.length; i++) {
+    const step = flow.steps[i];
+    if (step.mode === 'arrow') addPermanentLine(step);
+    activateTargets(step);
+    assignBadge(step);
+    applyEffect(step);
+    saveSnapshot(i);
+  }
+}
+
+function jumpToStep(idx) {
+  clearTimers(); dots = [];
+  if (snapshots[idx]) {
+    restoreSnapshot(idx);
+  } else {
+    simulateUpTo(idx);
+  }
+  runStepIdx = idx;
+  running = true; paused = true;
+  updateStepStates(idx);
+  renderDetails(flows[activeFlowIdx].steps[idx].detail);
+  for (let i = 0; i <= idx; i++) markStepDone(i);
+  highlightStep(idx);
+  updateRunButton();
+}
+
+/* ================================================================
+   PLAYBACK CONTROLS
+   ================================================================ */
+
+function run() {
+  if (!running) {
+    doReset();
+    running = true; paused = false;
+    updateRunButton();
+    flows[activeFlowIdx].setup();
+    execStep(0);
+  } else if (!paused) {
+    paused = true;
+    clearTimers();
+    updateRunButton();
+  } else {
+    paused = false;
+    updateRunButton();
+    execStep(runStepIdx + 1);
+  }
+}
+
+function stepOnce() {
+  if (!running) {
+    doReset();
+    running = true; paused = false;
+    stepOnceMode = true;
+    updateRunButton();
+    flows[activeFlowIdx].setup();
+    execStep(0);
+  } else if (paused) {
+    stepOnceMode = true;
+    paused = false;
+    execStep(runStepIdx + 1);
+  } else {
+    paused = true;
+    clearTimers();
+    updateRunButton();
+  }
+}
+
+function doReset() {
+  clearTimers();
+  running = false; paused = false; stepOnceMode = false;
+  runStepIdx = -1;
+  activeNodes = new Set(); badges = {}; lines = []; dots = []; snapshots = {};
+  flows[activeFlowIdx].setup();
+  initSteps();
+  renderDetails(null);
+  updateRunButton();
+}
+
+function cycleSpeed() {
+  const speeds = [0.5, 1, 2];
+  const idx = speeds.indexOf(playbackSpeed);
+  playbackSpeed = speeds[(idx + 1) % speeds.length];
+  document.getElementById('btn-speed').textContent = playbackSpeed + 'x';
+}
+
+function toggleLoop() {
+  loopMode = !loopMode;
+  const btn = document.getElementById('btn-loop');
+  btn.classList.toggle('active', loopMode);
+}
+
+function switchFlow(idx) {
+  activeFlowIdx = idx;
+  doReset();
+}
+
+function updateRunButton() {
+  const btn = document.getElementById('btn-run');
+  if (!running) btn.textContent = '▶ Start';
+  else if (paused) btn.textContent = '▶ Resume';
+  else btn.textContent = '⏸ Pause';
+}
+
+/* ================================================================
+   DOM: STEPS PANEL
+   ================================================================ */
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function initSteps() {
+  const ctr = document.getElementById('steps-container');
+  ctr.innerHTML = '';
+  const flow = flows[activeFlowIdx];
+  flow.steps.forEach((s, i) => {
+    const div = document.createElement('div');
+    div.className = 'step pending';
+    div.dataset.idx = i;
+    div.innerHTML = `<span class="step-marker"></span><span class="step-text">${escHtml(s.t)}</span>`;
+    div.addEventListener('click', () => jumpToStep(i));
+    ctr.appendChild(div);
+  });
+}
+
+function updateStepStates(activeIdx) {
+  const steps = document.querySelectorAll('#steps-container .step');
+  steps.forEach((el, i) => {
+    el.className = 'step ' + (i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending');
+  });
+  const active = steps[activeIdx];
+  if (active) active.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+
+function markStepDone(idx) {
+  const el = document.querySelectorAll('#steps-container .step')[idx];
+  if (el && !el.classList.contains('active')) el.className = 'step done';
+}
+
+function highlightStep(idx) {
+  const steps = document.querySelectorAll('#steps-container .step');
+  steps.forEach((el, i) => {
+    if (i === idx) el.className = 'step active';
+  });
+}
+
+/* ================================================================
+   DOM: DETAIL PANEL
+   ================================================================ */
+
+function renderDetails(detail) {
+  const el = document.getElementById('detail-content');
+  const titleEl = document.getElementById('detail-title');
+  if (!detail) {
+    el.innerHTML = '<div class="detail-empty">Click ▶ Start to begin the animation</div>';
+    titleEl.textContent = 'Details';
+    return;
+  }
+  titleEl.textContent = detail.title || 'Details';
+  if (detail.lines) {
+    el.innerHTML = detail.lines.map(line => {
+      if (typeof line === 'string') return `<div class="detail-line keep">${escHtml(line)}</div>`;
+      if (!line.v && line.v !== 0) return '<div class="detail-line keep">&nbsp;</div>';
+      return `<div class="detail-line ${line.s || 'keep'}">${escHtml(String(line.v))}</div>`;
+    }).join('');
+  } else {
+    el.innerHTML = '<div class="detail-empty">No details for this step</div>';
+  }
+}
+
+/* ================================================================
+   THEME TOGGLE
+   ================================================================ */
+
+function toggleTheme() {
+  isDark = !isDark;
+  document.body.classList.toggle('light', !isDark);
+  const btn = document.querySelector('.theme-toggle');
+  btn.textContent = isDark ? '🌙' : '☀️';
+}
+
+/* ================================================================
+   ANIMATION LOOP
+   ================================================================ */
+
+function frame() {
+  for (let i = dots.length - 1; i >= 0; i--) {
+    dots[i].update();
+    if (!dots[i].alive) dots.splice(i, 1);
+  }
+  drawScene();
+  animFrame = requestAnimationFrame(frame);
+}
+
+/* ================================================================
+   INITIALIZATION
+   ================================================================ */
+
+function init() {
+  const sel = document.getElementById('flow-select');
+  flows.forEach((f, i) => {
+    const opt = document.createElement('option');
+    opt.textContent = f.name;
+    opt.value = i;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', () => switchFlow(parseInt(sel.value)));
+
+  document.getElementById('btn-run').addEventListener('click', run);
+  document.getElementById('btn-step').addEventListener('click', stepOnce);
+  document.getElementById('btn-speed').addEventListener('click', cycleSpeed);
+  document.getElementById('btn-loop').addEventListener('click', toggleLoop);
+  document.getElementById('btn-reset').addEventListener('click', doReset);
+
+  const themeBtn = document.createElement('button');
+  themeBtn.className = 'theme-toggle';
+  themeBtn.textContent = '🌙';
+  themeBtn.title = 'Toggle theme';
+  themeBtn.addEventListener('click', toggleTheme);
+  document.body.appendChild(themeBtn);
+
+  window.addEventListener('resize', () => { resize(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ') { e.preventDefault(); run(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); stepOnce(); }
+    else if (e.key === 'r' || e.key === 'R') { doReset(); }
+  });
+
+  resize();
+  flows[0].setup();
+  initSteps();
+  frame();
+}
+
+init();
+</script>
+</body>
+</html>

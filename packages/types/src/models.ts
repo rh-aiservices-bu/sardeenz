@@ -98,6 +98,8 @@ export interface ModelInstance {
   sleptAt?: Date
   /** Whether this instance should receive inference traffic (false during move operations) */
   routable: boolean
+  /** Pod ID when running in a cluster (hostname from StatefulSet) */
+  podId?: string
 }
 
 /** Phase of a model move operation */

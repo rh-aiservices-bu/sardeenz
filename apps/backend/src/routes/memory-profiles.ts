@@ -90,7 +90,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
       onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
-      const { profiles, total } = store.listProfiles()
+      const { profiles, total } = await store.listProfiles()
 
       return {
         profiles: profiles.map(profileToResponse),
@@ -118,7 +118,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { model_path, max_tokens, gpu_name } = request.query
-      const profile = store.lookupProfile(model_path, max_tokens, gpu_name)
+      const profile = await store.lookupProfile(model_path, max_tokens, gpu_name)
 
       if (!profile) {
         return reply.status(404).send({
@@ -152,7 +152,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params
-      const profile = store.getProfile(id)
+      const profile = await store.getProfile(id)
 
       if (!profile) {
         return reply.status(404).send({
@@ -255,7 +255,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
         const profileName =
           body.profile_name || `${instance.modelPath} @ ${instance.maxTokens} tokens`
 
-        const profile = store.upsertProfile({
+        const profile = await store.upsertProfile({
           profileName,
           modelPath: instance.modelPath,
           maxTokens: instance.maxTokens,
@@ -298,7 +298,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
 
       const profileName = body.profile_name || `${body.model_path} @ ${body.max_tokens} tokens`
 
-      const profile = store.upsertProfile({
+      const profile = await store.upsertProfile({
         profileName,
         modelPath: body.model_path,
         maxTokens: body.max_tokens,
@@ -340,7 +340,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
       const { id } = request.params
       const body = request.body
 
-      const profile = store.updateProfile(id, {
+      const profile = await store.updateProfile(id, {
         profileName: body.profile_name,
         comments: body.comments,
       })
@@ -378,7 +378,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params
 
-      const deleted = store.deleteProfile(id)
+      const deleted = await store.deleteProfile(id)
 
       if (!deleted) {
         return reply.status(404).send({
@@ -417,7 +417,7 @@ export default async function memoryProfileRoutes(fastify: FastifyInstance) {
       const { model_path, max_tokens, gpu_name } = request.body
 
       // Look up the profile
-      const profile = store.lookupProfile(model_path, max_tokens, gpu_name)
+      const profile = await store.lookupProfile(model_path, max_tokens, gpu_name)
 
       if (!profile) {
         // No profile found - return info level warning

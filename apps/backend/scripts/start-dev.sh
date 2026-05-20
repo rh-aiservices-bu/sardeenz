@@ -62,12 +62,66 @@ check_venv_valid() {
     return $?
 }
 
+# Get installed version of a package via importlib.metadata
+get_installed_version() {
+    "$VENV_DIR/bin/python" -c "from importlib.metadata import version; print(version('$1'))" 2>/dev/null || echo "not installed"
+}
+
+# Extract expected version from pyproject.toml (matches "pkg==X.Y.Z")
+get_expected_version() {
+    grep -o "$1==[^\",']*" "$BACKEND_DIR/pyproject.toml" | head -1 | cut -d= -f3
+}
+
+# Check if installed versions match pyproject.toml
+check_versions_current() {
+    local stale=()
+    for pkg in kvcached nvitop vllm; do
+        local expected installed
+        expected=$(get_expected_version "$pkg")
+        if [ -z "$expected" ]; then continue; fi
+        installed=$(get_installed_version "$pkg")
+        if [ "$installed" != "$expected" ]; then
+            stale+=("  $pkg: $installed → $expected")
+        fi
+    done
+
+    if [ ${#stale[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    echo ""
+    echo "Python package updates available (pyproject.toml changed):"
+    for s in "${stale[@]}"; do
+        echo "$s"
+    done
+    return 1
+}
+
+# Prompt user to update stale packages
+prompt_version_update() {
+    echo ""
+    if [ ! -t 0 ]; then
+        echo "Run 'cd apps/backend && uv sync --python 3.12 --group dev' to update, or use --force."
+        return
+    fi
+
+    read -r -p "Update now? [Y/n]: " choice
+    case $choice in
+        [nN])
+            echo "Skipping update. Continuing with current versions."
+            ;;
+        *)
+            sync_dependencies
+            ;;
+    esac
+}
+
 # Sync dependencies using uv (installs missing packages only)
 sync_dependencies() {
     echo "Syncing Python dependencies..."
     cd "$BACKEND_DIR"
     # --group dev includes vLLM for local development
-    uv sync --locked --group dev
+    uv sync --python 3.12 --group dev
     echo ""
     echo "Dependencies synced!"
 }
@@ -88,7 +142,7 @@ create_fresh_venv() {
 
     # uv sync creates venv and installs deps in one step
     # --group dev includes vLLM for local development
-    uv sync --locked --group dev
+    uv sync --python 3.12 --group dev
 
     echo ""
     echo "Python environment setup complete!"
@@ -171,6 +225,15 @@ else
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
     echo "Python environment validated successfully."
+
+    # Check for version drift against pyproject.toml
+    if ! check_versions_current; then
+        if [ "$FORCE_REINSTALL" = true ]; then
+            sync_dependencies
+        else
+            prompt_version_update
+        fi
+    fi
 fi
 
 # Set kvcached environment variables

@@ -27,3 +27,6 @@ export * from './schemas/model-configuration.js'
 
 // Export authentication types
 export * from './auth.js'
+
+// Export cluster types
+export * from './cluster.js'

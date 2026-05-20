@@ -1,0 +1,110 @@
+site_name: Sardeenz Documentation
+site_description: Multi-model vLLM management platform — load, serve, and orchestrate multiple LLMs on shared GPUs
+site_url: https://rh-aiservices-bu.github.io/sardeenz/
+repo_url: https://github.com/rh-aiservices-bu/sardeenz
+repo_name: rh-aiservices-bu/sardeenz
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/sardeenz.svg
+  favicon: assets/sardeenz.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.action.edit
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+  - def_list
+  - md_in_html
+
+nav:
+  - Home: README.md
+  - User Guide: user-guide.md
+  - API Guide: api-guide.md
+  - Architecture:
+    - Overview: architecture.md
+    - Backend: architecture/backend-architecture.md
+    - Frontend: architecture/frontend-architecture.md
+  - Deployment:
+    - Guide: deployment.md
+    - RBAC Setup: rbac-setup.md
+  - Development:
+    - Getting Started: development/README.md
+    - GPU Setup: dev-setup.md
+    - Frontend API Client: development/frontend-api-client.md
+    - PatternFly 6 Guide:
+      - Overview: development/pf6-guide/README.md
+      - Setup:
+        - Overview: development/pf6-guide/setup/README.md
+        - Quick Start: development/pf6-guide/setup/quick-start.md
+        - Development Environment: development/pf6-guide/setup/development-environment.md
+      - Guidelines:
+        - Overview: development/pf6-guide/guidelines/README.md
+        - Component Architecture: development/pf6-guide/guidelines/component-architecture.md
+        - Styling Standards: development/pf6-guide/guidelines/styling-standards.md
+        - Migration Codemods: development/pf6-guide/guidelines/migration-codemods.md
+      - Components:
+        - Overview: development/pf6-guide/components/README.md
+        - Layout: development/pf6-guide/components/layout/README.md
+        - Data Display: development/pf6-guide/components/data-display/README.md
+        - Table: development/pf6-guide/components/data-display/table.md
+      - Charts: development/pf6-guide/charts/README.md
+      - Chatbot: development/pf6-guide/chatbot/README.md
+      - Component Groups: development/pf6-guide/component-groups/README.md
+      - Resources:
+        - Overview: development/pf6-guide/resources/README.md
+        - External Links: development/pf6-guide/resources/external-links.md
+      - Testing Patterns:
+        - Overview: development/pf6-guide/testing-patterns/README.md
+        - Modals: development/pf6-guide/testing-patterns/modals.md
+        - Dropdowns & Pagination: development/pf6-guide/testing-patterns/dropdowns-pagination.md
+        - Context-Dependent Components: development/pf6-guide/testing-patterns/context-dependent-components.md
+        - Switch Components: development/pf6-guide/testing-patterns/switch-components.md
+      - Troubleshooting:
+        - Overview: development/pf6-guide/troubleshooting/README.md
+        - Common Issues: development/pf6-guide/troubleshooting/common-issues.md
+  - kvcached:
+    - Overview: kvcached/README.md
+    - Architecture: kvcached/architecture.md
+    - Configuration: kvcached/configuration.md
+    - CLI Tools: kvcached/cli-tools.md
+    - API Reference: kvcached/api-reference.md
+    - Model Lifecycle: kvcached/model-lifecycle.md
+    - Sardeenz Integration: kvcached/sardeenz-integration.md

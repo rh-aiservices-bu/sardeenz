@@ -15,7 +15,7 @@ export const routes: RouteConfig[] = [
   {
     path: '/',
     element: <ModelManagement />,
-    label: 'Model Placement Management',
+    label: 'Model Management',
     itemId: 'model-management',
   },
   {

@@ -4,6 +4,8 @@ import { apiClient, type MoveProgressEvent } from '../services/api'
 export interface UseMoveEventsOptions {
   /** Move ID to subscribe to. Pass null to not connect */
   moveId: string | null
+  /** Use cluster-aware SSE relay (works when the move may live on a remote pod) */
+  clusterMode?: boolean
   /** Callback for progress updates */
   onProgress?: (event: MoveProgressEvent) => void
   /** Callback for connection errors */
@@ -32,7 +34,7 @@ export interface UseMoveEventsReturn {
  * Handles connection lifecycle and reconnection with exponential backoff.
  */
 export function useMoveEvents(options: UseMoveEventsOptions): UseMoveEventsReturn {
-  const { moveId, onProgress, onError, onComplete } = options
+  const { moveId, clusterMode, onProgress, onError, onComplete } = options
 
   const [isConnected, setIsConnected] = useState(false)
   const [currentPhase, setCurrentPhase] = useState<MoveProgressEvent['phase'] | null>(null)
@@ -117,12 +119,15 @@ export function useMoveEvents(options: UseMoveEventsOptions): UseMoveEventsRetur
       }, delay)
     }
 
-    // Subscribe to events
-    unsubscribeRef.current = apiClient.subscribeMoveEvents(moveId, handleProgress, handleError)
+    // Subscribe to events — use cluster relay when in cluster mode so we can
+    // receive progress from moves that were proxied to a remote pod
+    unsubscribeRef.current = clusterMode
+      ? apiClient.subscribeClusterMoveEvents(moveId, handleProgress, handleError)
+      : apiClient.subscribeMoveEvents(moveId, handleProgress, handleError)
     setIsConnected(true)
     setLastConnectionError(null)
     reconnectAttemptRef.current = 0
-  }, [moveId]) // Only moveId - terminal state tracked via isTerminalRef
+  }, [moveId, clusterMode]) // clusterMode is stable per dialog open
 
   // Connect/disconnect on moveId change
   useEffect(() => {

@@ -16,6 +16,8 @@ This guide provides practical examples for using the Sardeenz APIs.
 - [Benchmark API](#benchmark-api)
 - [Memory Profile API](#memory-profile-api)
 - [Configuration API](#configuration-api)
+- [Cluster API](#cluster-api)
+- [Internal API](#internal-api)
 
 ## Overview
 
@@ -64,8 +66,9 @@ Admin authentication is configured via the `AUTH_MODE` environment variable:
 | Route Type    | Routes                                                                                                    | Auth When `AUTH_MODE!=none`          |
 | ------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | **Public**    | `/api/health/*`, `/api/auth/*`, `/docs/*`, `/metrics`                                                     | None required                        |
-| **Admin**     | `/api/models/*`, `/api/gpu/*`, `/api/memory/*`, `/api/benchmarks/*`, `/api/configurations/*`              | JWT required                         |
+| **Admin**     | `/api/models/*`, `/api/gpu/*`, `/api/memory/*`, `/api/benchmarks/*`, `/api/configurations/*`, `/api/cluster/*` | JWT required                     |
 | **Inference** | `/v1/*`, `/api/direct/*`, `/tokenize`, `/detokenize`, `/pooling`, `/classification`, `/score`, `/re-rank` | API key (if `INFERENCE_API_KEY` set) |
+| **Internal**  | `/internal/*`                                                                                             | HMAC-SHA256 (`CLUSTER_SECRET`)       |
 
 ### Inference API Key (OpenAI-Compatible)
 
@@ -2266,10 +2269,651 @@ Moving sleeping models is supported:
 - Target loads fresh (does not inherit sleep state)
 - After move completes, target is in `running` state
 
+## Cluster API
+
+The Cluster API provides multi-pod cluster management for horizontally scaled Sardeenz deployments. These endpoints enable cross-pod model operations, cluster health monitoring, and data synchronization.
+
+> **Authentication:** Cluster API endpoints (`/api/cluster/*`) require the same admin JWT as the Controller API when `AUTH_MODE` is enabled. Inter-pod communication uses HMAC-SHA256 signatures via the `CLUSTER_SECRET` environment variable.
+
+### Cluster Authentication (HMAC)
+
+Inter-pod requests are authenticated using HMAC-SHA256 signatures. Each request includes:
+
+| Header                  | Description                                     |
+| ----------------------- | ----------------------------------------------- |
+| `X-Cluster-Signature`   | HMAC-SHA256 signature of method+path+timestamp+body |
+| `X-Cluster-Timestamp`   | Unix timestamp (ms) — requests older than 30s are rejected |
+
+The shared secret is configured via `CLUSTER_SECRET` (minimum 16 characters). Dual-secret rotation is supported for zero-downtime key rotation.
+
+```bash
+# Generate a secure cluster secret
+openssl rand -hex 32
+```
+
+### Get Cluster Status
+
+**Endpoint:** `GET /api/cluster`
+
+Returns cluster health, leader info, and aggregate metrics.
+
+**Response (200 OK):**
+
+```json
+{
+  "clusterId": "sardeenz-cluster",
+  "isClusterMode": true,
+  "localPodId": "sardeenz-0",
+  "podCount": 3,
+  "healthyPodCount": 3,
+  "leaderId": "sardeenz-0",
+  "leaderAddress": "sardeenz-0.sardeenz-headless",
+  "term": 5,
+  "expectedSize": 3,
+  "totalModelsLoaded": 4,
+  "totalGpus": 3,
+  "routingTableVersion": 12,
+  "health": "healthy"
+}
+```
+
+**Health Values:**
+
+| Value      | Description                          |
+| ---------- | ------------------------------------ |
+| `healthy`  | All pods are healthy                 |
+| `degraded` | Some pods are unhealthy              |
+| `critical` | No pods are healthy                  |
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster
+```
+
+### List Cluster Pods
+
+**Endpoint:** `GET /api/cluster/pods`
+
+Returns all pods with GPU details, loaded models, and health status.
+
+**Response (200 OK):**
+
+```json
+{
+  "pods": [
+    {
+      "podId": "sardeenz-0",
+      "address": "sardeenz-0.sardeenz-headless",
+      "role": "leader",
+      "status": "healthy",
+      "lastHeartbeat": "2025-12-01T10:00:00Z",
+      "joinedAt": "2025-12-01T09:00:00Z",
+      "modelCount": 2,
+      "gpus": [
+        {
+          "gpuId": 0,
+          "name": "NVIDIA A100-SXM4-80GB",
+          "totalVramMB": 81920,
+          "usedVramMB": 32000,
+          "temperature": 45,
+          "utilization": 30
+        }
+      ],
+      "models": [
+        {
+          "instanceId": "llama-1b-abc123",
+          "podId": "sardeenz-0",
+          "modelPath": "meta-llama/Llama-3.2-1B",
+          "modelName": "Llama-3.2-1B",
+          "status": "running",
+          "port": 5001,
+          "gpuIds": [0],
+          "tensorParallelSize": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/pods
+```
+
+### List Models on a Pod
+
+**Endpoint:** `GET /api/cluster/pods/:podId/models`
+
+**Response (200 OK):**
+
+```json
+{
+  "models": [
+    {
+      "instanceId": "llama-1b-abc123",
+      "podId": "sardeenz-0",
+      "modelPath": "meta-llama/Llama-3.2-1B",
+      "modelName": "Llama-3.2-1B",
+      "status": "running",
+      "port": 5001,
+      "gpuIds": [0],
+      "tensorParallelSize": 1
+    }
+  ]
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/pods/sardeenz-0/models
+```
+
+### Get Routing Table
+
+**Endpoint:** `GET /api/cluster/routing-table`
+
+Returns the cluster routing table mapping model names to pod endpoints. The proxy uses this table to route inference requests to the correct pod.
+
+**Response (200 OK):**
+
+```json
+{
+  "version": 12,
+  "entries": {
+    "Llama-3.2-1B": [
+      {
+        "podId": "sardeenz-0",
+        "podAddress": "sardeenz-0.sardeenz-headless",
+        "vllmPort": 5001,
+        "weight": 1
+      }
+    ],
+    "Mistral-7B": [
+      {
+        "podId": "sardeenz-1",
+        "podAddress": "sardeenz-1.sardeenz-headless",
+        "vllmPort": 5001,
+        "weight": 1
+      }
+    ]
+  }
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/routing-table
+```
+
+### Load Model on a Pod
+
+**Endpoint:** `POST /api/cluster/models/load`
+
+Loads a model on a specific pod in the cluster. If no `targetPodId` is specified, the model loads on the local pod.
+
+**Request Body:**
+
+```json
+{
+  "modelPath": "meta-llama/Llama-3.2-1B",
+  "targetPodId": "sardeenz-1",
+  "servedModelName": "llama-1b",
+  "maxTokens": 4096,
+  "gpuIds": [0],
+  "tensorParallelSize": 1,
+  "enableSleepMode": false
+}
+```
+
+| Field                | Type     | Required | Description                                          |
+| -------------------- | -------- | -------- | ---------------------------------------------------- |
+| `modelPath`          | string   | Yes      | Model identifier (HuggingFace path or local path)    |
+| `targetPodId`        | string   | No       | Pod to load on (defaults to local pod)               |
+| `servedModelName`    | string   | No       | Custom served model name for routing                 |
+| `maxTokens`          | number   | No       | Maximum context length                               |
+| `gpuIds`             | number[] | No       | GPU indices on the target pod                        |
+| `tensorParallelSize` | number   | No       | Number of GPUs for tensor parallelism                |
+| `enableSleepMode`    | boolean  | No       | Enable sleep mode for the model                      |
+
+**Response (200 OK):**
+
+```json
+{
+  "instanceId": "llama-1b-abc123",
+  "podId": "sardeenz-1",
+  "status": "starting"
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -X POST http://localhost:3000/api/cluster/models/load \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modelPath": "meta-llama/Llama-3.2-1B",
+    "targetPodId": "sardeenz-1",
+    "maxTokens": 4096
+  }'
+```
+
+### Unload Model from Any Pod
+
+**Endpoint:** `POST /api/cluster/models/:instanceId/unload`
+
+Unloads a model from whichever pod owns it. The cluster automatically locates the instance.
+
+**Response (200 OK):**
+
+```json
+{
+  "success": true
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/models/llama-1b-abc123/unload
+```
+
+### Move Model (Cross-Pod or Intra-Pod)
+
+**Endpoint:** `POST /api/cluster/models/:instanceId/move`
+
+Moves a model between pods or between GPUs on the same pod. Uses blue-green deployment for zero-downtime moves.
+
+**Request Body:**
+
+```json
+{
+  "targetPodId": "sardeenz-2",
+  "targetGpuIds": [0],
+  "drainTimeoutMs": 60000
+}
+```
+
+| Field            | Type     | Required | Description                                              |
+| ---------------- | -------- | -------- | -------------------------------------------------------- |
+| `targetPodId`    | string   | No       | Target pod (omit for intra-pod GPU move)                 |
+| `targetGpuIds`   | number[] | Yes      | Target GPU indices on the destination pod                |
+| `drainTimeoutMs` | number   | No       | Max time to wait for in-flight requests (default: 60000) |
+
+**Response (200 OK):**
+
+```json
+{
+  "moveId": "move-uuid"
+}
+```
+
+**Example (curl):**
+
+```bash
+# Cross-pod move
+curl -X POST http://localhost:3000/api/cluster/models/llama-1b-abc123/move \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "targetPodId": "sardeenz-2",
+    "targetGpuIds": [0]
+  }'
+
+# Intra-pod GPU move (same pod, different GPU)
+curl -X POST http://localhost:3000/api/cluster/models/llama-1b-abc123/move \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "targetGpuIds": [1]
+  }'
+```
+
+### Subscribe to Model Events (Cluster SSE)
+
+**Endpoint:** `GET /api/cluster/models/:instanceId/events`
+
+SSE stream for model events from any pod. Automatically relays events from remote pods.
+
+**Query Parameters:**
+
+| Parameter | Type   | Description                                    |
+| --------- | ------ | ---------------------------------------------- |
+| `podId`   | string | Hint for which pod owns the instance (optional) |
+
+**Example (curl):**
+
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/cluster/models/llama-1b-abc123/events"
+```
+
+### Subscribe to Move Events (Cluster SSE)
+
+**Endpoint:** `GET /api/cluster/moves/:moveId/events`
+
+SSE stream for move operation progress from any pod.
+
+**Example (curl):**
+
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:3000/api/cluster/moves/move-uuid/events"
+```
+
+### Sleep/Wake Model on Any Pod
+
+**Sleep Endpoint:** `POST /api/cluster/models/:instanceId/sleep`
+
+**Request Body:**
+
+```json
+{
+  "level": 1
+}
+```
+
+**Wake Endpoint:** `POST /api/cluster/models/:instanceId/wake`
+
+**Request Body:**
+
+```json
+{
+  "tags": "weights"
+}
+```
+
+These work identically to the single-pod [Sleep Mode API](#sleep-mode-api) but route to whichever pod owns the model instance.
+
+**Example (curl):**
+
+```bash
+# Sleep a model on any pod
+curl -X POST http://localhost:3000/api/cluster/models/llama-1b-abc123/sleep \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"level": 1}'
+
+# Wake a model on any pod
+curl -X POST http://localhost:3000/api/cluster/models/llama-1b-abc123/wake \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": "weights"}'
+```
+
+### Get Model Logs from Any Pod
+
+**Endpoint:** `GET /api/cluster/models/:instanceId/logs`
+
+Returns process logs for a model on any pod.
+
+**Response (200 OK):**
+
+```json
+{
+  "instance_id": "llama-1b-abc123",
+  "logs": "[stdout] INFO: Loading model...",
+  "line_count": 45
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/models/llama-1b-abc123/logs
+```
+
+### Pod GPU and Memory Info
+
+These endpoints proxy GPU and memory information from any pod in the cluster:
+
+| Endpoint                                   | Description                          |
+| ------------------------------------------ | ------------------------------------ |
+| `GET /api/cluster/pods/:podId/gpu/available` | GPU availability for a specific pod  |
+| `GET /api/cluster/pods/:podId/memory`        | GPU memory usage for a specific pod  |
+| `GET /api/cluster/pods/:podId/gpu/info`      | Full nvidia-smi info for a specific pod |
+| `GET /api/cluster/pods/:podId/models/full`   | Full model instance DTOs from a pod  |
+
+**Example (curl):**
+
+```bash
+# GPU availability on a specific pod
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/pods/sardeenz-1/gpu/available
+
+# Memory usage on a specific pod
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/pods/sardeenz-1/memory
+```
+
+### Apply Preset to Cluster
+
+**Endpoint:** `POST /api/cluster/presets/:presetId/apply`
+
+Applies a saved model configuration preset across the cluster. The leader reconciles the desired state against the current cluster state, unloads models not in the preset, and loads new models with automatic pod/GPU scheduling.
+
+> **Note:** Only the leader pod can apply presets in cluster mode.
+
+**Request Body:**
+
+```json
+{
+  "dryRun": true
+}
+```
+
+| Field    | Type    | Required | Description                                   |
+| -------- | ------- | -------- | --------------------------------------------- |
+| `dryRun` | boolean | No       | Preview changes without executing (default: false) |
+
+**Response (200 OK):**
+
+```json
+{
+  "presetId": "config-uuid",
+  "presetName": "Production Models",
+  "dryRun": true,
+  "placed": [
+    {
+      "modelPath": "meta-llama/Llama-3.2-1B",
+      "podId": "sardeenz-0",
+      "gpuIds": [0],
+      "reason": "Best fit: most free memory"
+    }
+  ],
+  "unplaceable": [],
+  "unloaded": [
+    {
+      "modelPath": "old-model/unused",
+      "podId": "sardeenz-2",
+      "reason": "Not in preset"
+    }
+  ]
+}
+```
+
+**Example (curl):**
+
+```bash
+# Dry run — preview changes
+curl -X POST http://localhost:3000/api/cluster/presets/config-uuid/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun": true}'
+
+# Execute — apply the preset
+curl -X POST http://localhost:3000/api/cluster/presets/config-uuid/apply \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun": false}'
+```
+
+### Benchmark Export/Import
+
+**Export Endpoint:** `GET /api/cluster/benchmarks/export`
+
+Exports all benchmark runs with full details for backup or migration.
+
+**Response (200 OK):**
+
+```json
+{
+  "runs": [...],
+  "exportedAt": "2025-12-01T10:00:00Z"
+}
+```
+
+**Import Endpoint:** `POST /api/cluster/benchmarks/import`
+
+Imports benchmark runs from a backup file. Skips runs that already exist.
+
+**Request Body:**
+
+```json
+{
+  "runs": [...]
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "imported": 5,
+  "skipped": 2
+}
+```
+
+**Example (curl):**
+
+```bash
+# Export benchmarks
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/benchmarks/export > benchmarks-backup.json
+
+# Import benchmarks
+curl -X POST http://localhost:3000/api/cluster/benchmarks/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @benchmarks-backup.json
+```
+
+### Memory Profile Reconciliation
+
+**Reconcile Endpoint:** `POST /api/cluster/memory-profiles/reconcile`
+
+Collects memory profiles from all pods, deduplicates them (keeping the newest), and distributes the unified set back to all pods.
+
+**Response (200 OK):**
+
+```json
+{
+  "totalProfiles": 15,
+  "newDistributed": 3,
+  "duplicatesResolved": 2
+}
+```
+
+**Export Endpoint:** `GET /api/cluster/memory-profiles/export`
+
+**Import Endpoint:** `POST /api/cluster/memory-profiles/import`
+
+These work the same as the benchmark export/import endpoints but for memory profiles.
+
+**Example (curl):**
+
+```bash
+# Reconcile profiles across all pods
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/memory-profiles/reconcile
+
+# Export profiles
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/cluster/memory-profiles/export > profiles-backup.json
+
+# Import profiles
+curl -X POST http://localhost:3000/api/cluster/memory-profiles/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @profiles-backup.json
+```
+
+## Internal API
+
+The Internal API is used for inter-pod communication within the cluster. All internal endpoints require HMAC-SHA256 authentication and are **not exposed to external clients**.
+
+> **Warning:** These endpoints are documented for operational understanding only. Do not call them directly — they are called automatically by the cluster coordination layer.
+
+### Authentication
+
+All `/internal/*` endpoints are protected by the cluster HMAC auth plugin. Requests must include:
+
+- `X-Cluster-Signature`: HMAC-SHA256 signature
+- `X-Cluster-Timestamp`: Unix timestamp in milliseconds
+
+Requests with timestamps older than 30 seconds are rejected (replay protection).
+
+### Rate Limiting
+
+Internal endpoints are rate-limited to 100 requests per second per source IP.
+
+### Endpoint Summary
+
+| Endpoint                            | Method | Description                                    |
+| ----------------------------------- | ------ | ---------------------------------------------- |
+| `/internal/ping`                    | GET    | Basic liveness check                           |
+| `/internal/heartbeat`               | POST   | Receive heartbeat from a peer (every 5s)       |
+| `/internal/state`                   | GET    | Full pod state for sync after reconnection     |
+| `/internal/cluster/event`           | POST   | Receive immediate cluster events               |
+| `/internal/models/load`             | POST   | Receive remote model load command              |
+| `/internal/models/:id/unload`       | POST   | Receive remote model unload command            |
+| `/internal/models/:id/events`       | GET    | SSE relay for model load progress              |
+| `/internal/models/:id/sleep`        | POST   | Receive remote sleep command                   |
+| `/internal/models/:id/wake`         | POST   | Receive remote wake command                    |
+| `/internal/models/:id/logs`         | GET    | Return process logs for a model instance       |
+| `/internal/models`                  | GET    | Full model instance DTO list                   |
+| `/internal/gpu/available`           | GET    | GPU availability for cluster proxying          |
+| `/internal/gpu/info`                | GET    | Full nvidia-smi GPU info                       |
+| `/internal/memory/multi-gpu`        | GET    | Multi-GPU memory usage                         |
+| `/internal/memory-profiles`         | GET    | Return all local memory profiles               |
+| `/internal/memory-profiles`         | POST   | Receive profiles from peers for reconciliation |
+| `/internal/presets/sync`            | POST   | Receive presets from leader                    |
+| `/internal/moves/:moveId/events`    | GET    | SSE stream for move operation progress         |
+
+### Cluster Events
+
+The `/internal/cluster/event` endpoint handles immediate cluster events:
+
+| Event Type       | Description                                   |
+| ---------------- | --------------------------------------------- |
+| `model-loaded`   | A model finished loading on a pod             |
+| `model-unloaded` | A model was unloaded from a pod               |
+| `model-moved`    | A model was moved between pods or GPUs        |
+| `leader-elected` | A new leader was elected (includes term)       |
+| `pod-joined`     | A new pod joined the cluster                  |
+| `pod-left`       | A pod left the cluster                        |
+
+These events trigger routing table rebuilds and peer state updates.
+
 ---
 
 **See Also:**
 
 - [Architecture](./architecture.md) - System architecture details
 - [Deployment Guide](./deployment.md) - Container and OpenShift deployment
-- [OpenAPI Specification](../specs/001-multi-model-platform/contracts/) - Full API schema (when available)
+- [OpenAPI Specification](https://github.com/rh-aiservices-bu/sardeenz/tree/main/specs/001-multi-model-platform/contracts/) - Full API schema (when available)
+- [Cluster Admin API Spec](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/cluster-admin-api.yaml) - OpenAPI spec for cluster endpoints
+- [Internal API Spec](https://github.com/rh-aiservices-bu/sardeenz/blob/main/specs/004-school-orchestration/contracts/internal-api.yaml) - OpenAPI spec for inter-pod endpoints

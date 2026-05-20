@@ -35,7 +35,6 @@ This directory contains comprehensive testing guides for PatternFly 6 components
 
 - **[PatternFly Guidelines](../guidelines/README.md)** - Development principles
 - **[Common Issues](../troubleshooting/common-issues.md)** - Troubleshooting guide
-- **[Accessibility Testing](../../accessibility/testing-guide.md)** - Accessibility testing procedures
 
 ## External Resources
 

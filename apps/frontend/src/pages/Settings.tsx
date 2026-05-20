@@ -203,7 +203,7 @@ function Settings() {
 
   return (
     <>
-      <PageSection>
+      <PageSection hasShadowBottom>
         <Flex
           justifyContent={{ default: 'justifyContentSpaceBetween' }}
           alignItems={{ default: 'alignItemsCenter' }}

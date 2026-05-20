@@ -1,5 +1,5 @@
 # Project-specific
-.claude
+.claude/*local*
 .specify/scripts
 .specify/templates
 
@@ -59,6 +59,7 @@ logs/
 tmp/
 temp/
 .cache/
+site/
 
 # OS
 .DS_Store

@@ -63,3 +63,12 @@ data:
   # Enable verbose streaming debug logs (SSE request/response/chunks)
   # Set to 'true' to debug SSE streaming issues
   DEBUG_STREAMING: "false"
+
+  # =============================================================================
+  # Cluster Configuration
+  # =============================================================================
+
+  # Expected number of pods in the cluster.
+  # Set to 1 for single-pod mode (default), or N for multi-pod cluster.
+  # Must match the StatefulSet replicas count.
+  CLUSTER_EXPECTED_PODS: "1"

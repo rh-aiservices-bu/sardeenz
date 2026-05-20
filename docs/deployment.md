@@ -8,6 +8,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 - [Container Build](#container-build)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
+- [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment)
 - [Authentication and RBAC](#authentication-and-rbac)
 - [Configuration](#configuration)
 - [Health Checks](#health-checks)
@@ -67,7 +68,7 @@ podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.1.0-base-ubuntu22.04 
 
 The unified container image includes:
 
-- **Base:** `quay.io/vllm/vllm-cuda:0.14.1_rhai0` (CUDA 12.x + Python 3.12 + vLLM)
+- **Base:** `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` (CUDA 12.x + Python 3.12 + vLLM)
 - **Node.js 22.x** (added layer)
 - **Backend** (Fastify TypeScript app)
 - **Frontend** (React + PatternFly built static assets)
@@ -90,7 +91,7 @@ podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
 
 ```bash
 podman build \
-  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.14.1_rhai0 \
+  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4 \
   -f docker/Containerfile \
   -t sardeenz:custom .
 ```
@@ -121,7 +122,7 @@ COPY packages packages
 RUN npm run build -w apps/backend
 
 # Stage 3: Final image
-FROM quay.io/vllm/vllm-cuda:0.14.1_rhai0
+FROM quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4
 
 # Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -225,7 +226,7 @@ podman run -d \
 1. **GPU-enabled OpenShift cluster** with NVIDIA GPU Operator installed
 2. **Namespace** with GPU quota allocated
 3. **Image registry access** (e.g., Quay.io)
-4. **Persistent storage** - App Data PVC required for SQLite database; Model Cache PVC optional (only if downloading from HuggingFace)
+4. **Persistent storage** - PostgreSQL for database; Model Cache PVC optional (only if downloading from HuggingFace)
 
 ### Deploy with GPU
 
@@ -396,12 +397,12 @@ spec:
 
 **5. Create PersistentVolumeClaims:**
 
-The deployment uses two PVCs. Only the App Data PVC is required:
+The deployment uses a PostgreSQL database for persistence (benchmarks, memory profiles, model configurations) and an optional PVC for model caching:
 
-- **App Data PVC** (`sardeenz-app-data`): **Required.** Stores SQLite database and other persistent app data
-- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](../deployment/README.md#storage-configuration) for alternatives.
+- **PostgreSQL** (`sardeenz-postgresql`): **Required.** Small PostgreSQL pod deployed alongside the application. See `deployment/postgresql.yaml`.
+- **Model Cache PVC** (`sardeenz-model-cache`): **Optional.** Stores downloaded HuggingFace models (ReadWriteMany for multi-pod access). Only needed if downloading models at runtime.
 
-**Model Cache PVC (`pvc-model-cache.yaml`):**
+**Model Cache PVC (`pvc.yaml`):**
 
 Models are downloaded from HuggingFace Hub on first load and cached to the PVC. The `HF_HOME` environment variable controls where models are stored.
 
@@ -409,38 +410,17 @@ Models are downloaded from HuggingFace Hub on first load and cached to the PVC. 
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: model-cache-pvc
+  name: sardeenz-model-cache
   namespace: sardeenz
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 100Gi
-  # storageClassName: ocs-storagecluster-cephfs
 ```
 
-> **Note:** Use `ReadWriteOnce` for model caching (models are downloaded on demand). Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
-
-**App Data PVC (`pvc-app-data.yaml`):**
-
-Stores SQLite database (benchmarks, memory profiles) and other persistent application data. The `SARDEENZ_DB_PATH` environment variable controls where the database is stored.
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sardeenz-app-data
-  namespace: sardeenz
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi # Small - just for SQLite database
-```
-
-> **Note:** 1Gi is sufficient for the SQLite database which stores benchmark results and memory profiles.
+> **Note:** Use `ReadWriteMany` so all pods in a multi-pod deployment can share the model cache. Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
 
 **6. Create Secrets:**
 
@@ -461,11 +441,11 @@ oc create secret generic oauth-config \
 **7. Deploy:**
 
 ```bash
-oc apply -f pvc-app-data.yaml              # Required: application data
-oc apply -f pvc-model-cache.yaml           # Optional: only if downloading from HuggingFace
-oc apply -f deployment.yaml
-oc apply -f service.yaml
-oc apply -f route.yaml
+oc apply -f deployment/postgresql.yaml       # Required: PostgreSQL database
+oc apply -f deployment/pvc.yaml              # Optional: model cache
+oc apply -f deployment/statefulset.yaml
+oc apply -f deployment/services.yaml
+oc apply -f deployment/route.yaml
 
 # Check deployment status
 oc get pods -n sardeenz -w
@@ -476,17 +456,177 @@ oc logs -f deployment/sardeenz -n sardeenz
 
 ### Scaling Considerations
 
-**Single Pod Deployment (Current Design):**
+**Single Pod Deployment:**
 
-- One pod manages all model instances
-- Stateless design (no shared state between pods)
-- Scale by deploying multiple independent instances
+- One pod manages all model instances on its local GPU(s)
+- Self-contained — no shared state between pods
+- Suitable for single-GPU or small multi-GPU nodes
 
-**Future: Multi-Pod Deployment:**
+**Multi-Pod Cluster Deployment:**
 
-- Shared model registry (e.g., Redis, PostgreSQL)
-- Sticky sessions for proxy routing
-- Distributed model scheduling
+For horizontal scaling across multiple GPU nodes, see [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment) below.
+
+## Multi-Pod Cluster Deployment
+
+Sardeenz supports multi-pod cluster deployments where multiple pods coordinate to manage models across GPU nodes. The cluster uses a StatefulSet with leader election, heartbeat-based health monitoring, HMAC-authenticated inter-pod communication, and a unified routing table for cross-pod inference.
+
+### Architecture Overview
+
+- **StatefulSet** with headless service for stable DNS names (`sardeenz-0.sardeenz-headless`, `sardeenz-1.sardeenz-headless`, etc.)
+- **Leader election** via Kubernetes Lease objects — the leader coordinates model placement and preset application
+- **Heartbeat protocol** (every 5s) carries pod state (models, GPUs, health) and synchronizes the routing table
+- **HMAC-SHA256 authentication** on all inter-pod requests via `CLUSTER_SECRET`
+- **Pod scheduler** with placement strategies for intelligent model-to-pod assignment
+
+### Prerequisites
+
+1. **GPU-enabled Kubernetes/OpenShift cluster** with NVIDIA GPU Operator
+2. **Multiple GPU nodes** (one GPU per pod minimum)
+3. **Namespace** with GPU quota for all pods
+4. **Shared cluster secret** for inter-pod authentication
+
+### Deploy the Cluster
+
+The Kubernetes manifests are in `deployment/`. Apply them in order:
+
+**1. Create the namespace and RBAC:**
+
+```bash
+oc new-project sardeenz
+
+# ServiceAccount, Role (pod discovery + leader election), and RoleBinding
+oc apply -f deployment/rbac.yaml
+```
+
+The RBAC configuration grants:
+- Pod discovery: `get`, `list`, `watch` on pods
+- Leader election: `get`, `create`, `update`, `list`, `watch` on leases
+
+**2. Create the cluster secret:**
+
+```bash
+# Generate a secure secret (minimum 16 characters)
+CLUSTER_SECRET=$(openssl rand -hex 32)
+
+# Create the secret
+oc create secret generic sardeenz-cluster-secret \
+  --from-literal=CLUSTER_SECRET=$CLUSTER_SECRET \
+  -n sardeenz
+```
+
+Or apply the template and edit it:
+
+```bash
+oc apply -f deployment/secret.yaml
+# Edit to replace the placeholder value
+oc edit secret sardeenz-cluster-secret -n sardeenz
+```
+
+**3. Create the ConfigMap (optional overrides):**
+
+```bash
+oc apply -f deployment/configmap.yaml
+```
+
+Default values in the ConfigMap:
+
+| Key               | Default  | Description              |
+| ----------------- | -------- | ------------------------ |
+| `AUTH_MODE`        | `simple` | Authentication mode      |
+| `LOG_LEVEL`        | `info`   | Log verbosity            |
+| `ENABLE_KVCACHED`  | `true`   | Enable GPU memory sharing |
+
+**4. Create the Services:**
+
+```bash
+oc apply -f deployment/services.yaml
+```
+
+This creates two services:
+
+| Service              | Type      | Purpose                                          |
+| -------------------- | --------- | ------------------------------------------------ |
+| `sardeenz-headless`  | Headless  | Pod discovery and direct pod-to-pod addressing   |
+| `sardeenz`           | ClusterIP | External access (load-balanced across all pods)  |
+
+**5. Deploy the StatefulSet:**
+
+```bash
+oc apply -f deployment/statefulset.yaml
+```
+
+Key StatefulSet settings:
+
+| Setting                       | Value      | Description                                     |
+| ----------------------------- | ---------- | ----------------------------------------------- |
+| `replicas`                    | 3          | Number of pods (up to 8 supported)              |
+| `podManagementPolicy`         | `Parallel` | All pods start simultaneously                   |
+| `terminationGracePeriodSeconds` | 30       | Time for graceful model unloading               |
+| Pod anti-affinity             | Preferred  | Spreads pods across nodes for GPU distribution  |
+
+**6. Verify the cluster:**
+
+```bash
+# Watch pods come up
+oc get pods -l app=sardeenz -w
+
+# Check cluster status via the leader
+curl -H "Authorization: Bearer $TOKEN" \
+  http://sardeenz.apps.your-cluster.com/api/cluster
+
+# List all pods and their GPUs
+curl -H "Authorization: Bearer $TOKEN" \
+  http://sardeenz.apps.your-cluster.com/api/cluster/pods
+```
+
+### Cluster Environment Variables
+
+| Variable                | Required | Default | Description                                                   |
+| ----------------------- | -------- | ------- | ------------------------------------------------------------- |
+| `CLUSTER_SECRET`        | Yes      | -       | Shared HMAC secret for inter-pod auth (min 16 chars)          |
+| `CLUSTER_EXPECTED_PODS` | No       | `0`     | Expected cluster size (0 = auto-detect from StatefulSet)      |
+| `CLUSTER_PEERS`         | No       | -       | Comma-separated peer addresses for local dev (e.g., `localhost:3000,localhost:3001`) |
+
+When running in Kubernetes, pods auto-discover each other via the headless service DNS. The `CLUSTER_PEERS` variable is only needed for local development without Kubernetes.
+
+### Scaling Guidance
+
+| Replicas | Use Case                                        | GPU Requirement     |
+| -------- | ----------------------------------------------- | ------------------- |
+| 1        | Single-node, no cluster overhead                | 1+ GPU              |
+| 2        | High availability with failover                 | 1 GPU per node      |
+| 3        | Recommended — HA with distributed model hosting | 1 GPU per node      |
+| 4-8      | Large-scale multi-model serving                 | 1+ GPU per node     |
+
+**Scale the cluster:**
+
+```bash
+# Scale to 5 pods
+oc scale statefulset sardeenz --replicas=5
+
+# Optionally update expected size
+oc set env statefulset/sardeenz CLUSTER_EXPECTED_PODS=5
+```
+
+New pods automatically join the cluster, elect a leader if needed, and appear in the routing table within seconds.
+
+### Local Development (Multi-Pod)
+
+For local development without Kubernetes, use `CLUSTER_PEERS` to simulate a cluster:
+
+```bash
+# Terminal 1: Pod 0 (leader)
+PORT=3000 CLUSTER_PEERS=localhost:3000,localhost:3001 \
+  CLUSTER_SECRET=dev-secret-at-least-16-chars \
+  npm run dev -w apps/backend
+
+# Terminal 2: Pod 1 (follower)
+PORT=3001 CLUSTER_PEERS=localhost:3000,localhost:3001 \
+  CLUSTER_SECRET=dev-secret-at-least-16-chars \
+  npm run dev -w apps/backend
+```
+
+> **Note:** vLLM base ports are automatically offset per pod to avoid collisions (pod 0 uses 12346+, pod 1 uses 12446+, etc.).
 
 ## Authentication and RBAC
 
@@ -614,7 +754,7 @@ For API permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-rol
 | `PORT`                 | No                  | `3000`             | Unified API port (Controller + Proxy + Frontend)                                                                                 |
 | `HF_HOME`              | Yes                 | -                  | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`)                                                   |
 | `HF_TOKEN`             | No                  | -                  | HuggingFace token for accessing gated models (e.g., Llama, Mistral)                                                              |
-| `SARDEENZ_DB_PATH`     | No                  | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`)                                    |
+| `DATABASE_URL`         | Yes                 | -                  | PostgreSQL connection string (e.g., `postgresql://sardeenz:password@sardeenz-postgresql:5432/sardeenz`)                           |
 | `ENABLE_KVCACHED`      | Yes                 | `true`             | Enable kvcached memory sharing                                                                                                   |
 | `KVCACHED_AUTOPATCH`   | No                  | `1`                | Auto-patch vLLM for kvcached                                                                                                     |
 | `LOG_LEVEL`            | No                  | `info`             | Logging level (`debug`, `info`, `warn`, `error`)                                                                                 |
@@ -632,6 +772,13 @@ For API permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-rol
 | `PROMETHEUS_ENABLED`   | No                  | `true`             | Enable Prometheus metrics                                                                                                        |
 | `MAX_MODELS`           | No                  | `10`               | Maximum concurrent models                                                                                                        |
 | `GPU_MEMORY_RESERVE`   | No                  | `2.0`              | GPU memory reserved for CUDA (GB)                                                                                                |
+| `CLUSTER_SECRET`       | If cluster mode     | -                  | Shared HMAC-SHA256 secret for inter-pod auth (min 16 chars). Generate with `openssl rand -hex 32`                                |
+| `CLUSTER_EXPECTED_PODS`| No                  | `0`                | Expected cluster size (0 = auto-detect from StatefulSet)                                                                         |
+| `CLUSTER_PEERS`        | No                  | -                  | Comma-separated peer addresses for local dev cluster (e.g., `localhost:3000,localhost:3001`)                                      |
+| `INFERENCE_BACKEND`    | No                  | `vllm`             | Inference backend: `vllm` (production) or `inference-sim` (GPU-free development)                                                 |
+| `SIM_GPU_MEMORY_GB`    | No                  | `24`               | Simulated GPU memory in GB (inference-sim only)                                                                                  |
+| `SIM_MODEL_MEMORY_GB`  | No                  | `4`                | Default simulated model memory in GB (inference-sim only)                                                                        |
+| `SIM_STARTUP_DURATION` | No                  | `3s`               | Simulated model loading time (inference-sim only)                                                                                |
 
 ### Configuration File (Future)
 
@@ -870,4 +1017,4 @@ oc logs -f deployment/sardeenz | jq .
 - [Architecture](./architecture.md) - System architecture and design
 - [API Guide](./api-guide.md) - API usage examples
 - [RBAC Setup](./rbac-setup.md) - Kubernetes-native RBAC configuration for OAuth
-- [kvcached Documentation](./kvcached/) - GPU memory sharing setup
+- [kvcached Documentation](./kvcached/README.md) - GPU memory sharing setup

@@ -9,6 +9,7 @@ import pLimit from 'p-limit'
 import { EventBus } from './event-bus.js'
 import { getBenchmarkStore } from '../stores/benchmark-store.js'
 import { modelStore } from '../stores/model-store.js'
+import { peerStore } from '../stores/peer-store.js'
 import { generateChatMessages } from '../utils/prompt-generator.js'
 import { config } from '../config.js'
 import type {
@@ -23,6 +24,30 @@ import type {
 
 // Running benchmarks map for cancellation support
 const runningBenchmarks = new Map<string, AbortController>()
+
+/**
+ * Resolve the base URL for a benchmark scenario.
+ * - Local model: use proxy port (routingMode=proxy) or direct port (routingMode=direct).
+ * - Remote model: always route through the local proxy (only proxy mode is valid for remote).
+ * Returns null if the model cannot be found.
+ */
+function resolveBaseUrl(scenario: BenchmarkScenario): string | null {
+  const local = modelStore.get(scenario.instanceId)
+  if (local) {
+    return scenario.routingMode === 'proxy'
+      ? `http://localhost:${config.port}`
+      : `http://localhost:${local.port}`
+  }
+
+  // Remote model — should only reach here in proxy routing mode
+  for (const peer of peerStore.getHealthyPeers()) {
+    if (peer.models.some((m) => m.instanceId === scenario.instanceId)) {
+      return `http://localhost:${config.port}`
+    }
+  }
+
+  return null
+}
 
 interface RequestResult {
   sequence: number
@@ -319,9 +344,9 @@ async function executeWarmupPhase(
   abortController: AbortController,
   onComplete: () => void
 ): Promise<WarmupResult> {
-  const instance = modelStore.get(scenario.instanceId)
+  const baseUrl = resolveBaseUrl(scenario)
 
-  if (!instance) {
+  if (!baseUrl) {
     return {
       scenarioId: scenario.id,
       success: false,
@@ -334,12 +359,6 @@ async function executeWarmupPhase(
     onComplete()
     return { scenarioId: scenario.id, success: true }
   }
-
-  // Determine base URL based on routing mode
-  const baseUrl =
-    scenario.routingMode === 'proxy'
-      ? `http://localhost:${config.port}`
-      : `http://localhost:${instance.port}`
 
   const limit = pLimit(scenario.concurrency)
   let inFlightRequests = 0
@@ -375,7 +394,7 @@ async function executeWarmupPhase(
 
         await executeStreamingRequest(
           baseUrl,
-          instance.modelName,
+          scenario.modelName,
           scenario.inputTokens,
           scenario.outputTokens,
           abortController.signal
@@ -423,26 +442,20 @@ async function executeMeasuredPhase(
   abortController: AbortController
 ): Promise<void> {
   const store = getBenchmarkStore()
-  const instance = modelStore.get(scenario.instanceId)
+  const baseUrl = resolveBaseUrl(scenario)
 
-  if (!instance) {
-    store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
+  if (!baseUrl) {
+    await store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
       errorMessage: `Model instance not found: ${scenario.instanceId}`,
     })
     return
   }
 
-  // Determine base URL based on routing mode
-  const baseUrl =
-    scenario.routingMode === 'proxy'
-      ? `http://localhost:${config.port}`
-      : `http://localhost:${instance.port}`
-
   const results: RequestResult[] = []
   const limit = pLimit(scenario.concurrency)
 
   // Update scenario status to running
-  store.updateScenarioStatus(scenario.id, 'running' as ScenarioStatus, {
+  await store.updateScenarioStatus(scenario.id, 'running' as ScenarioStatus, {
     startedAt: new Date().toISOString(),
   })
 
@@ -482,7 +495,7 @@ async function executeMeasuredPhase(
 
       const result = await executeStreamingRequest(
         baseUrl,
-        instance.modelName,
+        scenario.modelName,
         scenario.inputTokens,
         scenario.outputTokens,
         abortController.signal
@@ -494,7 +507,7 @@ async function executeMeasuredPhase(
       results.push(result)
 
       // Store result in database
-      store.addResult({
+      await store.addResult({
         scenarioId: scenario.id,
         requestSequence: result.sequence,
         isWarmup: false,
@@ -543,7 +556,7 @@ async function executeMeasuredPhase(
 
   // Check if aborted
   if (abortController.signal.aborted) {
-    store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
+    await store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
       completedAt: new Date().toISOString(),
       errorMessage: 'Benchmark cancelled',
     })
@@ -552,10 +565,10 @@ async function executeMeasuredPhase(
 
   // Calculate metrics
   const metrics = calculateMetrics(scenario.id, results, scenario.slaThresholdMs)
-  store.saveMetrics(metrics)
+  await store.saveMetrics(metrics)
 
   // Update scenario status to completed
-  store.updateScenarioStatus(scenario.id, 'completed' as ScenarioStatus, {
+  await store.updateScenarioStatus(scenario.id, 'completed' as ScenarioStatus, {
     completedAt: new Date().toISOString(),
   })
 }
@@ -570,7 +583,7 @@ async function executeMeasuredPhase(
  */
 export async function startBenchmark(runId: string): Promise<void> {
   const store = getBenchmarkStore()
-  const run = store.getRunWithDetails(runId)
+  const run = await store.getRunWithDetails(runId)
 
   if (!run) {
     throw new Error(`Benchmark run not found: ${runId}`)
@@ -588,7 +601,7 @@ export async function startBenchmark(runId: string): Promise<void> {
 
   try {
     // Update run status to running
-    store.updateRunStatus(runId, 'running' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'running' as BenchmarkStatus, {
       startedAt: new Date().toISOString(),
     })
 
@@ -696,7 +709,7 @@ export async function startBenchmark(runId: string): Promise<void> {
     })
 
     // Calculate final stats
-    const updatedRun = store.getRunWithDetails(runId)
+    const updatedRun = await store.getRunWithDetails(runId)
     if (updatedRun) {
       const totalRequests = updatedRun.scenarios.reduce(
         (sum, s) => sum + (s.metrics?.totalRequests ?? 0),
@@ -713,7 +726,7 @@ export async function startBenchmark(runId: string): Promise<void> {
       const durationSeconds = (performance.now() - startTime) / 1000
 
       // Update run status to completed
-      store.updateRunStatus(runId, 'completed' as BenchmarkStatus, {
+      await store.updateRunStatus(runId, 'completed' as BenchmarkStatus, {
         completedAt: new Date().toISOString(),
         totalRequests,
         successfulRequests,
@@ -733,7 +746,7 @@ export async function startBenchmark(runId: string): Promise<void> {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const durationSeconds = (performance.now() - startTime) / 1000
 
-    store.updateRunStatus(runId, 'failed' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'failed' as BenchmarkStatus, {
       completedAt: new Date().toISOString(),
       errorMessage,
       durationSeconds,
@@ -752,14 +765,14 @@ export async function startBenchmark(runId: string): Promise<void> {
 /**
  * Cancel a running benchmark
  */
-export function cancelBenchmark(runId: string): boolean {
+export async function cancelBenchmark(runId: string): Promise<boolean> {
   const controller = runningBenchmarks.get(runId)
   if (controller) {
     controller.abort()
     runningBenchmarks.delete(runId)
 
     const store = getBenchmarkStore()
-    store.updateRunStatus(runId, 'cancelled' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'cancelled' as BenchmarkStatus, {
       completedAt: new Date().toISOString(),
       errorMessage: 'Cancelled by user',
     })

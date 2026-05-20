@@ -2,10 +2,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import { config } from './config.js'
+import { config, isInferenceSimMode } from './config.js'
 import { createLogger } from '@sardeenz/utils'
 import { OrphanDetector } from './services/orphan-detector.js'
+import { getClusterManager } from './services/cluster-manager.js'
+import type { ClusterManager } from './services/cluster-manager.js'
 import { detectGpuInfo, initializeNvml, shutdownNvml } from './utils/gpu-info.js'
+import { simGpuTracker } from './utils/sim-gpu-tracker.js'
 import { initializeDatabase, closeDb } from './db/index.js'
 
 // Create logger
@@ -50,6 +53,13 @@ await fastify.register(import('@fastify/helmet'), {
 await fastify.register(import('@fastify/rate-limit'), {
   global: false, // Don't apply globally, configure per-route
 })
+
+// Declare ClusterManager on Fastify instance
+declare module 'fastify' {
+  interface FastifyInstance {
+    clusterManager: ClusterManager
+  }
+}
 
 // Register custom request logging plugin
 await fastify.register(import('./plugins/request-logging.js'))
@@ -133,6 +143,11 @@ fastify.addHook('onRequest', async (request, reply) => {
     return
   }
 
+  // Skip internal routes - they use HMAC cluster auth (handled by cluster-auth plugin)
+  if (request.url.startsWith('/internal/')) {
+    return
+  }
+
   // Skip authentication for authorization error redirects
   // This allows authenticated-but-unauthorized users to see the AccessDenied page
   if (request.url.includes('auth_error=')) {
@@ -147,6 +162,9 @@ fastify.addHook('onRequest', async (request, reply) => {
   // Authenticate admin routes with JWT
   await fastify.authenticate(request, reply)
 })
+
+// Register leader redirect plugin (follower → leader for admin/dashboard requests)
+await fastify.register(import('./plugins/leader-redirect.js'))
 
 // Register global error handler (must be before routes)
 await fastify.register(import('./plugins/error-handler.js'))
@@ -174,6 +192,8 @@ await fastify.register(import('./routes/benchmarks.js'))
 await fastify.register(import('./routes/memory-profiles.js'))
 await fastify.register(import('./routes/local-models.js'))
 await fastify.register(import('./routes/model-configurations.js'))
+await fastify.register(import('./routes/internal.js'))
+await fastify.register(import('./routes/cluster/index.js'))
 
 // Static file serving for frontend (production only)
 if (config.nodeEnv === 'production') {
@@ -237,11 +257,34 @@ async function start() {
   try {
     // Initialize database and run migrations
     logger.info('Initializing database...')
-    initializeDatabase()
+    await initializeDatabase()
     logger.info('Database initialized')
 
-    // Initialize NVML library for GPU operations
-    initializeNvml()
+    // Initialize GPU subsystem
+    if (isInferenceSimMode()) {
+      logger.info('Starting in inference-sim mode')
+      const gpuCount = Math.max(config.virtualGpuCount, 1)
+      simGpuTracker.initialize(gpuCount, config.simGpuMemoryGB)
+      logger.info(
+        { gpuCount, memoryPerGpuGB: config.simGpuMemoryGB },
+        `Initialized ${gpuCount} simulated GPU(s)`
+      )
+
+      // Validate inference-sim binary exists
+      try {
+        const { execSync } = await import('child_process')
+        execSync(`which ${config.inferenceSimBinary}`, { stdio: 'ignore' })
+      } catch {
+        logger.warn(
+          { binary: config.inferenceSimBinary },
+          `inference-sim binary '${config.inferenceSimBinary}' not found in PATH. ` +
+            'Install from https://github.com/llm-d/llm-d-inference-sim or set INFERENCE_SIM_BINARY'
+        )
+      }
+    } else {
+      logger.info('Starting with vLLM backend')
+      initializeNvml()
+    }
 
     // Detect GPU info at startup (cache result for later use)
     const gpuInfo = await detectGpuInfo()
@@ -251,8 +294,12 @@ async function start() {
         `Detected ${gpuInfo.length} GPU(s)`
       )
     } else {
-      logger.warn('No GPU detected via NVML, using default GPU memory values')
+      logger.warn('No GPU detected, using default GPU memory values')
     }
+
+    // Initialize ClusterManager (peer discovery, leader election, heartbeat)
+    const clusterManager = getClusterManager(logger)
+    fastify.decorate('clusterManager', clusterManager)
 
     await fastify.listen({
       port: config.port,
@@ -260,10 +307,14 @@ async function start() {
     })
     logger.info(`Server listening on http://${config.host}:${config.port}`)
     logger.info(`Documentation available at http://${config.host}:${config.port}/docs`)
+    logger.info({ vllmBasePort: config.vllmBasePort, portRange: `${config.vllmBasePort}–${config.vllmBasePort + 99}` }, 'vLLM port range')
 
     // FR-027: Perform startup orphan detection
     const orphanDetector = new OrphanDetector(logger)
     await orphanDetector.performStartupScan()
+
+    // Start cluster services (discovery, election, heartbeat) after server is listening
+    await clusterManager.start()
   } catch (err) {
     logger.error(err)
     process.exit(1)
@@ -273,9 +324,15 @@ async function start() {
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down server...')
+  // Stop cluster services before closing server
+  if (fastify.clusterManager) {
+    fastify.clusterManager.stop()
+  }
   await fastify.close()
-  closeDb()
-  shutdownNvml()
+  await closeDb()
+  if (!isInferenceSimMode()) {
+    shutdownNvml()
+  }
   logger.info('Server shut down')
   process.exit(0)
 }

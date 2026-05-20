@@ -137,5 +137,5 @@ You're ready for PatternFly 6 development when:
 
 1. **Learn PatternFly 6 Patterns**: Review [Component Architecture](../guidelines/component-architecture.md)
 2. **Understand Design Tokens**: See [Styling Standards](../guidelines/styling-standards.md)
-3. **Check Components**: Explore [Component Documentation](../components/)
+3. **Check Components**: Explore [Component Documentation](../components/README.md)
 4. **Migration Guide**: If upgrading from v5, see [Migration Codemods](../guidelines/migration-codemods.md)

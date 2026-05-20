@@ -11,7 +11,6 @@ The frontend uses Vite as its build system, providing fast development builds an
 - [**Setup Guide**](./README.md) - Initial project setup
 - [**Quick Start**](./quick-start.md) - Project initialization steps
 - [**Styling Standards**](../guidelines/styling-standards.md) - CSS and styling configuration
-- [**Performance Optimization**](../troubleshooting/performance.md) - Development performance tips
 
 ## Vite Development Server
 

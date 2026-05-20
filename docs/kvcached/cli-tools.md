@@ -5,8 +5,8 @@ This document provides a complete reference for kvcached's command-line tools fo
 ## Table of Contents
 
 - [Overview](#overview)
-- [kvctl - Memory Control CLI](#kvctl---memory-control-cli)
-- [kvtop - Real-Time Monitoring](#kvtop---real-time-monitoring)
+- [kvctl - Memory Control CLI](#kvctl-memory-control-cli)
+- [kvtop - Real-Time Monitoring](#kvtop-real-time-monitoring)
 - [Usage Workflows](#usage-workflows)
 - [Integration with Backend](#integration-with-backend)
 
@@ -743,7 +743,7 @@ manager.cleanup_model("llama-3.2-1b")
 - Verify `ENABLE_KVCACHED=true` environment variable is set
 - Verify `KVCACHED_AUTOPATCH=1` is set
 - Check model logs for kvcached initialization errors
-- Ensure vLLM v0.14.1 is being used
+- Ensure vLLM v0.19.1 is being used
 
 ### Memory Limit Not Enforced
 

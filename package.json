@@ -1,6 +1,6 @@
 {
   "name": "sardeenz",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Multi-model vLLM management platform with dynamic loading and unified inference proxy",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "dev:backend": "npm run dev -w apps/backend",
     "dev:frontend": "npm run dev -w apps/frontend",
     "dev": "concurrently -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:sim": "DOTENV_CONFIG_PATH=.env.sim concurrently -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test:integration --workspaces --if-present",

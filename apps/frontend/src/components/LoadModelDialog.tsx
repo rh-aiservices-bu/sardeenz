@@ -34,6 +34,7 @@ import type {
 } from '@sardeenz/types'
 import { useInstanceEvents } from '../hooks/useInstanceEvents'
 import { LogViewer } from './LogViewer'
+import { PodSelector } from './PodSelector'
 import { apiClient, type MemoryCheckResponse } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -49,6 +50,8 @@ interface LoadModelDialogProps {
   onLoad: (request: LoadModelRequest) => Promise<{ instance_id: string }>
   /** Called after successful model load */
   onSuccess?: () => void
+  /** Whether the cluster is in multi-pod mode */
+  isClusterMode?: boolean
 }
 
 /**
@@ -61,7 +64,7 @@ interface LoadModelDialogProps {
  * - success: Model loaded successfully, auto-closes after 2s
  * - failed: Model failed to load, shows error and logs
  */
-export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadModelDialogProps) {
+export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterMode = false }: LoadModelDialogProps) {
   // Role-based access control
   const { canWrite } = useAuth()
 
@@ -101,6 +104,9 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
   // Sleep mode state (enabled by default)
   const [enableSleepMode, setEnableSleepMode] = useState(true)
 
+  // Cluster pod selection state
+  const [selectedPodId, setSelectedPodId] = useState<string | undefined>(undefined)
+
   // GPU info state (needed for memory check)
   const [gpuName, setGpuName] = useState<string | null>(null)
 
@@ -114,6 +120,8 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
     instanceId: phase === 'loading' ? instanceId : null,
     eventTypes: ['log', 'status', 'progress'],
     replayLogs: true,
+    useClusterEndpoint: isClusterMode && !!selectedPodId,
+    podId: selectedPodId,
     onStatusChange: (status) => {
       if (status.data.currentStatus === ('running' as ModelStatus)) {
         setPhase('success')
@@ -129,26 +137,30 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
     },
   })
 
-  // Fetch GPU info and availability when dialog opens
+  // Fetch GPU info and availability when dialog opens or target pod changes
   useEffect(() => {
-    if (isOpen) {
-      // Fetch GPU availability for selection UI
-      if (!gpuAvailability) {
-        setIsLoadingGpus(true)
-        apiClient
-          .getAvailableGpus()
-          .then((availability) => {
-            setGpuAvailability(availability)
-            // Set GPU name for memory check from first GPU
-            if (availability.gpus.length > 0) {
-              setGpuName(availability.gpus[0].name)
-            }
-          })
-          .catch((err) => console.error('Failed to fetch GPU availability:', err))
-          .finally(() => setIsLoadingGpus(false))
-      }
-    }
-  }, [isOpen, gpuAvailability])
+    if (!isOpen) return
+
+    setIsLoadingGpus(true)
+    setGpuAvailability(null)
+    setGpuSelectionMode('auto')
+    setSelectedGpuIds([])
+    setTensorParallelSize(1)
+
+    const fetchGpus = isClusterMode && selectedPodId
+      ? apiClient.getClusterPodGpuAvailability(selectedPodId)
+      : apiClient.getAvailableGpus()
+
+    fetchGpus
+      .then((availability) => {
+        setGpuAvailability(availability)
+        if (availability.gpus.length > 0) {
+          setGpuName(availability.gpus[0].name)
+        }
+      })
+      .catch((err) => console.error('Failed to fetch GPU availability:', err))
+      .finally(() => setIsLoadingGpus(false))
+  }, [isOpen, selectedPodId, isClusterMode])
 
   // Check local models availability when dialog opens
   useEffect(() => {
@@ -289,10 +301,28 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
         request.enable_sleep_mode = true
       }
 
-      const result = await onLoad(request)
+      let resultInstanceId: string
+
+      if (isClusterMode && selectedPodId) {
+        // Cluster mode: use cluster load API
+        const clusterResult = await apiClient.clusterLoadModel({
+          modelPath: request.model_path,
+          targetPodId: selectedPodId,
+          servedModelName: request.served_model_name,
+          maxTokens: request.max_tokens,
+          gpuIds: request.gpu_ids,
+          tensorParallelSize: request.tensor_parallel_size,
+          enableSleepMode: request.enable_sleep_mode,
+        })
+        resultInstanceId = clusterResult.instanceId
+      } else {
+        // Single-pod mode: use local load
+        const result = await onLoad(request)
+        resultInstanceId = result.instance_id
+      }
 
       // Start listening for events from this instance
-      setInstanceId(result.instance_id)
+      setInstanceId(resultInstanceId)
     } catch (err) {
       setPhase('failed')
       setErrorMessage(err instanceof Error ? err.message : 'Failed to start model load')
@@ -324,6 +354,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
     setCurrentSubpath('')
     setLocalModelsBasePath('')
     setEnableSleepMode(true)
+    setSelectedPodId(undefined)
     onClose()
   }, [onClose])
 
@@ -361,6 +392,24 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess }: LoadMode
         {phase === 'form' && (
           <>
             <Form>
+              {/* Pod Selection (cluster mode only) */}
+              {isClusterMode && (
+                <FormGroup label="Target Pod" fieldId="target-pod">
+                  <PodSelector
+                    selectedPodId={selectedPodId}
+                    onSelect={setSelectedPodId}
+                    isClusterMode={isClusterMode}
+                  />
+                  <FormHelperText>
+                    <HelperText>
+                      <HelperTextItem>
+                        Select the pod where this model should be loaded.
+                      </HelperTextItem>
+                    </HelperText>
+                  </FormHelperText>
+                </FormGroup>
+              )}
+
               {/* Model Source Type */}
               <FormGroup label="Model Source" fieldId="source-type">
                 <Flex gap={{ default: 'gapMd' }}>

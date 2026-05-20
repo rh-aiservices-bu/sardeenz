@@ -1,0 +1,522 @@
+openapi: 3.1.0
+info:
+  title: Sardeenz Cluster Admin API
+  description: |
+    Extensions to the existing Sardeenz admin API for cluster management.
+    These endpoints are served by the leader pod only. Follower pods redirect
+    dashboard/admin requests to the leader.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:3000
+
+paths:
+  /api/cluster:
+    get:
+      operationId: getClusterStatus
+      summary: Get cluster health and status
+      description: |
+        Returns the current cluster state: pods, leader, connectivity, and overall health.
+        Maps to FR-013.
+      tags: [cluster]
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStatus'
+
+  /api/cluster/pods:
+    get:
+      operationId: listClusterPods
+      summary: List all pods in the cluster
+      description: |
+        Returns detailed information about each pod including GPU details,
+        loaded models, and health status. Maps to FR-004.
+      tags: [cluster]
+      responses:
+        '200':
+          description: Pod list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pods:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClusterPod'
+
+  /api/cluster/pods/{podId}/models:
+    get:
+      operationId: listPodModels
+      summary: List models on a specific pod
+      tags: [cluster]
+      parameters:
+        - name: podId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Models on the pod
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClusterModelInstance'
+        '404':
+          description: Pod not found
+
+  /api/cluster/models/load:
+    post:
+      operationId: clusterLoadModel
+      summary: Load a model on a specific pod in the cluster
+      description: |
+        Leader-orchestrated model load on any pod. Returns instance ID for
+        SSE progress tracking. Maps to FR-005.
+      tags: [cluster]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterLoadModelRequest'
+      responses:
+        '200':
+          description: Model load initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterLoadModelResponse'
+        '400':
+          description: Invalid request or insufficient resources
+        '404':
+          description: Target pod not found
+
+  /api/cluster/models/{instanceId}/unload:
+    post:
+      operationId: clusterUnloadModel
+      summary: Unload a model from any pod in the cluster
+      tags: [cluster]
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model unload initiated
+        '404':
+          description: Instance not found
+
+  /api/cluster/models/{instanceId}/move:
+    post:
+      operationId: clusterMoveModel
+      summary: Move a model between pods or GPUs (cross-pod or intra-pod)
+      description: |
+        Extends existing model move to support cross-pod destinations.
+        Maps to FR-014, FR-015.
+      tags: [cluster]
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterMoveModelRequest'
+      responses:
+        '200':
+          description: Move initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  moveId:
+                    type: string
+        '400':
+          description: Invalid request (insufficient resources on target)
+        '404':
+          description: Source instance not found
+
+  /api/cluster/models/{instanceId}/events:
+    get:
+      operationId: clusterModelEvents
+      summary: Subscribe to model events (SSE), works for models on any pod
+      description: |
+        If the model is on the leader, serves events directly.
+        If on a follower, relays events from the follower's SSE stream.
+      tags: [cluster]
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: types
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Instance not found
+
+  /api/cluster/routing-table:
+    get:
+      operationId: getRoutingTable
+      summary: Get the cluster routing table
+      description: Returns the current model-to-pod routing mappings.
+      tags: [cluster]
+      responses:
+        '200':
+          description: Routing table
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingTable'
+
+  /api/cluster/presets/{presetId}/apply:
+    post:
+      operationId: applyPreset
+      summary: Apply a preset to the cluster with automatic scheduling
+      description: |
+        Reconciles the cluster to match the preset's desired state.
+        Unloads models not in the preset, schedules placement for missing models.
+        Maps to FR-020 through FR-025.
+      tags: [cluster, presets]
+      parameters:
+        - name: presetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dryRun:
+                  type: boolean
+                  default: false
+                  description: If true, return the placement plan without executing
+      responses:
+        '200':
+          description: Preset application result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresetApplicationResult'
+        '404':
+          description: Preset not found
+
+  /api/cluster/memory-profiles/reconcile:
+    post:
+      operationId: reconcileMemoryProfiles
+      summary: Reconcile memory profiles across all pods
+      description: |
+        Collects profiles from all pods, deduplicates, and distributes
+        the unified set back. Maps to FR-030.
+      tags: [cluster]
+      responses:
+        '200':
+          description: Reconciliation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalProfiles:
+                    type: integer
+                  newDistributed:
+                    type: integer
+                  duplicatesResolved:
+                    type: integer
+
+  /api/cluster/memory-profiles/export:
+    get:
+      operationId: exportMemoryProfiles
+      summary: Export all memory profiles as a downloadable file
+      description: Maps to FR-031.
+      tags: [cluster]
+      responses:
+        '200':
+          description: Profile export
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                  exportedAt:
+                    type: string
+                    format: date-time
+
+  /api/cluster/memory-profiles/import:
+    post:
+      operationId: importMemoryProfiles
+      summary: Import memory profiles from a backup
+      description: Maps to FR-031.
+      tags: [cluster]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profiles:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Import result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  skipped:
+                    type: integer
+
+components:
+  schemas:
+    ClusterStatus:
+      type: object
+      properties:
+        clusterId:
+          type: string
+        isClusterMode:
+          type: boolean
+          description: True when >1 pod is present
+        podCount:
+          type: integer
+        healthyPodCount:
+          type: integer
+        leaderId:
+          type: string
+        leaderAddress:
+          type: string
+        term:
+          type: integer
+        expectedSize:
+          type: integer
+        totalModelsLoaded:
+          type: integer
+        totalGpus:
+          type: integer
+        routingTableVersion:
+          type: integer
+        health:
+          type: string
+          enum: [healthy, degraded, critical]
+
+    ClusterPod:
+      type: object
+      properties:
+        podId:
+          type: string
+        address:
+          type: string
+        role:
+          type: string
+          enum: [leader, follower]
+        status:
+          type: string
+          enum: [healthy, suspect, unavailable]
+        lastHeartbeat:
+          type: string
+          format: date-time
+        joinedAt:
+          type: string
+          format: date-time
+        modelCount:
+          type: integer
+        gpus:
+          type: array
+          items:
+            type: object
+            properties:
+              gpuId:
+                type: integer
+              name:
+                type: string
+              totalVramMB:
+                type: integer
+              usedVramMB:
+                type: integer
+              temperature:
+                type: integer
+              utilization:
+                type: integer
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClusterModelInstance'
+
+    ClusterModelInstance:
+      type: object
+      properties:
+        instanceId:
+          type: string
+        podId:
+          type: string
+        modelPath:
+          type: string
+        modelName:
+          type: string
+        status:
+          type: string
+          enum: [starting, running, sleeping, stopping, failed]
+        port:
+          type: integer
+        gpuIds:
+          type: array
+          items:
+            type: integer
+        tensorParallelSize:
+          type: integer
+
+    ClusterLoadModelRequest:
+      type: object
+      required: [modelPath]
+      properties:
+        modelPath:
+          type: string
+        targetPodId:
+          type: string
+          description: Pod to load on. If omitted, leader schedules placement.
+        servedModelName:
+          type: string
+        maxTokens:
+          type: integer
+        gpuIds:
+          type: array
+          items:
+            type: integer
+        tensorParallelSize:
+          type: integer
+          default: 1
+        gpuMemoryUtilization:
+          type: number
+          default: 0.9
+        sleepModeEnabled:
+          type: boolean
+          default: false
+
+    ClusterLoadModelResponse:
+      type: object
+      properties:
+        instanceId:
+          type: string
+        podId:
+          type: string
+        status:
+          type: string
+
+    ClusterMoveModelRequest:
+      type: object
+      required: [targetGpuIds]
+      properties:
+        targetPodId:
+          type: string
+          description: Target pod. If same as source, performs intra-pod move.
+        targetGpuIds:
+          type: array
+          items:
+            type: integer
+        drainTimeoutMs:
+          type: integer
+          default: 60000
+
+    RoutingTable:
+      type: object
+      properties:
+        version:
+          type: integer
+        entries:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                podId:
+                  type: string
+                podAddress:
+                  type: string
+                vllmPort:
+                  type: integer
+                weight:
+                  type: integer
+
+    PresetApplicationResult:
+      type: object
+      properties:
+        presetId:
+          type: string
+        presetName:
+          type: string
+        dryRun:
+          type: boolean
+        placed:
+          type: array
+          items:
+            type: object
+            properties:
+              modelPath:
+                type: string
+              podId:
+                type: string
+              gpuIds:
+                type: array
+                items:
+                  type: integer
+              reason:
+                type: string
+        unplaceable:
+          type: array
+          items:
+            type: object
+            properties:
+              modelPath:
+                type: string
+              reason:
+                type: string
+        unloaded:
+          type: array
+          items:
+            type: object
+            properties:
+              modelPath:
+                type: string
+              podId:
+                type: string
+              reason:
+                type: string
+                description: "Not in preset"

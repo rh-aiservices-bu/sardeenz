@@ -65,6 +65,8 @@ interface ModelCardCompactProps {
   kvCacheTotalGb?: number
   /** Live GPU memory utilization from memory monitor (takes precedence over model.gpu_memory_utilization) */
   memoryUtilization?: number
+  /** Pod ID that owns this model — included in drag data for cross-pod drop targeting */
+  sourcePodId?: string
 }
 
 // Status to border color mapping using PF6 design tokens
@@ -95,6 +97,7 @@ export function ModelCardCompact({
   id,
   kvCacheTotalGb,
   memoryUtilization,
+  sourcePodId,
 }: ModelCardCompactProps) {
   const { addNotification } = useNotifications()
   const { canWrite } = useAuth()
@@ -111,7 +114,7 @@ export function ModelCardCompact({
   const isDraggable = model.status === 'running' && model.gpu_ids.length === 1
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `model-${model.id}`,
-    data: { model },
+    data: { model, sourcePodId },
     disabled: !isDraggable,
   })
 

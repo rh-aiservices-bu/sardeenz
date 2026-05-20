@@ -1,15 +1,19 @@
 /**
  * Memory Profile Store
  *
- * SQLite persistence layer for memory profiles used in capacity planning.
+ * PostgreSQL persistence layer for memory profiles used in capacity planning.
  */
 
-import type Database from 'better-sqlite3'
+import type { Pool } from 'pg'
 import { randomUUID } from 'node:crypto'
-import { getDb } from '../db/index.js'
+import { hostname } from 'node:os'
+import { getPool } from '../db/index.js'
 import type { MemoryProfile, UpdateMemoryProfileInput } from '@sardeenz/types'
+import { peerStore } from './peer-store.js'
+import { signRequest } from '../services/cluster-auth.js'
+import { config } from '../config.js'
 
-// Row type for SQLite (snake_case)
+// Row type for PostgreSQL (snake_case)
 interface MemoryProfileRow {
   id: string
   profile_name: string
@@ -27,6 +31,9 @@ interface MemoryProfileRow {
   created_by: string | null
   created_at: string
   updated_at: string | null
+  gpu_type: string | null
+  gpu_vram_mb: number | null
+  source_pod_id: string | null
 }
 
 // Convert row to domain object
@@ -52,6 +59,9 @@ function rowToProfile(row: MemoryProfileRow): MemoryProfile {
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
+    gpuType: row.gpu_type ?? undefined,
+    gpuVramMb: row.gpu_vram_mb ?? undefined,
+    sourcePodId: row.source_pod_id ?? undefined,
   }
 }
 
@@ -74,45 +84,46 @@ export interface CreateProfileData {
 }
 
 class MemoryProfileStore {
-  private db: Database.Database
+  private pool: Pool
 
-  constructor(database?: Database.Database) {
-    this.db = database || getDb()
+  constructor(pool?: Pool) {
+    this.pool = pool || getPool()
   }
 
   /**
    * Create a new memory profile
    */
-  createProfile(data: CreateProfileData): MemoryProfile {
+  async createProfile(data: CreateProfileData): Promise<MemoryProfile> {
     const id = randomUUID()
     const now = new Date().toISOString()
 
-    const stmt = this.db.prepare(`
+    await this.pool.query(
+      `
       INSERT INTO memory_profiles (
         id, profile_name, model_path, max_tokens,
         total_gpu_memory_gib, weights_memory_gib, cuda_graphs_gib, overhead_memory_gib,
         kv_cache_available_gib, kv_cache_per_request_mib,
         gpu_name, gpu_total_memory_gib,
         comments, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(
-      id,
-      data.profileName,
-      data.modelPath,
-      data.maxTokens,
-      data.totalGpuMemoryGib,
-      data.weightsMemoryGib,
-      data.cudaGraphsGib,
-      data.overheadMemoryGib,
-      data.kvCacheAvailableGib,
-      data.kvCachePerRequestMib ?? null,
-      data.gpuName ?? null,
-      data.gpuTotalMemoryGib ?? null,
-      data.comments ?? null,
-      data.createdBy ?? null,
-      now
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `,
+      [
+        id,
+        data.profileName,
+        data.modelPath,
+        data.maxTokens,
+        data.totalGpuMemoryGib,
+        data.weightsMemoryGib,
+        data.cudaGraphsGib,
+        data.overheadMemoryGib,
+        data.kvCacheAvailableGib,
+        data.kvCachePerRequestMib ?? null,
+        data.gpuName ?? null,
+        data.gpuTotalMemoryGib ?? null,
+        data.comments ?? null,
+        data.createdBy ?? null,
+        now,
+      ]
     )
 
     return {
@@ -137,73 +148,90 @@ class MemoryProfileStore {
   /**
    * Get a memory profile by ID
    */
-  getProfile(id: string): MemoryProfile | null {
-    const stmt = this.db.prepare('SELECT * FROM memory_profiles WHERE id = ?')
-    const row = stmt.get(id) as MemoryProfileRow | undefined
+  async getProfile(id: string): Promise<MemoryProfile | null> {
+    const result = await this.pool.query('SELECT * FROM memory_profiles WHERE id = $1', [id])
+    const row = result.rows[0] as MemoryProfileRow | undefined
     return row ? rowToProfile(row) : null
   }
 
   /**
    * List all memory profiles
    */
-  listProfiles(): { profiles: MemoryProfile[]; total: number } {
-    const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM memory_profiles')
-    const countResult = countStmt.get() as { count: number }
+  async listProfiles(): Promise<{ profiles: MemoryProfile[]; total: number }> {
+    const countResult = await this.pool.query('SELECT COUNT(*) as count FROM memory_profiles')
+    const count = parseInt(countResult.rows[0].count, 10)
 
-    const selectStmt = this.db.prepare('SELECT * FROM memory_profiles ORDER BY created_at DESC')
-    const rows = selectStmt.all() as MemoryProfileRow[]
+    const selectResult = await this.pool.query(
+      'SELECT * FROM memory_profiles ORDER BY created_at DESC'
+    )
+    const rows = selectResult.rows as MemoryProfileRow[]
 
     return {
       profiles: rows.map(rowToProfile),
-      total: countResult.count,
+      total: count,
     }
   }
 
   /**
    * Lookup profile by model_path + max_tokens + gpu_name (unique key)
    */
-  lookupProfile(modelPath: string, maxTokens: number, gpuName: string): MemoryProfile | null {
-    const stmt = this.db.prepare(`
+  async lookupProfile(
+    modelPath: string,
+    maxTokens: number,
+    gpuName: string
+  ): Promise<MemoryProfile | null> {
+    const result = await this.pool.query(
+      `
       SELECT * FROM memory_profiles
-      WHERE model_path = ? AND max_tokens = ? AND gpu_name = ?
-    `)
-    const row = stmt.get(modelPath, maxTokens, gpuName) as MemoryProfileRow | undefined
+      WHERE model_path = $1 AND max_tokens = $2 AND gpu_name = $3
+      `,
+      [modelPath, maxTokens, gpuName]
+    )
+    const row = result.rows[0] as MemoryProfileRow | undefined
     return row ? rowToProfile(row) : null
   }
 
   /**
    * Find profiles for a model path (any max_tokens/gpu_name)
    */
-  findProfilesByModelPath(modelPath: string): MemoryProfile[] {
-    const stmt = this.db.prepare(
-      'SELECT * FROM memory_profiles WHERE model_path = ? ORDER BY max_tokens'
+  async findProfilesByModelPath(modelPath: string): Promise<MemoryProfile[]> {
+    const result = await this.pool.query(
+      'SELECT * FROM memory_profiles WHERE model_path = $1 ORDER BY max_tokens',
+      [modelPath]
     )
-    const rows = stmt.all(modelPath) as MemoryProfileRow[]
+    const rows = result.rows as MemoryProfileRow[]
     return rows.map(rowToProfile)
   }
 
   /**
    * Update a memory profile (name/comments only)
    */
-  updateProfile(id: string, updates: UpdateMemoryProfileInput): MemoryProfile | null {
-    const existing = this.getProfile(id)
+  async updateProfile(
+    id: string,
+    updates: UpdateMemoryProfileInput
+  ): Promise<MemoryProfile | null> {
+    const existing = await this.getProfile(id)
     if (!existing) return null
 
     const now = new Date().toISOString()
-    const fields = ['updated_at = ?']
+    let paramIndex = 1
+    const fields = [`updated_at = $${paramIndex++}`]
     const values: (string | null)[] = [now]
 
     if (updates.profileName !== undefined) {
-      fields.push('profile_name = ?')
+      fields.push(`profile_name = $${paramIndex++}`)
       values.push(updates.profileName)
     }
     if (updates.comments !== undefined) {
-      fields.push('comments = ?')
+      fields.push(`comments = $${paramIndex++}`)
       values.push(updates.comments)
     }
 
-    const stmt = this.db.prepare(`UPDATE memory_profiles SET ${fields.join(', ')} WHERE id = ?`)
-    stmt.run(...values, id)
+    values.push(id)
+    await this.pool.query(
+      `UPDATE memory_profiles SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
+      values
+    )
 
     return this.getProfile(id)
   }
@@ -211,69 +239,106 @@ class MemoryProfileStore {
   /**
    * Delete a memory profile
    */
-  deleteProfile(id: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM memory_profiles WHERE id = ?')
-    const result = stmt.run(id)
-    return result.changes > 0
+  async deleteProfile(id: string): Promise<boolean> {
+    const result = await this.pool.query('DELETE FROM memory_profiles WHERE id = $1', [id])
+    return result.rowCount! > 0
   }
 
   /**
    * Check if a profile exists for the given unique key
    */
-  hasProfile(modelPath: string, maxTokens: number, gpuName: string): boolean {
-    const stmt = this.db.prepare(`
+  async hasProfile(modelPath: string, maxTokens: number, gpuName: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `
       SELECT 1 FROM memory_profiles
-      WHERE model_path = ? AND max_tokens = ? AND gpu_name = ?
-    `)
-    const result = stmt.get(modelPath, maxTokens, gpuName)
-    return result !== undefined
+      WHERE model_path = $1 AND max_tokens = $2 AND gpu_name = $3
+      `,
+      [modelPath, maxTokens, gpuName]
+    )
+    return result.rows.length > 0
   }
 
   /**
    * Upsert a profile (update if exists, create if not)
    */
-  upsertProfile(data: CreateProfileData): MemoryProfile {
+  async upsertProfile(data: CreateProfileData): Promise<MemoryProfile> {
     const existing = data.gpuName
-      ? this.lookupProfile(data.modelPath, data.maxTokens, data.gpuName)
+      ? await this.lookupProfile(data.modelPath, data.maxTokens, data.gpuName)
       : null
 
     if (existing) {
       // Update existing profile
       const now = new Date().toISOString()
-      const stmt = this.db.prepare(`
+      await this.pool.query(
+        `
         UPDATE memory_profiles SET
-          profile_name = ?,
-          total_gpu_memory_gib = ?,
-          weights_memory_gib = ?,
-          cuda_graphs_gib = ?,
-          overhead_memory_gib = ?,
-          kv_cache_available_gib = ?,
-          kv_cache_per_request_mib = ?,
-          gpu_total_memory_gib = ?,
-          comments = ?,
-          updated_at = ?
-        WHERE id = ?
-      `)
-
-      stmt.run(
-        data.profileName,
-        data.totalGpuMemoryGib,
-        data.weightsMemoryGib,
-        data.cudaGraphsGib,
-        data.overheadMemoryGib,
-        data.kvCacheAvailableGib,
-        data.kvCachePerRequestMib ?? null,
-        data.gpuTotalMemoryGib ?? null,
-        data.comments ?? null,
-        now,
-        existing.id
+          profile_name = $1,
+          total_gpu_memory_gib = $2,
+          weights_memory_gib = $3,
+          cuda_graphs_gib = $4,
+          overhead_memory_gib = $5,
+          kv_cache_available_gib = $6,
+          kv_cache_per_request_mib = $7,
+          gpu_total_memory_gib = $8,
+          comments = $9,
+          updated_at = $10
+        WHERE id = $11
+        `,
+        [
+          data.profileName,
+          data.totalGpuMemoryGib,
+          data.weightsMemoryGib,
+          data.cudaGraphsGib,
+          data.overheadMemoryGib,
+          data.kvCacheAvailableGib,
+          data.kvCachePerRequestMib ?? null,
+          data.gpuTotalMemoryGib ?? null,
+          data.comments ?? null,
+          now,
+          existing.id,
+        ]
       )
 
-      return this.getProfile(existing.id)!
+      return (await this.getProfile(existing.id))!
     }
 
     // Create new profile
     return this.createProfile(data)
+  }
+
+  /**
+   * T071: Auto-push a profile to all healthy peers.
+   * Fire-and-forget with HMAC signing. Only active in cluster mode.
+   */
+  pushProfileToPeers(profile: MemoryProfile): void {
+    // Only push in cluster mode
+    if (!process.env.KUBERNETES_SERVICE_HOST && !config.clusterPeers) return
+
+    const peers = peerStore.getHealthyPeers()
+    const localPodId = hostname()
+
+    for (const peer of peers) {
+      if (peer.podId === localPodId) continue
+
+      const internalPath = '/internal/memory-profiles'
+      const body = JSON.stringify({ profiles: [profile] })
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+      if (config.clusterSecret) {
+        const { signature, timestamp } = signRequest('POST', internalPath, body, config.clusterSecret)
+        headers['x-cluster-signature'] = signature
+        headers['x-cluster-timestamp'] = String(timestamp)
+      }
+
+      fetch(`http://${peer.address}:${peer.port}${internalPath}`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => {
+        // Fire-and-forget — peers will sync during reconciliation
+      })
+    }
   }
 }
 
@@ -288,6 +353,6 @@ export function getMemoryProfileStore(): MemoryProfileStore {
 }
 
 // For testing with custom database
-export function createMemoryProfileStore(database: Database.Database): MemoryProfileStore {
-  return new MemoryProfileStore(database)
+export function createMemoryProfileStore(pool: Pool): MemoryProfileStore {
+  return new MemoryProfileStore(pool)
 }

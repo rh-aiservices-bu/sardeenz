@@ -17,11 +17,11 @@ resources:
   - serviceaccount.yaml
   - rbac.yaml
   - pvc.yaml
-  - pvc-app-data.yaml
+  - postgresql.yaml
   - configmap.yaml
   - secret.yaml
-  - deployment.yaml
-  - service.yaml
+  - statefulset.yaml
+  - services.yaml
   - route.yaml
 
 # Image configuration (customize with your registry)
@@ -29,17 +29,3 @@ images:
   - name: quay.io/sardeenz/sardeenz
     newName: quay.io/your-org/sardeenz
     newTag: latest
-
-# ConfigMap generator (alternative to configmap.yaml)
-# Uncomment to generate ConfigMap from env file
-# configMapGenerator:
-#   - name: sardeenz-config
-#     envs:
-#       - config.env
-
-# Secret generator (alternative to secret.yaml)
-# Uncomment to generate Secret from env file (DO NOT commit this file)
-# secretGenerator:
-#   - name: sardeenz-secrets
-#     envs:
-#       - secrets.env

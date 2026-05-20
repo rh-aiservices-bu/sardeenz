@@ -38,6 +38,7 @@ export interface ConfigLoadStartedInfo {
   configurationId: string
   configurationName: string
   expectedModelCount: number
+  skippedPods?: string[]
 }
 
 interface LoadConfigurationDialogProps {
@@ -125,7 +126,8 @@ export function LoadConfigurationDialog({
         message: response.message,
         configurationId: response.configuration_id,
         configurationName: response.configuration_name,
-        expectedModelCount: selectedConfig.entries?.length ?? 0,
+        expectedModelCount: response.loaded_model_count ?? selectedConfig.entries?.length ?? 0,
+        skippedPods: response.skipped_pods,
       })
       onClose()
     } catch (err) {
@@ -279,6 +281,9 @@ export function LoadConfigurationDialog({
                             <strong>{entry.model_path}</strong>
                           </div>
                           <div>Max Tokens: {entry.max_tokens}</div>
+                          {entry.pod_id && (
+                            <div>Pod: {entry.pod_id}</div>
+                          )}
                           {entry.gpu_ids && entry.gpu_ids.length > 0 && (
                             <div>GPUs: {entry.gpu_ids.join(', ')}</div>
                           )}

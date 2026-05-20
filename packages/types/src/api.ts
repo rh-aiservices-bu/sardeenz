@@ -73,6 +73,7 @@ export interface ModelInstanceDTO {
   sleep_level?: 1 | 2 // Current sleep level if sleeping
   slept_at?: string // ISO timestamp when model went to sleep
   routable?: boolean // Whether this instance is available for routing (false during move operations)
+  pod_id?: string // Pod identifier — only present in cluster mode
 }
 
 export interface GetModelResponse {
