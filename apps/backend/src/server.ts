@@ -257,7 +257,7 @@ async function start() {
   try {
     // Initialize database and run migrations
     logger.info('Initializing database...')
-    initializeDatabase()
+    await initializeDatabase()
     logger.info('Database initialized')
 
     // Initialize GPU subsystem
@@ -329,7 +329,7 @@ async function shutdown() {
     fastify.clusterManager.stop()
   }
   await fastify.close()
-  closeDb()
+  await closeDb()
   if (!isInferenceSimMode()) {
     shutdownNvml()
   }

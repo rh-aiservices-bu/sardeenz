@@ -6,7 +6,7 @@
 
 Fastify backend providing Controller API and Unified Proxy for multi-model LLM management. Manages vLLM subprocess lifecycle with real-time event streaming.
 
-**Technology Stack**: Node.js 22.x, TypeScript 5.7+ (strict mode), Fastify 5.1+, SQLite (better-sqlite3)
+**Technology Stack**: Node.js 22.x, TypeScript 5.7+ (strict mode), Fastify 5.1+, PostgreSQL (pg/node-postgres)
 
 **Detailed Architecture**: See [Backend Architecture](../../docs/architecture/backend-architecture.md) for component details, flow diagrams, and process management.
 
@@ -58,7 +58,7 @@ Fastify backend providing Controller API and Unified Proxy for multi-model LLM m
 | `src/stores/move-store.ts`             | Model move operation state with concurrency lock     |
 | `src/stores/metrics-store.ts`          | Resource metrics and per-instance connection counts  |
 
-### SQLite-Backed Stores
+### PostgreSQL-Backed Stores
 
 | Store                                     | Purpose                                              |
 | ----------------------------------------- | ---------------------------------------------------- |
@@ -117,7 +117,7 @@ See `apps/backend/.env.example` for a complete reference.
 | `LOG_LEVEL`            | info                      | Pino log level                                                                               |
 | `LOG_ALL_REQUESTS`     | false                     | Force all routes to log at info level (debugging)                                            |
 | `HF_TOKEN`             | (none)                    | HuggingFace token for gated models                                                           |
-| `DB_PATH`              | `./data/sardeenz.db`      | SQLite database file path                                                                    |
+| `DATABASE_URL`         | `postgresql://sardeenz:sardeenz@localhost:5432/sardeenz` | PostgreSQL connection string                                              |
 | `AUTH_MODE`            | `none`                    | Auth mode: `none`, `simple`, `oauth`                                                         |
 | `ADMIN_USERNAME`       | `admin`                   | Username for simple auth mode                                                                |
 | `ADMIN_PASSWORD`       | (none)                    | Password for simple auth (required when AUTH_MODE=simple)                                    |

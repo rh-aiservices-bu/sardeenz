@@ -1,12 +1,12 @@
 /**
  * Benchmark Store
  *
- * SQLite persistence layer for benchmark runs, scenarios, results, and metrics.
+ * PostgreSQL persistence layer for benchmark runs, scenarios, results, and metrics.
  */
 
-import type Database from 'better-sqlite3'
+import type { Pool } from 'pg'
 import { randomUUID } from 'node:crypto'
-import { getDb } from '../db/index.js'
+import { getPool } from '../db/index.js'
 import type {
   BenchmarkRun,
   BenchmarkScenario,
@@ -20,7 +20,7 @@ import type {
   RoutingMode,
 } from '@sardeenz/types'
 
-// Row types for SQLite (snake_case)
+// Row types for PostgreSQL (snake_case)
 interface BenchmarkRunRow {
   id: string
   name: string | null
@@ -241,31 +241,32 @@ export interface AddResultInput {
 }
 
 class BenchmarkStore {
-  private db: Database.Database
+  private pool: Pool
 
-  constructor(database?: Database.Database) {
-    this.db = database || getDb()
+  constructor(pool?: Pool) {
+    this.pool = pool || getPool()
   }
 
   /**
    * Create a new benchmark run
    */
-  createRun(config: BenchmarkConfig, kvcachedEnabled: boolean): BenchmarkRun {
+  async createRun(config: BenchmarkConfig, kvcachedEnabled: boolean): Promise<BenchmarkRun> {
     const id = randomUUID()
     const now = new Date().toISOString()
 
-    const stmt = this.db.prepare(`
+    await this.pool.query(
+      `
       INSERT INTO benchmark_runs (id, name, status, mode, kvcached_enabled, created_at, config_json)
-      VALUES (?, ?, 'pending', ?, ?, ?, ?)
-    `)
-
-    stmt.run(
-      id,
-      config.name ?? null,
-      config.mode,
-      kvcachedEnabled ? 1 : 0,
-      now,
-      JSON.stringify(config)
+      VALUES ($1, $2, 'pending', $3, $4, $5, $6)
+    `,
+      [
+        id,
+        config.name ?? null,
+        config.mode,
+        kvcachedEnabled ? 1 : 0,
+        now,
+        JSON.stringify(config),
+      ]
     )
 
     return {
@@ -282,31 +283,39 @@ class BenchmarkStore {
   /**
    * Get a benchmark run by ID
    */
-  getRun(id: string): BenchmarkRun | null {
-    const stmt = this.db.prepare('SELECT * FROM benchmark_runs WHERE id = ?')
-    const row = stmt.get(id) as BenchmarkRunRow | undefined
+  async getRun(id: string): Promise<BenchmarkRun | null> {
+    const result = await this.pool.query('SELECT * FROM benchmark_runs WHERE id = $1', [id])
+    const row = result.rows[0] as BenchmarkRunRow | undefined
     return row ? rowToRun(row) : null
   }
 
   /**
    * Get a benchmark run with all scenarios and metrics
    */
-  getRunWithDetails(id: string): BenchmarkRunWithDetails | null {
-    const run = this.getRun(id)
+  async getRunWithDetails(id: string): Promise<BenchmarkRunWithDetails | null> {
+    const run = await this.getRun(id)
     if (!run) return null
 
-    const scenariosStmt = this.db.prepare('SELECT * FROM benchmark_scenarios WHERE run_id = ?')
-    const scenarioRows = scenariosStmt.all(id) as BenchmarkScenarioRow[]
+    const scenarioResult = await this.pool.query(
+      'SELECT * FROM benchmark_scenarios WHERE run_id = $1',
+      [id]
+    )
+    const scenarioRows = scenarioResult.rows as BenchmarkScenarioRow[]
 
-    const scenarios = scenarioRows.map((row) => {
-      const scenario = rowToScenario(row)
-      const metricsStmt = this.db.prepare('SELECT * FROM benchmark_metrics WHERE scenario_id = ?')
-      const metricsRow = metricsStmt.get(row.id) as BenchmarkMetricsRow | undefined
-      return {
-        ...scenario,
-        metrics: metricsRow ? rowToMetrics(metricsRow) : undefined,
-      }
-    })
+    const scenarios = await Promise.all(
+      scenarioRows.map(async (row) => {
+        const scenario = rowToScenario(row)
+        const metricsResult = await this.pool.query(
+          'SELECT * FROM benchmark_metrics WHERE scenario_id = $1',
+          [row.id]
+        )
+        const metricsRow = metricsResult.rows[0] as BenchmarkMetricsRow | undefined
+        return {
+          ...scenario,
+          metrics: metricsRow ? rowToMetrics(metricsRow) : undefined,
+        }
+      })
+    )
 
     return { ...run, scenarios }
   }
@@ -314,28 +323,34 @@ class BenchmarkStore {
   /**
    * List benchmark runs with pagination and filtering
    */
-  listRuns(options: ListBenchmarksOptions = {}): { runs: BenchmarkRun[]; total: number } {
+  async listRuns(
+    options: ListBenchmarksOptions = {}
+  ): Promise<{ runs: BenchmarkRun[]; total: number }> {
     const { page = 1, limit = 20, status } = options
     const offset = (page - 1) * limit
 
     let countSql = 'SELECT COUNT(*) as count FROM benchmark_runs'
     let selectSql = 'SELECT * FROM benchmark_runs'
-    const params: (string | number)[] = []
+    const countParams: (string | number)[] = []
+    const selectParams: (string | number)[] = []
+    let paramIndex = 1
 
     if (status) {
-      countSql += ' WHERE status = ?'
-      selectSql += ' WHERE status = ?'
-      params.push(status)
+      countSql += ` WHERE status = $${paramIndex}`
+      selectSql += ` WHERE status = $${paramIndex}`
+      countParams.push(status)
+      selectParams.push(status)
+      paramIndex++
     }
 
-    selectSql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    selectSql += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`
+    selectParams.push(limit, offset)
 
-    const countStmt = this.db.prepare(countSql)
-    const countResult = (status ? countStmt.get(status) : countStmt.get()) as { count: number }
-    const total = countResult.count
+    const countResult = await this.pool.query(countSql, countParams)
+    const total = parseInt(countResult.rows[0].count, 10)
 
-    const selectStmt = this.db.prepare(selectSql)
-    const rows = selectStmt.all(...params, limit, offset) as BenchmarkRunRow[]
+    const selectResult = await this.pool.query(selectSql, selectParams)
+    const rows = selectResult.rows as BenchmarkRunRow[]
 
     return {
       runs: rows.map(rowToRun),
@@ -346,7 +361,7 @@ class BenchmarkStore {
   /**
    * Update benchmark run status
    */
-  updateRunStatus(
+  async updateRunStatus(
     id: string,
     status: BenchmarkStatus,
     updates?: {
@@ -358,70 +373,74 @@ class BenchmarkStore {
       failedRequests?: number
       durationSeconds?: number
     }
-  ): void {
-    const fields = ['status = ?']
+  ): Promise<void> {
+    let paramIndex = 1
+    const fields = [`status = $${paramIndex++}`]
     const values: (string | number | null)[] = [status]
 
     if (updates?.startedAt !== undefined) {
-      fields.push('started_at = ?')
+      fields.push(`started_at = $${paramIndex++}`)
       values.push(updates.startedAt)
     }
     if (updates?.completedAt !== undefined) {
-      fields.push('completed_at = ?')
+      fields.push(`completed_at = $${paramIndex++}`)
       values.push(updates.completedAt)
     }
     if (updates?.errorMessage !== undefined) {
-      fields.push('error_message = ?')
+      fields.push(`error_message = $${paramIndex++}`)
       values.push(updates.errorMessage)
     }
     if (updates?.totalRequests !== undefined) {
-      fields.push('total_requests = ?')
+      fields.push(`total_requests = $${paramIndex++}`)
       values.push(updates.totalRequests)
     }
     if (updates?.successfulRequests !== undefined) {
-      fields.push('successful_requests = ?')
+      fields.push(`successful_requests = $${paramIndex++}`)
       values.push(updates.successfulRequests)
     }
     if (updates?.failedRequests !== undefined) {
-      fields.push('failed_requests = ?')
+      fields.push(`failed_requests = $${paramIndex++}`)
       values.push(updates.failedRequests)
     }
     if (updates?.durationSeconds !== undefined) {
-      fields.push('duration_seconds = ?')
+      fields.push(`duration_seconds = $${paramIndex++}`)
       values.push(updates.durationSeconds)
     }
 
-    const stmt = this.db.prepare(`UPDATE benchmark_runs SET ${fields.join(', ')} WHERE id = ?`)
-    stmt.run(...values, id)
+    await this.pool.query(
+      `UPDATE benchmark_runs SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
+      [...values, id]
+    )
   }
 
   /**
    * Create a scenario for a benchmark run
    */
-  createScenario(input: CreateScenarioInput): BenchmarkScenario {
+  async createScenario(input: CreateScenarioInput): Promise<BenchmarkScenario> {
     const id = randomUUID()
 
-    const stmt = this.db.prepare(`
+    await this.pool.query(
+      `
       INSERT INTO benchmark_scenarios (
         id, run_id, instance_id, routing_mode, model_path, model_name,
         input_tokens, output_tokens, concurrency, warmup_requests,
         total_requests, sla_threshold_ms, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    `)
-
-    stmt.run(
-      id,
-      input.runId,
-      input.instanceId,
-      input.routingMode,
-      input.modelPath,
-      input.modelName,
-      input.inputTokens,
-      input.outputTokens,
-      input.concurrency,
-      input.warmupRequests,
-      input.totalRequests,
-      input.slaThresholdMs ?? null
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
+    `,
+      [
+        id,
+        input.runId,
+        input.instanceId,
+        input.routingMode,
+        input.modelPath,
+        input.modelName,
+        input.inputTokens,
+        input.outputTokens,
+        input.concurrency,
+        input.warmupRequests,
+        input.totalRequests,
+        input.slaThresholdMs ?? null,
+      ]
     )
 
     return {
@@ -444,7 +463,7 @@ class BenchmarkStore {
   /**
    * Update scenario status
    */
-  updateScenarioStatus(
+  async updateScenarioStatus(
     id: string,
     status: ScenarioStatus,
     updates?: {
@@ -452,58 +471,63 @@ class BenchmarkStore {
       completedAt?: string
       errorMessage?: string
     }
-  ): void {
-    const fields = ['status = ?']
+  ): Promise<void> {
+    let paramIndex = 1
+    const fields = [`status = $${paramIndex++}`]
     const values: (string | null)[] = [status]
 
     if (updates?.startedAt !== undefined) {
-      fields.push('started_at = ?')
+      fields.push(`started_at = $${paramIndex++}`)
       values.push(updates.startedAt)
     }
     if (updates?.completedAt !== undefined) {
-      fields.push('completed_at = ?')
+      fields.push(`completed_at = $${paramIndex++}`)
       values.push(updates.completedAt)
     }
     if (updates?.errorMessage !== undefined) {
-      fields.push('error_message = ?')
+      fields.push(`error_message = $${paramIndex++}`)
       values.push(updates.errorMessage)
     }
 
-    const stmt = this.db.prepare(`UPDATE benchmark_scenarios SET ${fields.join(', ')} WHERE id = ?`)
-    stmt.run(...values, id)
+    await this.pool.query(
+      `UPDATE benchmark_scenarios SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
+      [...values, id]
+    )
   }
 
   /**
    * Add a benchmark result
    */
-  addResult(input: AddResultInput): BenchmarkResult {
+  async addResult(input: AddResultInput): Promise<BenchmarkResult> {
     const now = new Date().toISOString()
 
-    const stmt = this.db.prepare(`
+    const result = await this.pool.query(
+      `
       INSERT INTO benchmark_results (
         scenario_id, request_sequence, is_warmup, ttft_ms, total_latency_ms,
         prompt_tokens, completion_tokens, tokens_per_second, success,
         error_message, http_status, executed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    const result = stmt.run(
-      input.scenarioId,
-      input.requestSequence,
-      input.isWarmup ? 1 : 0,
-      input.ttftMs ?? null,
-      input.totalLatencyMs,
-      input.promptTokens ?? null,
-      input.completionTokens ?? null,
-      input.tokensPerSecond ?? null,
-      input.success ? 1 : 0,
-      input.errorMessage ?? null,
-      input.httpStatus ?? null,
-      now
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING id
+    `,
+      [
+        input.scenarioId,
+        input.requestSequence,
+        input.isWarmup ? 1 : 0,
+        input.ttftMs ?? null,
+        input.totalLatencyMs,
+        input.promptTokens ?? null,
+        input.completionTokens ?? null,
+        input.tokensPerSecond ?? null,
+        input.success ? 1 : 0,
+        input.errorMessage ?? null,
+        input.httpStatus ?? null,
+        now,
+      ]
     )
 
     return {
-      id: Number(result.lastInsertRowid),
+      id: result.rows[0].id,
       scenarioId: input.scenarioId,
       requestSequence: input.requestSequence,
       isWarmup: input.isWarmup,
@@ -522,29 +546,28 @@ class BenchmarkStore {
   /**
    * Get results for a scenario with pagination
    */
-  getResults(
+  async getResults(
     scenarioId: string,
     options: { page?: number; limit?: number; excludeWarmup?: boolean } = {}
-  ): { results: BenchmarkResult[]; total: number } {
+  ): Promise<{ results: BenchmarkResult[]; total: number }> {
     const { page = 1, limit = 100, excludeWarmup = true } = options
     const offset = (page - 1) * limit
 
-    let countSql = 'SELECT COUNT(*) as count FROM benchmark_results WHERE scenario_id = ?'
-    let selectSql = 'SELECT * FROM benchmark_results WHERE scenario_id = ?'
+    let countSql = 'SELECT COUNT(*) as count FROM benchmark_results WHERE scenario_id = $1'
+    let selectSql = 'SELECT * FROM benchmark_results WHERE scenario_id = $1'
 
     if (excludeWarmup) {
       countSql += ' AND is_warmup = 0'
       selectSql += ' AND is_warmup = 0'
     }
 
-    selectSql += ' ORDER BY request_sequence LIMIT ? OFFSET ?'
+    selectSql += ' ORDER BY request_sequence LIMIT $2 OFFSET $3'
 
-    const countStmt = this.db.prepare(countSql)
-    const countResult = countStmt.get(scenarioId) as { count: number }
-    const total = countResult.count
+    const countResult = await this.pool.query(countSql, [scenarioId])
+    const total = parseInt(countResult.rows[0].count, 10)
 
-    const selectStmt = this.db.prepare(selectSql)
-    const rows = selectStmt.all(scenarioId, limit, offset) as BenchmarkResultRow[]
+    const selectResult = await this.pool.query(selectSql, [scenarioId, limit, offset])
+    const rows = selectResult.rows as BenchmarkResultRow[]
 
     return {
       results: rows.map(rowToResult),
@@ -555,9 +578,10 @@ class BenchmarkStore {
   /**
    * Save aggregated metrics for a scenario
    */
-  saveMetrics(metrics: BenchmarkMetrics): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO benchmark_metrics (
+  async saveMetrics(metrics: BenchmarkMetrics): Promise<void> {
+    await this.pool.query(
+      `
+      INSERT INTO benchmark_metrics (
         scenario_id,
         ttft_min, ttft_max, ttft_avg, ttft_p50, ttft_p90, ttft_p95, ttft_p99,
         tps_min, tps_max, tps_avg, tps_p50, tps_p90, tps_p95, tps_p99,
@@ -566,67 +590,99 @@ class BenchmarkStore {
         kvcache_used_avg_gb, kvcache_peak_gb, gpu_memory_peak_gb,
         total_requests, successful_requests, failed_requests,
         requests_per_second, tokens_per_second_total
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(
-      metrics.scenarioId,
-      metrics.ttftMin ?? null,
-      metrics.ttftMax ?? null,
-      metrics.ttftAvg ?? null,
-      metrics.ttftP50 ?? null,
-      metrics.ttftP90 ?? null,
-      metrics.ttftP95 ?? null,
-      metrics.ttftP99 ?? null,
-      metrics.tpsMin ?? null,
-      metrics.tpsMax ?? null,
-      metrics.tpsAvg ?? null,
-      metrics.tpsP50 ?? null,
-      metrics.tpsP90 ?? null,
-      metrics.tpsP95 ?? null,
-      metrics.tpsP99 ?? null,
-      metrics.e2eMin ?? null,
-      metrics.e2eMax ?? null,
-      metrics.e2eAvg ?? null,
-      metrics.e2eP50 ?? null,
-      metrics.e2eP90 ?? null,
-      metrics.e2eP95 ?? null,
-      metrics.e2eP99 ?? null,
-      metrics.goodputCount ?? null,
-      metrics.goodputPercent ?? null,
-      metrics.slaThresholdMs ?? null,
-      metrics.kvcacheUsedAvgGb ?? null,
-      metrics.kvcachePeakGb ?? null,
-      metrics.gpuMemoryPeakGb ?? null,
-      metrics.totalRequests,
-      metrics.successfulRequests,
-      metrics.failedRequests,
-      metrics.requestsPerSecond ?? null,
-      metrics.tokenPerSecondTotal ?? null
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
+      ON CONFLICT (scenario_id) DO UPDATE SET
+        ttft_min = EXCLUDED.ttft_min,
+        ttft_max = EXCLUDED.ttft_max,
+        ttft_avg = EXCLUDED.ttft_avg,
+        ttft_p50 = EXCLUDED.ttft_p50,
+        ttft_p90 = EXCLUDED.ttft_p90,
+        ttft_p95 = EXCLUDED.ttft_p95,
+        ttft_p99 = EXCLUDED.ttft_p99,
+        tps_min = EXCLUDED.tps_min,
+        tps_max = EXCLUDED.tps_max,
+        tps_avg = EXCLUDED.tps_avg,
+        tps_p50 = EXCLUDED.tps_p50,
+        tps_p90 = EXCLUDED.tps_p90,
+        tps_p95 = EXCLUDED.tps_p95,
+        tps_p99 = EXCLUDED.tps_p99,
+        e2e_min = EXCLUDED.e2e_min,
+        e2e_max = EXCLUDED.e2e_max,
+        e2e_avg = EXCLUDED.e2e_avg,
+        e2e_p50 = EXCLUDED.e2e_p50,
+        e2e_p90 = EXCLUDED.e2e_p90,
+        e2e_p95 = EXCLUDED.e2e_p95,
+        e2e_p99 = EXCLUDED.e2e_p99,
+        goodput_count = EXCLUDED.goodput_count,
+        goodput_percent = EXCLUDED.goodput_percent,
+        sla_threshold_ms = EXCLUDED.sla_threshold_ms,
+        kvcache_used_avg_gb = EXCLUDED.kvcache_used_avg_gb,
+        kvcache_peak_gb = EXCLUDED.kvcache_peak_gb,
+        gpu_memory_peak_gb = EXCLUDED.gpu_memory_peak_gb,
+        total_requests = EXCLUDED.total_requests,
+        successful_requests = EXCLUDED.successful_requests,
+        failed_requests = EXCLUDED.failed_requests,
+        requests_per_second = EXCLUDED.requests_per_second,
+        tokens_per_second_total = EXCLUDED.tokens_per_second_total
+    `,
+      [
+        metrics.scenarioId,
+        metrics.ttftMin ?? null,
+        metrics.ttftMax ?? null,
+        metrics.ttftAvg ?? null,
+        metrics.ttftP50 ?? null,
+        metrics.ttftP90 ?? null,
+        metrics.ttftP95 ?? null,
+        metrics.ttftP99 ?? null,
+        metrics.tpsMin ?? null,
+        metrics.tpsMax ?? null,
+        metrics.tpsAvg ?? null,
+        metrics.tpsP50 ?? null,
+        metrics.tpsP90 ?? null,
+        metrics.tpsP95 ?? null,
+        metrics.tpsP99 ?? null,
+        metrics.e2eMin ?? null,
+        metrics.e2eMax ?? null,
+        metrics.e2eAvg ?? null,
+        metrics.e2eP50 ?? null,
+        metrics.e2eP90 ?? null,
+        metrics.e2eP95 ?? null,
+        metrics.e2eP99 ?? null,
+        metrics.goodputCount ?? null,
+        metrics.goodputPercent ?? null,
+        metrics.slaThresholdMs ?? null,
+        metrics.kvcacheUsedAvgGb ?? null,
+        metrics.kvcachePeakGb ?? null,
+        metrics.gpuMemoryPeakGb ?? null,
+        metrics.totalRequests,
+        metrics.successfulRequests,
+        metrics.failedRequests,
+        metrics.requestsPerSecond ?? null,
+        metrics.tokenPerSecondTotal ?? null,
+      ]
     )
   }
 
   /**
    * Delete a benchmark run and all related data (cascade)
    */
-  deleteRun(id: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM benchmark_runs WHERE id = ?')
-    const result = stmt.run(id)
-    return result.changes > 0
+  async deleteRun(id: string): Promise<boolean> {
+    const result = await this.pool.query('DELETE FROM benchmark_runs WHERE id = $1', [id])
+    return result.rowCount! > 0
   }
 
   /**
    * Get all results for a scenario (for percentile calculation)
    */
-  getAllResults(scenarioId: string, excludeWarmup = true): BenchmarkResult[] {
-    let sql = 'SELECT * FROM benchmark_results WHERE scenario_id = ?'
+  async getAllResults(scenarioId: string, excludeWarmup = true): Promise<BenchmarkResult[]> {
+    let sql = 'SELECT * FROM benchmark_results WHERE scenario_id = $1'
     if (excludeWarmup) {
       sql += ' AND is_warmup = 0'
     }
     sql += ' ORDER BY request_sequence'
 
-    const stmt = this.db.prepare(sql)
-    const rows = stmt.all(scenarioId) as BenchmarkResultRow[]
+    const result = await this.pool.query(sql, [scenarioId])
+    const rows = result.rows as BenchmarkResultRow[]
     return rows.map(rowToResult)
   }
 
@@ -634,23 +690,23 @@ class BenchmarkStore {
    * Get all results for a run (across all scenarios)
    * Used for export functionality
    */
-  getRunResults(
+  async getRunResults(
     runId: string,
     excludeWarmup = true
-  ): Array<BenchmarkResult & { modelPath: string; modelName: string }> {
+  ): Promise<Array<BenchmarkResult & { modelPath: string; modelName: string }>> {
     let sql = `
       SELECT r.*, s.model_path, s.model_name
       FROM benchmark_results r
       JOIN benchmark_scenarios s ON r.scenario_id = s.id
-      WHERE s.run_id = ?
+      WHERE s.run_id = $1
     `
     if (excludeWarmup) {
       sql += ' AND r.is_warmup = 0'
     }
     sql += ' ORDER BY s.id, r.request_sequence'
 
-    const stmt = this.db.prepare(sql)
-    const rows = stmt.all(runId) as Array<
+    const result = await this.pool.query(sql, [runId])
+    const rows = result.rows as Array<
       BenchmarkResultRow & { model_path: string; model_name: string }
     >
     return rows.map((row) => ({
@@ -672,6 +728,6 @@ export function getBenchmarkStore(): BenchmarkStore {
 }
 
 // For testing with custom database
-export function createBenchmarkStore(database: Database.Database): BenchmarkStore {
-  return new BenchmarkStore(database)
+export function createBenchmarkStore(pool: Pool): BenchmarkStore {
+  return new BenchmarkStore(pool)
 }

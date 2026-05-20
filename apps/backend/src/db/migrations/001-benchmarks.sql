@@ -1,7 +1,5 @@
 -- Migration 001: LLM Benchmarking & Memory Profiling Tables
--- Created: 2024-11-30
 
--- Main benchmark runs
 CREATE TABLE IF NOT EXISTS benchmark_runs (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -19,7 +17,6 @@ CREATE TABLE IF NOT EXISTS benchmark_runs (
   duration_seconds REAL
 );
 
--- Scenarios within a run
 CREATE TABLE IF NOT EXISTS benchmark_scenarios (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL REFERENCES benchmark_runs(id) ON DELETE CASCADE,
@@ -38,9 +35,8 @@ CREATE TABLE IF NOT EXISTS benchmark_scenarios (
   error_message TEXT
 );
 
--- Individual request results
 CREATE TABLE IF NOT EXISTS benchmark_results (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   scenario_id TEXT NOT NULL REFERENCES benchmark_scenarios(id) ON DELETE CASCADE,
   request_sequence INTEGER NOT NULL,
   is_warmup INTEGER NOT NULL DEFAULT 0,
@@ -55,7 +51,6 @@ CREATE TABLE IF NOT EXISTS benchmark_results (
   executed_at TEXT NOT NULL
 );
 
--- Aggregated metrics per scenario
 CREATE TABLE IF NOT EXISTS benchmark_metrics (
   scenario_id TEXT PRIMARY KEY REFERENCES benchmark_scenarios(id) ON DELETE CASCADE,
   ttft_min REAL, ttft_max REAL, ttft_avg REAL,
@@ -77,44 +72,31 @@ CREATE TABLE IF NOT EXISTS benchmark_metrics (
   tokens_per_second_total REAL
 );
 
--- Memory profiles for capacity planning
 CREATE TABLE IF NOT EXISTS memory_profiles (
   id TEXT PRIMARY KEY,
   profile_name TEXT NOT NULL,
   model_path TEXT NOT NULL,
   max_tokens INTEGER NOT NULL,
-
-  -- Memory metrics (extracted from vLLM logs)
   weights_memory_gib REAL NOT NULL,
   cuda_graphs_gib REAL NOT NULL,
   kv_cache_available_gib REAL NOT NULL,
   kv_cache_per_request_mib REAL,
-
-  -- GPU context at profiling time
   gpu_name TEXT,
   gpu_total_memory_gib REAL,
-
-  -- Metadata
   comments TEXT,
   created_by TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT,
-
   UNIQUE(model_path, max_tokens, gpu_name)
 );
 
--- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_status ON benchmark_runs(status);
 CREATE INDEX IF NOT EXISTS idx_benchmark_runs_created_at ON benchmark_runs(created_at);
 CREATE INDEX IF NOT EXISTS idx_benchmark_scenarios_run_id ON benchmark_scenarios(run_id);
 CREATE INDEX IF NOT EXISTS idx_benchmark_results_scenario_warmup ON benchmark_results(scenario_id, is_warmup);
 CREATE INDEX IF NOT EXISTS idx_memory_profiles_model_path ON memory_profiles(model_path);
 
--- Migration tracking table
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
 );
-
--- Mark this migration as applied
-INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, datetime('now'));

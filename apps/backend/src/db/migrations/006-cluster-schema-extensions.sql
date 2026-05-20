@@ -1,25 +1,12 @@
--- Migration 006: Cluster schema extensions for School of Sardeenz (004)
--- Extends model_configurations, model_configuration_entries, and memory_profiles
--- with columns needed for declarative presets and cross-pod memory profiling.
+-- Migration 006: Cluster schema extensions for multi-pod orchestration
 
--- Track migration
-CREATE TABLE IF NOT EXISTS schema_migrations (
-  version INTEGER PRIMARY KEY,
-  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+ALTER TABLE model_configurations ADD COLUMN IF NOT EXISTS placement_strategy TEXT;
+ALTER TABLE model_configurations ADD COLUMN IF NOT EXISTS min_kv_cache_mb INTEGER;
+ALTER TABLE model_configurations ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
 
--- Model configurations: preset scheduling columns
-ALTER TABLE model_configurations ADD COLUMN placement_strategy TEXT;
-ALTER TABLE model_configurations ADD COLUMN min_kv_cache_mb INTEGER;
-ALTER TABLE model_configurations ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE model_configuration_entries ADD COLUMN IF NOT EXISTS gpu_type_constraint TEXT;
+ALTER TABLE model_configuration_entries ADD COLUMN IF NOT EXISTS min_vram_mb INTEGER;
 
--- Model configuration entries: GPU constraint columns
-ALTER TABLE model_configuration_entries ADD COLUMN gpu_type_constraint TEXT;
-ALTER TABLE model_configuration_entries ADD COLUMN min_vram_mb INTEGER;
-
--- Memory profiles: cluster context columns
-ALTER TABLE memory_profiles ADD COLUMN gpu_type TEXT;
-ALTER TABLE memory_profiles ADD COLUMN gpu_vram_mb INTEGER;
-ALTER TABLE memory_profiles ADD COLUMN source_pod_id TEXT;
-
-INSERT OR IGNORE INTO schema_migrations (version) VALUES (6);
+ALTER TABLE memory_profiles ADD COLUMN IF NOT EXISTS gpu_type TEXT;
+ALTER TABLE memory_profiles ADD COLUMN IF NOT EXISTS gpu_vram_mb INTEGER;
+ALTER TABLE memory_profiles ADD COLUMN IF NOT EXISTS source_pod_id TEXT;

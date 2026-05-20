@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: sardeenz
   labels:
@@ -8,12 +8,14 @@ metadata:
     app.kubernetes.io/component: ml-platform
     app.kubernetes.io/part-of: sardeenz
 spec:
+  # Default: single pod. Scale to N for multi-pod cluster.
+  # When scaling, also update CLUSTER_EXPECTED_PODS in configmap.yaml.
   replicas: 1
+  serviceName: sardeenz-headless
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app: sardeenz
-  strategy:
-    type: Recreate  # Required for GPU workloads - cannot run multiple replicas on same GPU
   template:
     metadata:
       labels:
@@ -21,8 +23,8 @@ spec:
         app.kubernetes.io/name: sardeenz
         app.kubernetes.io/component: ml-platform
     spec:
-      # ServiceAccount for RBAC checks (LocalSubjectAccessReview)
       serviceAccountName: sardeenz
+      terminationGracePeriodSeconds: 30
 
       # GPU node selector - target nodes with NVIDIA GPUs
       nodeSelector:
@@ -34,17 +36,28 @@ spec:
           operator: Exists
           effect: NoSchedule
 
+      # Spread pods across nodes for GPU distribution (multi-pod)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - sardeenz
+                topologyKey: kubernetes.io/hostname
+
       containers:
         - name: sardeenz
           image: quay.io/rh-aiservices-bu/sardeenz:latest
           imagePullPolicy: Always
 
           ports:
-            - name: backend
+            - name: http
               containerPort: 3000
-              protocol: TCP
-            - name: frontend
-              containerPort: 80
               protocol: TCP
 
           env:
@@ -134,7 +147,6 @@ spec:
                   name: sardeenz-secrets
                   key: k8s-api-url
                   optional: true
-            # Namespace for RBAC checks (uses downward API)
             - name: NAMESPACE
               valueFrom:
                 fieldRef:
@@ -147,6 +159,30 @@ spec:
                   name: sardeenz-secrets
                   key: inference-api-key
                   optional: true
+
+            # =================================================================
+            # Cluster Configuration
+            # =================================================================
+            - name: CLUSTER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: cluster-secret
+                  optional: true
+            - name: CLUSTER_EXPECTED_PODS
+              valueFrom:
+                configMapKeyRef:
+                  name: sardeenz-config
+                  key: CLUSTER_EXPECTED_PODS
+
+            # =================================================================
+            # Database Configuration
+            # =================================================================
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sardeenz-secrets
+                  key: database-url
 
             # =================================================================
             # kvcached Configuration (from ConfigMap)
@@ -210,13 +246,8 @@ spec:
             # =================================================================
             # Container Paths
             # =================================================================
-            # HuggingFace cache location (for model downloads)
             - name: HF_HOME
               value: "/opt/app-root/models"
-            # SQLite database path (persistent storage)
-            - name: SARDEENZ_DB_PATH
-              value: "/opt/app-root/src/data/sardeenz.db"
-            # OpenShift arbitrary UID support - cache directories
             - name: HOME
               value: "/opt/app-root/src"
             - name: XDG_CACHE_HOME
@@ -224,7 +255,6 @@ spec:
             - name: FLASHINFER_WORKSPACE_DIR
               value: "/opt/app-root/src/.cache/flashinfer"
 
-          # Resource requests and limits
           resources:
             requests:
               cpu: "2"
@@ -235,56 +265,45 @@ spec:
               memory: "32Gi"
               nvidia.com/gpu: 1
 
-          # Liveness probe - checks if container is healthy
-          livenessProbe:
+          # Startup probe - 30 min grace period for large model downloads
+          startupProbe:
             httpGet:
               path: /api/health/live
-              port: backend
-              scheme: HTTP
-            initialDelaySeconds: 90
-            periodSeconds: 30
-            timeoutSeconds: 10
-            successThreshold: 1
-            failureThreshold: 3
+              port: http
+            failureThreshold: 120
+            periodSeconds: 15
 
-          # Readiness probe - checks if container is ready to serve traffic
+          # Readiness probe
           readinessProbe:
             httpGet:
               path: /api/health/ready
-              port: backend
-              scheme: HTTP
-            initialDelaySeconds: 60
+              port: http
+            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 10
-            successThreshold: 1
             failureThreshold: 3
 
-          # Startup probe - gives container time to start before liveness/readiness kicks in
-          startupProbe:
+          # Liveness probe
+          livenessProbe:
             httpGet:
-              path: /api/health
-              port: backend
-              scheme: HTTP
+              path: /api/health/live
+              port: http
             initialDelaySeconds: 30
-            periodSeconds: 10
+            periodSeconds: 15
             timeoutSeconds: 10
-            successThreshold: 1
-            failureThreshold: 12  # 2 minutes (12 * 10s) to start
+            failureThreshold: 3
 
           volumeMounts:
             - name: huggingface-cache
               mountPath: /opt/app-root/models
-            - name: app-data
-              mountPath: /opt/app-root/src
+
+          securityContext:
+            allowPrivilegeEscalation: false
 
       volumes:
         - name: huggingface-cache
           persistentVolumeClaim:
             claimName: sardeenz-model-cache
-        - name: app-data
-          persistentVolumeClaim:
-            claimName: sardeenz-app-data
 
-      # Security context - OpenShift runs as non-root with random UID
       securityContext:
         runAsNonRoot: true

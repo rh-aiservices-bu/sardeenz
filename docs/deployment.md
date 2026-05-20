@@ -68,7 +68,7 @@ podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.1.0-base-ubuntu22.04 
 
 The unified container image includes:
 
-- **Base:** `quay.io/vllm/vllm-cuda:0.14.1_rhai0` (CUDA 12.x + Python 3.12 + vLLM)
+- **Base:** `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` (CUDA 12.x + Python 3.12 + vLLM)
 - **Node.js 22.x** (added layer)
 - **Backend** (Fastify TypeScript app)
 - **Frontend** (React + PatternFly built static assets)
@@ -91,7 +91,7 @@ podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
 
 ```bash
 podman build \
-  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.14.1_rhai0 \
+  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4 \
   -f docker/Containerfile \
   -t sardeenz:custom .
 ```
@@ -122,7 +122,7 @@ COPY packages packages
 RUN npm run build -w apps/backend
 
 # Stage 3: Final image
-FROM quay.io/vllm/vllm-cuda:0.14.1_rhai0
+FROM quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4
 
 # Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -226,7 +226,7 @@ podman run -d \
 1. **GPU-enabled OpenShift cluster** with NVIDIA GPU Operator installed
 2. **Namespace** with GPU quota allocated
 3. **Image registry access** (e.g., Quay.io)
-4. **Persistent storage** - App Data PVC required for SQLite database; Model Cache PVC optional (only if downloading from HuggingFace)
+4. **Persistent storage** - PostgreSQL for database; Model Cache PVC optional (only if downloading from HuggingFace)
 
 ### Deploy with GPU
 
@@ -397,12 +397,12 @@ spec:
 
 **5. Create PersistentVolumeClaims:**
 
-The deployment uses two PVCs. Only the App Data PVC is required:
+The deployment uses a PostgreSQL database for persistence (benchmarks, memory profiles, model configurations) and an optional PVC for model caching:
 
-- **App Data PVC** (`sardeenz-app-data`): **Required.** Stores SQLite database and other persistent app data
-- **Model Cache PVC** (`model-cache-pvc`): **Optional.** Stores downloaded HuggingFace models. Only needed if downloading models from HuggingFace at runtime. See [deployment/README.md Storage Configuration](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration) for alternatives.
+- **PostgreSQL** (`sardeenz-postgresql`): **Required.** Small PostgreSQL pod deployed alongside the application. See `deployment/postgresql.yaml`.
+- **Model Cache PVC** (`sardeenz-model-cache`): **Optional.** Stores downloaded HuggingFace models (ReadWriteMany for multi-pod access). Only needed if downloading models at runtime.
 
-**Model Cache PVC (`pvc-model-cache.yaml`):**
+**Model Cache PVC (`pvc.yaml`):**
 
 Models are downloaded from HuggingFace Hub on first load and cached to the PVC. The `HF_HOME` environment variable controls where models are stored.
 
@@ -410,38 +410,17 @@ Models are downloaded from HuggingFace Hub on first load and cached to the PVC. 
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: model-cache-pvc
+  name: sardeenz-model-cache
   namespace: sardeenz
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 100Gi
-  # storageClassName: ocs-storagecluster-cephfs
 ```
 
-> **Note:** Use `ReadWriteOnce` for model caching (models are downloaded on demand). Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
-
-**App Data PVC (`pvc-app-data.yaml`):**
-
-Stores SQLite database (benchmarks, memory profiles) and other persistent application data. The `SARDEENZ_DB_PATH` environment variable controls where the database is stored.
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sardeenz-app-data
-  namespace: sardeenz
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi # Small - just for SQLite database
-```
-
-> **Note:** 1Gi is sufficient for the SQLite database which stores benchmark results and memory profiles.
+> **Note:** Use `ReadWriteMany` so all pods in a multi-pod deployment can share the model cache. Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
 
 **6. Create Secrets:**
 
@@ -462,11 +441,11 @@ oc create secret generic oauth-config \
 **7. Deploy:**
 
 ```bash
-oc apply -f pvc-app-data.yaml              # Required: application data
-oc apply -f pvc-model-cache.yaml           # Optional: only if downloading from HuggingFace
-oc apply -f deployment.yaml
-oc apply -f service.yaml
-oc apply -f route.yaml
+oc apply -f deployment/postgresql.yaml       # Required: PostgreSQL database
+oc apply -f deployment/pvc.yaml              # Optional: model cache
+oc apply -f deployment/statefulset.yaml
+oc apply -f deployment/services.yaml
+oc apply -f deployment/route.yaml
 
 # Check deployment status
 oc get pods -n sardeenz -w
@@ -508,7 +487,7 @@ Sardeenz supports multi-pod cluster deployments where multiple pods coordinate t
 
 ### Deploy the Cluster
 
-The Kubernetes manifests are in `deploy/kubernetes/`. Apply them in order:
+The Kubernetes manifests are in `deployment/`. Apply them in order:
 
 **1. Create the namespace and RBAC:**
 
@@ -516,7 +495,7 @@ The Kubernetes manifests are in `deploy/kubernetes/`. Apply them in order:
 oc new-project sardeenz
 
 # ServiceAccount, Role (pod discovery + leader election), and RoleBinding
-oc apply -f deploy/kubernetes/rbac.yaml
+oc apply -f deployment/rbac.yaml
 ```
 
 The RBAC configuration grants:
@@ -538,7 +517,7 @@ oc create secret generic sardeenz-cluster-secret \
 Or apply the template and edit it:
 
 ```bash
-oc apply -f deploy/kubernetes/secret.yaml
+oc apply -f deployment/secret.yaml
 # Edit to replace the placeholder value
 oc edit secret sardeenz-cluster-secret -n sardeenz
 ```
@@ -546,7 +525,7 @@ oc edit secret sardeenz-cluster-secret -n sardeenz
 **3. Create the ConfigMap (optional overrides):**
 
 ```bash
-oc apply -f deploy/kubernetes/configmap.yaml
+oc apply -f deployment/configmap.yaml
 ```
 
 Default values in the ConfigMap:
@@ -560,7 +539,7 @@ Default values in the ConfigMap:
 **4. Create the Services:**
 
 ```bash
-oc apply -f deploy/kubernetes/services.yaml
+oc apply -f deployment/services.yaml
 ```
 
 This creates two services:
@@ -573,7 +552,7 @@ This creates two services:
 **5. Deploy the StatefulSet:**
 
 ```bash
-oc apply -f deploy/kubernetes/statefulset.yaml
+oc apply -f deployment/statefulset.yaml
 ```
 
 Key StatefulSet settings:
@@ -775,7 +754,7 @@ For API permissions by role, see [API Guide: RBAC Roles](./api-guide.md#rbac-rol
 | `PORT`                 | No                  | `3000`             | Unified API port (Controller + Proxy + Frontend)                                                                                 |
 | `HF_HOME`              | Yes                 | -                  | HuggingFace cache directory for model downloads (e.g., `/opt/app-root/models`)                                                   |
 | `HF_TOKEN`             | No                  | -                  | HuggingFace token for accessing gated models (e.g., Llama, Mistral)                                                              |
-| `SARDEENZ_DB_PATH`     | No                  | `data/sardeenz.db` | SQLite database file path for persistent storage (e.g., `/opt/app-root/src/data/sardeenz.db`)                                    |
+| `DATABASE_URL`         | Yes                 | -                  | PostgreSQL connection string (e.g., `postgresql://sardeenz:password@sardeenz-postgresql:5432/sardeenz`)                           |
 | `ENABLE_KVCACHED`      | Yes                 | `true`             | Enable kvcached memory sharing                                                                                                   |
 | `KVCACHED_AUTOPATCH`   | No                  | `1`                | Auto-patch vLLM for kvcached                                                                                                     |
 | `LOG_LEVEL`            | No                  | `info`             | Logging level (`debug`, `info`, `warn`, `error`)                                                                                 |

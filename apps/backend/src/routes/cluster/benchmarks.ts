@@ -22,9 +22,9 @@ export default async function clusterBenchmarkRoutes(fastify: FastifyInstance) {
     },
     async () => {
       const store = getBenchmarkStore()
-      const { runs } = store.listRuns({ limit: 10000 })
+      const { runs } = await store.listRuns({ limit: 10000 })
 
-      const runsWithDetails = runs.map((run) => store.getRunWithDetails(run.id)).filter(Boolean)
+      const runsWithDetails = (await Promise.all(runs.map((run) => store.getRunWithDetails(run.id)))).filter(Boolean)
 
       return {
         runs: runsWithDetails,
@@ -92,7 +92,7 @@ export default async function clusterBenchmarkRoutes(fastify: FastifyInstance) {
         }
 
         // Check if run already exists
-        const existing = store.getRun(r.id)
+        const existing = await store.getRun(r.id)
         if (existing) {
           skipped++
           continue
@@ -105,14 +105,14 @@ export default async function clusterBenchmarkRoutes(fastify: FastifyInstance) {
             scenarios: Array<Record<string, unknown>>
           }
 
-          const createdRun = store.createRun(benchmarkConfig as never, r.kvcachedEnabled ?? false)
+          const createdRun = await store.createRun(benchmarkConfig as never, r.kvcachedEnabled ?? false)
 
           // Import scenarios if present
           if (r.scenarios) {
             for (const scenario of r.scenarios) {
               if (!scenario.modelPath || !scenario.modelName) continue
 
-              store.createScenario({
+              await store.createScenario({
                 runId: createdRun.id,
                 instanceId: scenario.instanceId ?? '',
                 routingMode: (scenario.routingMode ?? 'direct') as 'direct' | 'proxy',

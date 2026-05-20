@@ -85,3 +85,44 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: sardeenz
+
+---
+# =============================================================================
+# Cluster Coordination RBAC (for multi-pod StatefulSet)
+# =============================================================================
+
+# Role: sardeenz-cluster
+# Allows pod discovery (list/watch pods) and leader election (leases)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sardeenz-cluster
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "list", "watch"]
+
+---
+# RoleBinding: sardeenz-cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sardeenz-cluster
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sardeenz-cluster
+subjects:
+  - kind: ServiceAccount
+    name: sardeenz

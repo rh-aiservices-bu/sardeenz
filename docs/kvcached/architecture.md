@@ -299,7 +299,7 @@ kvcached integrates with vLLM through **autopatching** - automatic modification 
   - Must use `--no-enable-prefix-caching` flag
   - Incompatibility with `--enable-prefix-caching`
 
-- **Tested Version**: v0.14.1
+- **Tested Version**: v0.19.1
   - Other versions may have compatibility issues
 
 ## Request Flow
