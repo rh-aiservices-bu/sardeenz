@@ -59,7 +59,7 @@ class PodScheduler {
   /**
    * T062: Place models onto cluster GPUs according to strategy and constraints.
    */
-  placeModels(request: PlacementRequest): PlacementResult {
+  async placeModels(request: PlacementRequest): Promise<PlacementResult> {
     const { entries, strategy, minKvCacheMb } = request
     const decisions: PlacementDecision[] = []
     const failures: PlacementFailure[] = []
@@ -82,7 +82,7 @@ class PodScheduler {
     const sorted = [...entries].sort((a, b) => a.loadOrder - b.loadOrder)
 
     for (const entry of sorted) {
-      const result = this.placeEntry(entry, slots, strategy, minKvCacheMb)
+      const result = await this.placeEntry(entry, slots, strategy, minKvCacheMb)
       if (result.decision) {
         decisions.push(result.decision)
       } else {
@@ -97,7 +97,7 @@ class PodScheduler {
    * T063: Diff current cluster state against preset desired state.
    * Returns a reconciliation plan: what to unload, what to load, what's unchanged.
    */
-  reconcile(preset: SavedModelConfiguration): ReconciliationPlan {
+  async reconcile(preset: SavedModelConfiguration): Promise<ReconciliationPlan> {
     const entries = preset.entries ?? []
     const strategy: PlacementStrategy = preset.placementStrategy ?? 'balanced'
     const minKvCacheMb = preset.minKvCacheMb ?? null
@@ -131,7 +131,7 @@ class PodScheduler {
     const missingEntries = entries.filter((e) => !alreadyLoadedPaths.has(e.modelPath))
 
     // Place missing models using the scheduler
-    const { decisions: toLoad, failures } = this.placeModels({
+    const { decisions: toLoad, failures } = await this.placeModels({
       entries: missingEntries,
       strategy,
       minKvCacheMb,
@@ -181,9 +181,9 @@ class PodScheduler {
   }
 
   /** Estimate VRAM for a model entry using memory profiles. */
-  private estimateVramMB(entry: ModelConfigurationEntry): number | null {
+  private async estimateVramMB(entry: ModelConfigurationEntry): Promise<number | null> {
     const profileStore = getMemoryProfileStore()
-    const profiles = profileStore.findProfilesByModelPath(entry.modelPath)
+    const profiles = await profileStore.findProfilesByModelPath(entry.modelPath)
 
     if (profiles.length === 0) return null
 
@@ -196,13 +196,13 @@ class PodScheduler {
   }
 
   /** Place a single entry onto available GPU slots. */
-  private placeEntry(
+  private async placeEntry(
     entry: ModelConfigurationEntry,
     slots: GpuSlot[],
     strategy: PlacementStrategy,
     minKvCacheMb: number | null
-  ): { decision?: PlacementDecision; failure?: PlacementFailure } {
-    const estimatedVramMB = this.estimateVramMB(entry)
+  ): Promise<{ decision?: PlacementDecision; failure?: PlacementFailure }> {
+    const estimatedVramMB = await this.estimateVramMB(entry)
     const requiredVramMB = entry.minVramMb ?? estimatedVramMB ?? 0
     const tpSize = entry.tensorParallelSize ?? 1
 

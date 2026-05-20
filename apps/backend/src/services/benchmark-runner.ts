@@ -445,7 +445,7 @@ async function executeMeasuredPhase(
   const baseUrl = resolveBaseUrl(scenario)
 
   if (!baseUrl) {
-    store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
+    await store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
       errorMessage: `Model instance not found: ${scenario.instanceId}`,
     })
     return
@@ -455,7 +455,7 @@ async function executeMeasuredPhase(
   const limit = pLimit(scenario.concurrency)
 
   // Update scenario status to running
-  store.updateScenarioStatus(scenario.id, 'running' as ScenarioStatus, {
+  await store.updateScenarioStatus(scenario.id, 'running' as ScenarioStatus, {
     startedAt: new Date().toISOString(),
   })
 
@@ -507,7 +507,7 @@ async function executeMeasuredPhase(
       results.push(result)
 
       // Store result in database
-      store.addResult({
+      await store.addResult({
         scenarioId: scenario.id,
         requestSequence: result.sequence,
         isWarmup: false,
@@ -556,7 +556,7 @@ async function executeMeasuredPhase(
 
   // Check if aborted
   if (abortController.signal.aborted) {
-    store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
+    await store.updateScenarioStatus(scenario.id, 'failed' as ScenarioStatus, {
       completedAt: new Date().toISOString(),
       errorMessage: 'Benchmark cancelled',
     })
@@ -565,10 +565,10 @@ async function executeMeasuredPhase(
 
   // Calculate metrics
   const metrics = calculateMetrics(scenario.id, results, scenario.slaThresholdMs)
-  store.saveMetrics(metrics)
+  await store.saveMetrics(metrics)
 
   // Update scenario status to completed
-  store.updateScenarioStatus(scenario.id, 'completed' as ScenarioStatus, {
+  await store.updateScenarioStatus(scenario.id, 'completed' as ScenarioStatus, {
     completedAt: new Date().toISOString(),
   })
 }
@@ -583,7 +583,7 @@ async function executeMeasuredPhase(
  */
 export async function startBenchmark(runId: string): Promise<void> {
   const store = getBenchmarkStore()
-  const run = store.getRunWithDetails(runId)
+  const run = await store.getRunWithDetails(runId)
 
   if (!run) {
     throw new Error(`Benchmark run not found: ${runId}`)
@@ -601,7 +601,7 @@ export async function startBenchmark(runId: string): Promise<void> {
 
   try {
     // Update run status to running
-    store.updateRunStatus(runId, 'running' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'running' as BenchmarkStatus, {
       startedAt: new Date().toISOString(),
     })
 
@@ -709,7 +709,7 @@ export async function startBenchmark(runId: string): Promise<void> {
     })
 
     // Calculate final stats
-    const updatedRun = store.getRunWithDetails(runId)
+    const updatedRun = await store.getRunWithDetails(runId)
     if (updatedRun) {
       const totalRequests = updatedRun.scenarios.reduce(
         (sum, s) => sum + (s.metrics?.totalRequests ?? 0),
@@ -726,7 +726,7 @@ export async function startBenchmark(runId: string): Promise<void> {
       const durationSeconds = (performance.now() - startTime) / 1000
 
       // Update run status to completed
-      store.updateRunStatus(runId, 'completed' as BenchmarkStatus, {
+      await store.updateRunStatus(runId, 'completed' as BenchmarkStatus, {
         completedAt: new Date().toISOString(),
         totalRequests,
         successfulRequests,
@@ -746,7 +746,7 @@ export async function startBenchmark(runId: string): Promise<void> {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const durationSeconds = (performance.now() - startTime) / 1000
 
-    store.updateRunStatus(runId, 'failed' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'failed' as BenchmarkStatus, {
       completedAt: new Date().toISOString(),
       errorMessage,
       durationSeconds,
@@ -765,14 +765,14 @@ export async function startBenchmark(runId: string): Promise<void> {
 /**
  * Cancel a running benchmark
  */
-export function cancelBenchmark(runId: string): boolean {
+export async function cancelBenchmark(runId: string): Promise<boolean> {
   const controller = runningBenchmarks.get(runId)
   if (controller) {
     controller.abort()
     runningBenchmarks.delete(runId)
 
     const store = getBenchmarkStore()
-    store.updateRunStatus(runId, 'cancelled' as BenchmarkStatus, {
+    await store.updateRunStatus(runId, 'cancelled' as BenchmarkStatus, {
       completedAt: new Date().toISOString(),
       errorMessage: 'Cancelled by user',
     })

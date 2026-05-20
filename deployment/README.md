@@ -38,7 +38,7 @@ kubectl create namespace sardeenz
 
 ### 3. Configure Deployment, ConfigMap and Secrets
 
-Edit the file `deployment.yaml` and adjust the values as you need, like the number of GPUs you want to allocate to Sardeenz.
+Edit the file `statefulset.yaml` and adjust the values as you need, like the number of GPUs you want to allocate to Sardeenz.
 
 Edit the file `configmap.yaml` and adjust the values as you need.
 
@@ -106,11 +106,11 @@ kubectl apply -k deployment/
 oc apply -f deployment/serviceaccount.yaml  # Required: ServiceAccount for RBAC
 oc apply -f deployment/rbac.yaml            # Required: RBAC roles and permissions
 oc apply -f deployment/pvc.yaml             # Optional: Only if downloading models from HuggingFace
-oc apply -f deployment/pvc-app-data.yaml    # Required: Application data (SQLite, cache)
+oc apply -f deployment/postgresql.yaml      # Required: PostgreSQL database
 oc apply -f deployment/configmap.yaml
 oc apply -f deployment/secret.yaml          # Skip if using `oc create secret`
-oc apply -f deployment/deployment.yaml      # Must be adapted based on storage choices (see Storage section)
-oc apply -f deployment/service.yaml
+oc apply -f deployment/statefulset.yaml     # Application StatefulSet (supports single and multi-pod)
+oc apply -f deployment/services.yaml        # Headless + ClusterIP services
 oc apply -f deployment/route.yaml
 ```
 
@@ -135,13 +135,13 @@ See [RBAC Setup Guide](../docs/rbac-setup.md) for complete configuration options
 
 ```bash
 # Check deployment status
-oc get deployment sardeenz -n sardeenz
+oc get statefulset sardeenz -n sardeenz
 
 # Check pod status (should show GPU assigned)
 oc get pods -n sardeenz -o wide
 
 # Check logs
-oc logs -f deployment/sardeenz -n sardeenz
+oc logs -f statefulset/sardeenz -n sardeenz
 
 # Get external URL (OpenShift only)
 oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
@@ -162,22 +162,22 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
   - `sardeenz-auth-reviewer` RoleBinding: Binds ServiceAccount to auth-reviewer role
   - See [RBAC Setup Guide](../docs/rbac-setup.md) for creating user/group bindings
 
-- **`deployment.yaml`** - Main application deployment with GPU resource requests
-  - Configured for single replica (GPU constraint)
+- **`statefulset.yaml`** - Main application StatefulSet with GPU resource requests
+  - Default single replica, supports scaling to multiple pods for multi-GPU clusters
   - GPU node selector and tolerations
   - Liveness, readiness, and startup probes
   - Environment variables from ConfigMap and Secret
   - Uses `sardeenz` ServiceAccount for RBAC
 
-- **`service.yaml`** - ClusterIP service exposing backend (3000) and frontend (80)
+- **`postgresql.yaml`** - PostgreSQL database deployment for persistent storage (benchmarks, profiles, configurations)
+
+- **`services.yaml`** - Headless service (pod discovery) and ClusterIP service (external access) on port 3000
 
 - **`route.yaml`** - OpenShift Route for external HTTPS access
   - Edge TLS termination
   - 5-minute timeout for long-running inference
 
 - **`pvc.yaml`** - PersistentVolumeClaim for HuggingFace model cache (100Gi). Optional: only needed if downloading models from HuggingFace. See [Storage Configuration](#storage-configuration).
-
-- **`pvc-app-data.yaml`** - PersistentVolumeClaim for application data (SQLite database, cache)
 
 - **`configmap.yaml`** - Application configuration (non-sensitive)
 
@@ -221,10 +221,14 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 | `k8s-api-url`       | Kubernetes API URL for OAuth user info                             |
 | `inference-api-key` | API key for `/v1/*` endpoints (optional, separate from admin auth) |
 | `hf-token`          | HuggingFace token for gated models                                 |
+| `db-username`       | PostgreSQL username                                                |
+| `db-password`       | PostgreSQL password                                                |
+| `database-url`      | PostgreSQL connection string                                       |
+| `cluster-secret`    | HMAC secret for inter-pod auth (required for multi-pod)            |
 
 ### Resource Limits
 
-Configured in `deployment.yaml`:
+Configured in `statefulset.yaml`:
 
 ```yaml
 resources:
@@ -311,19 +315,18 @@ readinessProbe:
 
 ## Storage
 
-Storage requirements depend on how you source your models. Only the Application Data PVC is always required.
+Storage requirements depend on how you source your models. PostgreSQL handles all persistent application data.
 
 ### Required Storage
 
-#### Application Data (pvc-app-data.yaml)
+#### PostgreSQL Database (postgresql.yaml)
 
-- **Name:** `sardeenz-app-data`
-- **Size:** 10Gi
-- **Access Mode:** ReadWriteOnce
-- **Mount Path:** `/opt/app-root/src`
-- **Contents:** SQLite database, cache directories, Python venv
+- **Name:** `sardeenz-postgresql`
+- **Size:** 1Gi PVC (auto-created)
+- **Contents:** Benchmarks, memory profiles, model configurations
+- **Access:** All application pods connect via `DATABASE_URL`
 
-**This PVC is always required** for application state persistence.
+**PostgreSQL is always required** and is deployed alongside the application.
 
 ### Optional Storage
 
@@ -335,7 +338,7 @@ Use this if you download models from HuggingFace at runtime.
 
 - **Name:** `sardeenz-model-cache`
 - **Size:** 100Gi (adjust based on model sizes)
-- **Access Mode:** ReadWriteOnce
+- **Access Mode:** ReadWriteMany (shared across pods)
 - **Mount Path:** `/opt/app-root/models` (sets `HF_HOME`)
 
 **Model size reference:**
@@ -358,26 +361,21 @@ You can use both HuggingFace downloads and local models simultaneously by config
 
 ### Storage Configuration
 
-The `deployment.yaml` must be adapted based on your storage choices. Below are the volume configurations for each scenario.
+The `statefulset.yaml` must be adapted based on your storage choices. Below are the volume configurations for each scenario.
 
 #### Scenario A: HuggingFace Downloads Only (Default)
 
-This is the default configuration in `deployment.yaml`:
+This is the default configuration in `statefulset.yaml`:
 
 ```yaml
 volumes:
   - name: huggingface-cache
     persistentVolumeClaim:
       claimName: sardeenz-model-cache
-  - name: app-data
-    persistentVolumeClaim:
-      claimName: sardeenz-app-data
 
 volumeMounts:
   - name: huggingface-cache
     mountPath: /opt/app-root/models
-  - name: app-data
-    mountPath: /opt/app-root/src
 ```
 
 **ConfigMap:** Leave `LOCAL_MODELS_PATH` empty.
@@ -391,16 +389,11 @@ volumes:
   - name: local-models
     persistentVolumeClaim:
       claimName: your-models-pvc # Or use hostPath, NFS, etc.
-  - name: app-data
-    persistentVolumeClaim:
-      claimName: sardeenz-app-data
 
 volumeMounts:
   - name: local-models
     mountPath: /mnt/models
     readOnly: true
-  - name: app-data
-    mountPath: /opt/app-root/src
 ```
 
 **ConfigMap:** Set `LOCAL_MODELS_PATH: "/mnt/models"`.
@@ -419,9 +412,6 @@ volumes:
   - name: local-models
     persistentVolumeClaim:
       claimName: your-models-pvc
-  - name: app-data
-    persistentVolumeClaim:
-      claimName: sardeenz-app-data
 
 volumeMounts:
   - name: huggingface-cache
@@ -429,8 +419,6 @@ volumeMounts:
   - name: local-models
     mountPath: /mnt/models
     readOnly: true
-  - name: app-data
-    mountPath: /opt/app-root/src
 ```
 
 **ConfigMap:** Set `LOCAL_MODELS_PATH: "/mnt/models"`.
@@ -448,12 +436,11 @@ spec:
 
 ### Service Ports
 
-- **Backend API:** Port 3000 (Controller API + Proxy)
-- **Frontend UI:** Port 80 (nginx serving React app)
+- **Backend API + Frontend:** Port 3000 (Fastify serves API + React SPA)
 
 ### OpenShift Route
 
-The route exposes the frontend (port 80) with:
+The route exposes the application (port 3000) with:
 
 - Edge TLS termination (automatic certificate)
 - HTTP to HTTPS redirect
@@ -658,7 +645,7 @@ oc describe pod -l app=sardeenz
 **Check pod logs:**
 
 ```bash
-oc logs -f deployment/sardeenz
+oc logs -f statefulset/sardeenz
 ```
 
 **Common causes:**
@@ -672,7 +659,7 @@ oc logs -f deployment/sardeenz
 **Check application logs:**
 
 ```bash
-oc logs deployment/sardeenz | grep -i error
+oc logs statefulset/sardeenz | grep -i error
 ```
 
 **Common causes:**
@@ -691,7 +678,7 @@ oc adm top pod -l app=sardeenz
 
 **Optimize:**
 
-- Increase CPU/memory limits in `deployment.yaml`
+- Increase CPU/memory limits in `statefulset.yaml`
 - Enable kvcached for better GPU memory sharing
 - Use faster storage class for PVC
 - Adjust `VLLM_MAX_INSTANCES` based on available GPU memory
@@ -702,22 +689,16 @@ oc adm top pod -l app=sardeenz
 
 ```bash
 # Update image tag in deployment
-oc set image deployment/sardeenz \
+oc set image statefulset/sardeenz \
   sardeenz=quay.io/your-org/sardeenz:v1.1.0
 
 # Watch rollout
-oc rollout status deployment/sardeenz
+oc rollout status statefulset/sardeenz
 ```
 
-### Recreate Strategy
+### Update Strategy
 
-The deployment uses `Recreate` strategy (not `RollingUpdate`) because:
-
-- GPU resources cannot be shared between old and new pods
-- Ensures clean shutdown of vLLM processes
-- Prevents port conflicts on GPU device
-
-**Downtime:** ~2-3 minutes during updates
+The StatefulSet uses `RollingUpdate` strategy with ordered pod management. Each pod is updated one at a time, ensuring clean shutdown of vLLM processes.
 
 ## Cleanup
 

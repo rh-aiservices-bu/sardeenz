@@ -53,14 +53,14 @@ export default async function clusterPresetRoutes(fastify: FastifyInstance) {
 
       // Load the preset
       const configStore = getModelConfigurationStore()
-      const preset = configStore.getConfiguration(presetId)
+      const preset = await configStore.getConfiguration(presetId)
       if (!preset) {
         return reply.code(404).send({ error: `Preset ${presetId} not found` })
       }
 
       // Reconcile
       const scheduler = getPodScheduler(fastify.log)
-      const plan = scheduler.reconcile(preset)
+      const plan = await scheduler.reconcile(preset)
 
       const placed = plan.toLoad.map((d) => ({
         modelPath: d.modelPath,

@@ -31,7 +31,7 @@
     "@sardeenz/types": "*",
     "@sardeenz/utils": "*",
     "@sinclair/typebox": "^0.34.9",
-    "better-sqlite3": "^11.6.0",
+    "pg": "^8.13.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
     "fastify-metrics": "^12.1.0",
@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/pg": "^8.11.0",
     "@types/node": "^22.0.0",
     "@vitest/ui": "^2.1.8",
     "dredd": "^14.1.0",

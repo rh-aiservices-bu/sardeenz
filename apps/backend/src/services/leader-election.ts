@@ -109,7 +109,7 @@ export class KubernetesLeaderElection implements LeaderElection {
 
       if (holder === this.podId) {
         // We hold the lease — renew it
-        lease.spec!.renewTime = new Date() as k8s.V1MicroTime
+        lease.spec!.renewTime = new k8s.V1MicroTime()
         const updated = await this.coordApi.replaceNamespacedLease({
           name: LEASE_NAME,
           namespace: this.namespace,
@@ -119,7 +119,7 @@ export class KubernetesLeaderElection implements LeaderElection {
       } else if (isExpired || !holder) {
         // Lease is expired or unowned — try to acquire
         lease.spec!.holderIdentity = this.podId
-        lease.spec!.renewTime = new Date() as k8s.V1MicroTime
+        lease.spec!.renewTime = new k8s.V1MicroTime()
         lease.spec!.leaseTransitions = (lease.spec!.leaseTransitions ?? 0) + 1
         lease.spec!.leaseDurationSeconds = LEASE_DURATION_SECONDS
 
@@ -161,7 +161,7 @@ export class KubernetesLeaderElection implements LeaderElection {
     lease.spec = new k8s.V1LeaseSpec()
     lease.spec.holderIdentity = this.podId
     lease.spec.leaseDurationSeconds = LEASE_DURATION_SECONDS
-    lease.spec.renewTime = new Date() as k8s.V1MicroTime
+    lease.spec.renewTime = new k8s.V1MicroTime()
     lease.spec.leaseTransitions = 0
 
     return this.coordApi.createNamespacedLease({
@@ -210,11 +210,13 @@ export class KubernetesLeaderElection implements LeaderElection {
   }
 
   private isNotFoundError(err: unknown): boolean {
-    return (err as { statusCode?: number })?.statusCode === 404
+    const e = err as { code?: number; statusCode?: number }
+    return e?.code === 404 || e?.statusCode === 404
   }
 
   private isConflictError(err: unknown): boolean {
-    return (err as { statusCode?: number })?.statusCode === 409
+    const e = err as { code?: number; statusCode?: number }
+    return e?.code === 409 || e?.statusCode === 409
   }
 
   stop(): void {

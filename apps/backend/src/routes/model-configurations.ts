@@ -76,7 +76,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
       onRequest: fastify.requireRole('admin-readonly'),
     },
     async () => {
-      const { configurations, total } = store.listConfigurations()
+      const { configurations, total } = await store.listConfigurations()
       return {
         configurations: configurations.map(configToResponse),
         total,
@@ -103,7 +103,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
     },
     async (request, reply) => {
       const { id } = request.params
-      const config = store.getConfiguration(id)
+      const config = await store.getConfiguration(id)
 
       if (!config) {
         return reply.status(404).send({
@@ -140,7 +140,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
       const { name, description } = request.body
 
       // Check for duplicate name
-      if (store.nameExists(name)) {
+      if (await store.nameExists(name)) {
         return reply.status(409).send({
           error: {
             message: `Configuration with name "${name}" already exists`,
@@ -192,10 +192,10 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
         })
       }
 
-      const config = store.createFromRunningModels({ name, description }, instances, localPodId, remoteModels)
+      const config = await store.createFromRunningModels({ name, description }, instances, localPodId, remoteModels)
 
       reply.status(201)
-      return { configuration: configToResponse(store.getConfiguration(config.id)!) }
+      return { configuration: configToResponse((await store.getConfiguration(config.id))!) }
     }
   )
 
@@ -224,8 +224,8 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
 
       // Check name conflict if updating name
       if (body.name) {
-        const existing = store.getConfiguration(id)
-        if (existing && existing.name !== body.name && store.nameExists(body.name)) {
+        const existing = await store.getConfiguration(id)
+        if (existing && existing.name !== body.name && await store.nameExists(body.name)) {
           return reply.status(409).send({
             error: {
               message: `Configuration with name "${body.name}" already exists`,
@@ -235,7 +235,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
         }
       }
 
-      const config = store.updateConfiguration(id, body)
+      const config = await store.updateConfiguration(id, body)
 
       if (!config) {
         return reply.status(404).send({
@@ -270,7 +270,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
     async (request, reply) => {
       const { id } = request.params
 
-      const deleted = store.deleteConfiguration(id)
+      const deleted = await store.deleteConfiguration(id)
 
       if (!deleted) {
         return reply.status(404).send({
@@ -311,7 +311,7 @@ export default async function modelConfigurationRoutes(fastify: FastifyInstance)
     async (request, reply) => {
       const { id } = request.params
 
-      const config = store.getConfiguration(id)
+      const config = await store.getConfiguration(id)
 
       if (!config) {
         return reply.status(404).send({

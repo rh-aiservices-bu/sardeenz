@@ -91,10 +91,10 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 **Key Resources:**
 
 - GPU-enabled OpenShift cluster setup
-- App Data PVC (required for SQLite)
+- PostgreSQL database (deployed alongside the application)
 - Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration))
 - OAuth 2.0 integration with Kubernetes RBAC (see [rbac-setup.md](./rbac-setup.md))
-- Kubernetes manifests for multi-pod cluster (see [deploy/kubernetes/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/kubernetes/))
+- Kubernetes manifests for single/multi-pod StatefulSet (see [deployment/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deployment/))
 
 ### 📊 Data Scientists / ML Engineers
 
@@ -158,7 +158,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [deployment.md](./deployment.md)                   | Container build, Docker Compose, OpenShift deployment, multi-pod cluster deployment, configuration, health checks, monitoring, troubleshooting |
 | [rbac-setup.md](./rbac-setup.md)                   | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions                                |
 | [kvcached/](./kvcached/README.md)                           | kvcached installation, configuration, memory segment management                                                                        |
-| [deploy/kubernetes/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/kubernetes/) | Kubernetes manifests for multi-pod cluster: StatefulSet, Services, RBAC, ConfigMap, Secret |
+| [deployment/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deployment/) | Kubernetes manifests: StatefulSet, PostgreSQL, Services, RBAC, ConfigMap, Secret |
 
 ### Development Guides
 

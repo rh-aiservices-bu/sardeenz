@@ -36,7 +36,7 @@ export default async function clusterProfileRoutes(fastify: FastifyInstance) {
 
       // Local profiles
       const profileStore = getMemoryProfileStore()
-      const { profiles: localProfiles } = profileStore.listProfiles()
+      const { profiles: localProfiles } = await profileStore.listProfiles()
       for (const p of localProfiles) {
         if (p.gpuName) {
           allProfiles.push({
@@ -149,7 +149,7 @@ export default async function clusterProfileRoutes(fastify: FastifyInstance) {
     },
     async () => {
       const profileStore = getMemoryProfileStore()
-      const { profiles } = profileStore.listProfiles()
+      const { profiles } = await profileStore.listProfiles()
       return {
         profiles,
         exportedAt: new Date().toISOString(),
@@ -214,7 +214,7 @@ export default async function clusterProfileRoutes(fastify: FastifyInstance) {
           createdBy: mp.createdBy,
         }
 
-        profileStore.upsertProfile(data)
+        await profileStore.upsertProfile(data)
         imported++
       }
 
@@ -222,7 +222,7 @@ export default async function clusterProfileRoutes(fastify: FastifyInstance) {
       if (imported > 0) {
         const peers = peerStore.getHealthyPeers()
         const localPodId = clusterManager.getPodId()
-        const { profiles: allLocal } = profileStore.listProfiles()
+        const { profiles: allLocal } = await profileStore.listProfiles()
 
         for (const peer of peers) {
           if (peer.podId === localPodId) continue

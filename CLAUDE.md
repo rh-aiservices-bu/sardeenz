@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
 - **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, cluster overview, and benchmarking
 - **Inference Sim Backend**: GPU-free simulation backend (`inference-sim`) for development without NVIDIA hardware — simulates model loading, memory tracking, and inference responses
-- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes, with Kubernetes manifests (`deploy/kubernetes/`)
+- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes, with Kubernetes manifests (`deployment/`)
 - **Authentication**: Dual-auth model separating admin (JWT) from inference (optional API key)
   - Admin: Three modes (`none`, `simple`, `oauth`) via `AUTH_MODE` for dashboard/controller API
   - Inference: Optional `INFERENCE_API_KEY` for OpenAI-compatible endpoints (`/v1/*`)
@@ -59,7 +59,7 @@ This project uses an npm workspace monorepo structure:
 **Key Design Decisions:**
 
 - Direct vLLM subprocess management (no Docker-in-Docker) for zero-downtime model loading
-- Hybrid storage: in-memory for runtime state, SQLite for benchmarks/profiles persistence
+- Hybrid storage: in-memory for runtime state, PostgreSQL for benchmarks/profiles persistence
 - OpenAI-compatible API via vLLM native format
 - Performance-first proxy with TCP passthrough (<50ms routing overhead)
 
@@ -109,7 +109,7 @@ make push VERSION=x.y.z            # Push to registry
 - Fastify 5.1+ (backend), React 18 + PatternFly 6 (frontend)
 - `@kubernetes/client-node` for cluster peer discovery and leader election
 - `@rh-ai-bu/ts-nvml` for GPU bindings, `undici` (built-in Node 22)
-- SQLite (better-sqlite3) for persistence, in-memory Maps for runtime state and cluster routing
+- PostgreSQL (pg/node-postgres) for persistence, in-memory Maps for runtime state and cluster routing
 
 ## Component-Specific Context
 

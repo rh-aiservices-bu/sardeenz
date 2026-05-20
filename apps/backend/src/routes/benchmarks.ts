@@ -129,7 +129,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
 
         // Create the benchmark run
         const benchmarkConfig = { name, mode, scenarios, kvcachedEnabled }
-        const run = store.createRun(benchmarkConfig, kvcachedEnabled)
+        const run = await store.createRun(benchmarkConfig, kvcachedEnabled)
 
         // Create scenarios
         for (const scenarioConfig of scenarios) {
@@ -137,7 +137,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
           const remote = local ? null : findModelInCluster(scenarioConfig.instanceId)
           const modelPath = local ? local.modelPath : remote!.entry.modelPath
           const modelName = local ? local.modelName : remote!.entry.modelName
-          store.createScenario({
+          await store.createScenario({
             runId: run.id,
             instanceId: scenarioConfig.instanceId,
             routingMode: scenarioConfig.routingMode || 'direct',
@@ -153,7 +153,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         }
 
         // Get the full run with details
-        const runWithDetails = store.getRunWithDetails(run.id)!
+        const runWithDetails = (await store.getRunWithDetails(run.id))!
 
         // Start the benchmark execution asynchronously
         startBenchmark(run.id).catch((err) => {
@@ -259,7 +259,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     async (request) => {
       const { page = 1, limit = 20, status } = request.query
 
-      const { runs, total } = store.listRuns({
+      const { runs, total } = await store.listRuns({
         page,
         limit,
         status: status as BenchmarkStatus | undefined,
@@ -307,7 +307,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params
-      const run = store.getRunWithDetails(id)
+      const run = await store.getRunWithDetails(id)
 
       if (!run) {
         return reply.status(404).send({
@@ -412,7 +412,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
 
       if (!run) {
         return reply.status(404).send({
@@ -425,10 +425,10 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
 
       // If running, cancel it first
       if (run.status === 'running') {
-        cancelBenchmark(id)
+        await cancelBenchmark(id)
       }
 
-      store.deleteRun(id)
+      await store.deleteRun(id)
 
       return {
         status: 'success' as const,
@@ -464,7 +464,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { page = 1, limit = 100 } = request.query
 
       // Verify run exists
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -474,7 +474,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         })
       }
 
-      const { results, total } = store.getResults(sid, { page, limit })
+      const { results, total } = await store.getResults(sid, { page, limit })
 
       return {
         results: results.map((r) => ({
@@ -525,7 +525,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { id } = request.params
       const { format = 'csv', include_warmup = false } = request.body
 
-      const run = store.getRunWithDetails(id)
+      const run = await store.getRunWithDetails(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -535,7 +535,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
         })
       }
 
-      const results = store.getRunResults(id, !include_warmup)
+      const results = await store.getRunResults(id, !include_warmup)
       const filename = `benchmark-${run.name || run.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}`
 
       if (format === 'json') {
@@ -646,7 +646,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       const { id } = request.params
 
       // Verify run exists
-      const run = store.getRun(id)
+      const run = await store.getRun(id)
       if (!run) {
         return reply.status(404).send({
           error: {
@@ -692,7 +692,7 @@ export default async function benchmarkRoutes(fastify: FastifyInstance) {
       }
 
       // Send current status
-      const currentRun = store.getRun(id)
+      const currentRun = await store.getRun(id)
       if (currentRun) {
         const statusMessage =
           currentRun.status === 'pending'

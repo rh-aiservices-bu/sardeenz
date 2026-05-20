@@ -1,0 +1,38 @@
+# Headless Service for StatefulSet pod discovery and direct pod addressing
+# Pods are addressable as: sardeenz-0.sardeenz-headless, sardeenz-1.sardeenz-headless, etc.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sardeenz-headless
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: ml-platform
+    app.kubernetes.io/part-of: sardeenz
+spec:
+  clusterIP: None
+  selector:
+    app: sardeenz
+  ports:
+    - port: 3000
+      name: http
+---
+# ClusterIP Service for external access (load-balanced across all pods)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sardeenz
+  labels:
+    app: sardeenz
+    app.kubernetes.io/name: sardeenz
+    app.kubernetes.io/component: ml-platform
+    app.kubernetes.io/part-of: sardeenz
+spec:
+  type: ClusterIP
+  selector:
+    app: sardeenz
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP

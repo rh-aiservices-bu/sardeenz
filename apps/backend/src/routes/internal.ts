@@ -478,7 +478,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
       let conflicts = 0
 
       for (const preset of presets) {
-        const accepted = configStore.syncPreset(preset)
+        const accepted = await configStore.syncPreset(preset)
         if (accepted) {
           synced++
         } else {
@@ -511,7 +511,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
     },
     async () => {
       const profileStore = getMemoryProfileStore()
-      const { profiles } = profileStore.listProfiles()
+      const { profiles } = await profileStore.listProfiles()
       return { profiles }
     }
   )
@@ -555,7 +555,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
       for (const profile of profiles) {
         // Check if we already have this profile by model+GPU lookup
         const existing = profile.gpuName
-          ? profileStore.lookupProfile(profile.modelPath, profile.maxTokens, profile.gpuName)
+          ? await profileStore.lookupProfile(profile.modelPath, profile.maxTokens, profile.gpuName)
           : null
 
         if (existing) {
@@ -576,7 +576,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
               comments: profile.comments,
               createdBy: profile.createdBy,
             }
-            profileStore.upsertProfile(data)
+            await profileStore.upsertProfile(data)
             updated++
           } else {
             skipped++
@@ -598,7 +598,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
             comments: profile.comments,
             createdBy: profile.createdBy,
           }
-          profileStore.createProfile(data)
+          await profileStore.createProfile(data)
           imported++
         }
       }
