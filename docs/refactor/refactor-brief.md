@@ -150,9 +150,50 @@ Client-side SDKs (e.g., official Python/JS OpenAI libraries) employ rigid JSON p
 
 > **Requirement:** The connection parking mechanism must not inject any data into the `delta.content` field of the response stream. The solution to this constraint is tracked as an open design problem (see Section 2.1).
 
-## 5. Delivery Phases
+## 5. Repository Structure & Cross-Language Contracts
 
-This platform is delivered in phases, each independently valuable and validatable. Dependencies between phases are explicitly marked.
+The platform is built as a **monorepo** with clear directory boundaries per component. This keeps cross-cutting changes atomic (a contract change is one commit, not three coordinated PRs), gives AI-assisted development full project visibility, and allows easy extraction of components later if needed (e.g., if parts merge into llm-d).
+
+```
+sardeenz/
+├── proxy/                  # Rust (axum/tokio) — cargo workspace root
+├── control-plane/          # TypeScript (Fastify)
+├── dashboard/              # TypeScript (React + PatternFly 6, Vite)
+├── packages/
+│   ├── contracts/          # OpenAPI specs (single source of truth)
+│   ├── types/              # Generated TypeScript types from OpenAPI
+│   └── utils/              # Shared TypeScript utilities
+├── plugins/
+│   └── vllm/               # First engine plugin (reference implementation)
+├── deployment/             # K8s manifests, Containerfiles
+├── docs/
+├── Makefile                # Build, dev, test across all components
+└── package.json            # npm workspaces for TypeScript components
+```
+
+### 5.1 Cross-Language Type Safety via OpenAPI
+
+The Rust proxy and TypeScript control plane share type definitions through **OpenAPI specifications** maintained in `packages/contracts/`. This is the single source of truth for all inter-component communication schemas.
+
+**Code generation pipeline:**
+
+| Target | Tooling | Output |
+|---|---|---|
+| **Rust proxy** | `openapi-generator` or `utoipa` (compile-time) | Rust structs + (de)serialization for routing map, health status, proxy ↔ control plane API |
+| **TypeScript control plane** | `openapi-typescript` | TypeScript types for the control plane API surface |
+| **TypeScript dashboard** | `openapi-typescript` | TypeScript types + fetch client for dashboard ↔ control plane communication |
+
+**Contracts cover:**
+
+- **Proxy ↔ Control Plane:** Routing map schema (model → endpoint mappings, model states, sleep levels), wake-up trigger API, health/metrics reporting
+- **Dashboard ↔ Control Plane:** Model lifecycle operations, VRAM budget views, engine module management, cluster state, real-time event streams (SSE)
+- **Engine Plugin Contract:** Health check, memory reporting, lifecycle signals, capability declaration (defined in Phase 0, expressed as OpenAPI schemas)
+
+**Workflow:** Edit the OpenAPI spec in `packages/contracts/` → run code generation → both Rust and TypeScript components get updated types. A CI check ensures generated code is never out of sync with the spec.
+
+## 6. Delivery Phases
+
+This platform is delivered in phases, each independently valuable and validatable. Dependencies between phases are explicitly marked. Target: end of August 2026.
 
 ### Phase 0: Engine Plugin Interface Design
 
@@ -207,7 +248,7 @@ This platform is delivered in phases, each independently valuable and validatabl
 
 **Reference:** [ODH Highlander](https://odh-highlander.github.io/) — the HPC-style module management system this phase integrates.
 
-## 6. Open Questions & Future Work
+## 7. Open Questions & Future Work
 
 | Item | Status | Notes |
 |---|---|---|
