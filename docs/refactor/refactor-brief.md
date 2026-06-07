@@ -152,7 +152,9 @@ Client-side SDKs (e.g., official Python/JS OpenAI libraries) employ rigid JSON p
 
 ## 5. Repository Structure & Cross-Language Contracts
 
-The platform is built as a **monorepo** with clear directory boundaries per component. This keeps cross-cutting changes atomic (a contract change is one commit, not three coordinated PRs), gives AI-assisted development full project visibility, and allows easy extraction of components later if needed (e.g., if parts merge into llm-d).
+The platform lives in a **new repository**, separate from the Sardeenz v1 codebase. The v1 repo remains intact as a living reference for cherry-picking UI components and implementation patterns. This document (`docs/refactor/refactor-brief.md`) moves to the new repo's `docs/` as the founding design document.
+
+Within the new repo, the project is organized as a **monorepo** with clear directory boundaries per component. This keeps cross-cutting changes atomic (a contract change is one commit, not three coordinated PRs), gives AI-assisted development full project visibility, and allows easy extraction of components later if needed (e.g., if parts merge into llm-d).
 
 ```
 sardeenz/
