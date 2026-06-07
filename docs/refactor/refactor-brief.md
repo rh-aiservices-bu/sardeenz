@@ -97,6 +97,26 @@ The system is split into four strictly decoupled, specialized boundaries to enfo
 
 **kvcached Integration:** kvcached (GPU memory sharing via IPC) survives as an **optional optimization layer** that engine plugins can leverage. It is not a platform-level concern — engines declare support for it, and the control plane enables it when available. Not all engines or workload types will support or benefit from kvcached.
 
+### 2.5 Highlander Integration Model
+
+The Highlander runtime modules and the Sardeenz orchestrator live in **separate repositories** with a clear integration boundary.
+
+**Highlander repo** ([ODH Highlander](https://odh-highlander.github.io/)) owns the EasyBuild configurations (easyconfigs) that define how to package AI runtimes — vLLM, PyTorch, Triton, kvcached, etc. — into Lmod modules. These are built offline via EasyBuild and deployed to the shared CephFS application modules mount. Easyconfigs have their own lifecycle: adding support for vLLM 0.20.0 is a Highlander change, not a Sardeenz change.
+
+**Sardeenz repo** consumes those modules at runtime via `module load`/`module unload`. It does not need the easyconfigs at build or runtime.
+
+```
+Highlander repo              CephFS (ROX mount)           Sardeenz control plane
+                                                          
+easyconfigs/                  /modules/                    engine plugin (vLLM)
+  vllm-0.19.1.eb  →build→      vllm/0.19.1/               → module load vllm/0.19.1
+  vllm-0.20.0.eb  →build→      vllm/0.20.0/               → module load vllm/0.20.0
+  triton-2.3.eb   →build→      triton/2.3/                 → module load triton/2.3
+  kvcached-0.1.5.eb →build→    kvcached/0.1.5/             → module load kvcached/0.1.5
+```
+
+**Capability discovery:** Engine capabilities (sleep/wake API, health endpoint path, memory reporting, kvcached support) are defined in the **Sardeenz engine plugin**, not in the Lmod modulefile. The plugin knows "vLLM supports sleep/wake via `/sleep` and `/wakeup`, reports health at `/health`, and supports kvcached when `ENABLE_KVCACHED=true`." The module version is just a parameter that selects which binary gets loaded. This avoids coupling Sardeenz's runtime behavior to Lmod metadata parsing and keeps the integration simple: Highlander provides the runtimes, Sardeenz knows how to drive them.
+
 ## 3. Data and Storage Architecture
 
 To minimize model loading times and eliminate container image pull as the primary cold-start bottleneck, the architecture shifts engine runtimes and model weights to a shared high-speed data fabric.
