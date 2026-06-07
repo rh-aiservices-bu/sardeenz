@@ -180,13 +180,32 @@ This platform is delivered in phases, each independently valuable and validatabl
 
 **Deliverable:** A control plane that can dynamically sleep, wake, and evict models based on VRAM pressure and incoming request patterns.
 
-### Phase 3: Highlander Runtime Integration
+### Phase 3: Admin Dashboard (Fresh Build)
+
+**Scope:** New React + PatternFly 6 frontend built from a clean scaffold, designed around the new platform's domain model. Individual UI components proven in Sardeenz v1 (GPU memory visualization, model loading progress, cluster topology) are ported as needed — the application shell, routing, data-fetching layer, and auth flow are built new.
+
+**Rationale:** The v1 frontend is tightly coupled to a single-instance Fastify backend that serves both API and static assets. The new platform has a fundamentally different communication architecture (Rust proxy, separate control plane, Highlander workers), different state model (sleep levels, engine plugin types, VRAM budgets, module versions, canary traffic splits), and different auth topology. Retrofitting these changes into the existing app costs more than a fresh build and produces a worse result. Six months of customer demos have validated which UI patterns work — those are carried forward; the plumbing is not.
+
+**Approach:**
+- Clean Vite + React + PatternFly 6 scaffold
+- Navigation and page structure designed for the new domain model from day one
+- Data layer built for the new API surface (control plane endpoints, proxy health/metrics, Highlander module state)
+- Cherry-pick proven v1 components: GPU cards, model status panels, memory visualizations, benchmark views
+- Preserve the UX simplicity that customers responded well to — straightforward model management that doesn't require Kubernetes/YAML expertise
+
+**Dependency:** Phase 2 (control plane API surface must be stable enough to build against).
+
+**Deliverable:** A production-ready admin dashboard that covers model lifecycle, VRAM budgeting, engine module management, cluster overview, and real-time monitoring.
+
+### Phase 4: Highlander Runtime Integration
 
 **Scope:** Lmod/EasyBuild integration in worker containers, CephFS mount architecture, module load/unload IPC from control plane, squashfs/erofs packaging for metadata storm mitigation.
 
 **Dependency:** Phase 0 (engine contract), CephFS/ODF infrastructure availability (external dependency).
 
 **Deliverable:** Slim worker containers that dynamically compose engine runtimes from shared network storage, supporting multiple engine versions and types simultaneously.
+
+**Reference:** [ODH Highlander](https://odh-highlander.github.io/) — the HPC-style module management system this phase integrates.
 
 ## 6. Open Questions & Future Work
 
