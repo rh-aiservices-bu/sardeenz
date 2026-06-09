@@ -316,6 +316,12 @@ Authentication mode is configured by the deployment (`AUTH_MODE` environment var
 - **Leader changed notification** — Normal during failover. The dashboard automatically redirects to the new leader
 - **Pod selector shows a pod as unavailable** — The pod may be restarting or disconnected from the cluster
 
+### "Attention backend override" info banner during model load
+
+When loading a model, you may see an info banner saying the GPU does not support the FlashInfer attention backend and that TRITON_ATTN is being used instead. This happens automatically on pre-Ampere GPUs (e.g., T4, V100, P100) where FlashInfer kernels are not available. No action is needed — the model will load and run correctly with the alternative backend. Performance is comparable for most workloads.
+
+If you want to control the attention backend yourself, add `--attention-backend <value>` in the **Extra vLLM Arguments** field when loading a model.
+
 ### GPU Info shows no data
 
 - Ensure the NVIDIA drivers are installed and nvidia-smi works on the host

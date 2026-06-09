@@ -49,22 +49,7 @@ const SLEEPING_PATTERN_DEFS = [
   },
 ]
 
-// Nivo tooltip theme - detects PatternFly dark mode for proper styling
-const getTooltipTheme = () => {
-  const isDark = document.documentElement.classList.contains('pf-v6-theme-dark')
-  return {
-    tooltip: {
-      container: {
-        background: isDark ? '#1f1f1f' : '#ffffff',
-        color: isDark ? '#e0e0e0' : '#151515',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        border: isDark ? '1px solid #3c3f42' : '1px solid #d2d2d2',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
-      },
-    },
-  }
-}
+import { getNivoTooltipTheme } from '../chartTheme'
 
 const formatGb = (value: number) => `${value.toFixed(2)} GB`
 
@@ -180,7 +165,7 @@ function GpuCard({
           axisRight={null}
           axisBottom={null}
           axisLeft={null}
-          theme={getTooltipTheme()}
+          theme={getNivoTooltipTheme()}
           onClick={(bar) => {
             const model = gpu.models.find((m) => m.display_name === bar.id)
             if (model && onModelClick) {
@@ -275,7 +260,7 @@ function GpuCard({
               axisRight={null}
               axisBottom={null}
               axisLeft={null}
-              theme={getTooltipTheme()}
+              theme={getNivoTooltipTheme()}
             />
           </div>
           <Flex gap={{ default: 'gapSm' }} style={{ marginTop: '2px' }}>

@@ -101,6 +101,10 @@ export default fp(
       const forwardHeaders = filterHeaders(request.headers as Record<string, string | string[] | undefined>)
       forwardHeaders['x-sardeenz-forwarded'] = 'true'
       forwardHeaders['x-forwarded-for'] = request.ip
+      // Preserve original host so the leader can construct correct external URLs (e.g. OAuth redirect_uri)
+      if (request.headers.host && !forwardHeaders['x-forwarded-host']) {
+        forwardHeaders['x-forwarded-host'] = request.headers.host as string
+      }
 
       const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS'
 
@@ -112,6 +116,7 @@ export default fp(
           body: hasBody ? (request.raw as unknown as ReadableStream) : undefined,
           signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
           duplex: hasBody ? 'half' : undefined,
+          redirect: 'manual',
         })
       } catch (err: unknown) {
         const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'

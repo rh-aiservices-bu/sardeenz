@@ -6,7 +6,7 @@ This guide covers setting up a local development environment with NVIDIA GPU sup
 
 ### Hardware
 
-- NVIDIA GPU with CUDA 12.x drivers
+- NVIDIA GPU with CUDA 13.x drivers
 - 8GB+ VRAM (16GB+ recommended for larger models)
 
 ### Software
@@ -22,7 +22,7 @@ This guide covers setting up a local development environment with NVIDIA GPU sup
 nvidia-smi
 
 # Expected output shows GPU name, driver version, CUDA version
-# Example: NVIDIA GeForce RTX 3070, Driver 535.xx, CUDA 12.x
+# Example: NVIDIA GeForce RTX 3070, Driver 565.xx, CUDA 13.x
 ```
 
 ### Install uv (Python Package Manager)

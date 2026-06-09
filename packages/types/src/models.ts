@@ -100,6 +100,8 @@ export interface ModelInstance {
   routable: boolean
   /** Pod ID when running in a cluster (hostname from StatefulSet) */
   podId?: string
+  /** Warnings generated during model launch (e.g., attention backend overrides) */
+  warnings?: string[]
 }
 
 /** Phase of a model move operation */

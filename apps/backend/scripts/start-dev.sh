@@ -9,7 +9,7 @@
 #
 # Prerequisites:
 # - uv (Python package manager): curl -LsSf https://astral.sh/uv/install.sh | sh
-# - NVIDIA GPU with CUDA 12.x drivers
+# - NVIDIA GPU with CUDA 13.x drivers
 # - Python 3.12
 #
 # Options:

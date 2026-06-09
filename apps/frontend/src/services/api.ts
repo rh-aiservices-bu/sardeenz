@@ -1296,6 +1296,7 @@ export interface ClusterLoadModelResponse {
   instanceId: string
   podId: string
   status: string
+  warnings?: string[]
 }
 
 export interface ClusterMoveModelRequest {
