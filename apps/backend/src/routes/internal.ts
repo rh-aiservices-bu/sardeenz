@@ -258,6 +258,7 @@ export default async function internalRoutes(fastify: FastifyInstance) {
             properties: {
               instanceId: { type: 'string' },
               status: { type: 'string' },
+              warnings: { type: 'array', items: { type: 'string' } },
             },
           },
         },
@@ -278,7 +279,11 @@ export default async function internalRoutes(fastify: FastifyInstance) {
           enableSleepMode,
         })
 
-        return { instanceId: instance.id, status: instance.status }
+        return {
+          instanceId: instance.id,
+          status: instance.status,
+          ...(instance.warnings?.length ? { warnings: instance.warnings } : {}),
+        }
       } catch (err) {
         fastify.log.error({ err, modelPath }, 'Remote load command failed')
         return reply.code(500).send({ error: (err as Error).message })

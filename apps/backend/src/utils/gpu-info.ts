@@ -65,6 +65,81 @@ export interface NvidiaSmiInfo {
 
 const DEFAULT_GPU_MEMORY_GB = 24.0
 
+// FlashInfer attention backend requires compute capability >= 8.0 (Ampere+)
+const MIN_FLASHINFER_COMPUTE_CAPABILITY = 8.0
+
+// GPU name patterns → compute capability (major.minor)
+// Used to detect pre-Ampere GPUs that need attention backend fallback
+const GPU_COMPUTE_CAPABILITIES: [RegExp, number][] = [
+  // Blackwell (10.0+)
+  [/\bB100\b/i, 10.0],
+  [/\bB200\b/i, 10.0],
+  [/\bGB200\b/i, 10.0],
+  // Hopper (9.0)
+  [/\bH100\b/i, 9.0],
+  [/\bH200\b/i, 9.0],
+  [/\bGH200\b/i, 9.0],
+  // Ada Lovelace (8.9)
+  [/\bL4\b/i, 8.9],
+  [/\bL40S?\b/i, 8.9],
+  [/\bRTX\s*40\d\d/i, 8.9],
+  [/\bRTX\s*6000\s*Ada/i, 8.9],
+  // Ampere (8.0-8.6)
+  [/\bA100\b/i, 8.0],
+  [/\bA10\b/i, 8.6],
+  [/\bA10G\b/i, 8.6],
+  [/\bA16\b/i, 8.6],
+  [/\bA30\b/i, 8.0],
+  [/\bA40\b/i, 8.6],
+  [/\bA2\b/i, 8.6],
+  [/\bRTX\s*30\d\d/i, 8.6],
+  [/\bRTX\s*A[2-6]000/i, 8.6],
+  // Turing (7.5) - pre-Ampere
+  [/\bT4\b/i, 7.5],
+  [/\bTITAN\s*RTX\b/i, 7.5],
+  [/\bRTX\s*20\d\d/i, 7.5],
+  [/\bGTX\s*16\d\d/i, 7.5],
+  [/\bQuadro\s*RTX/i, 7.5],
+  // Volta (7.0) - pre-Ampere
+  [/\bV100\b/i, 7.0],
+  [/\bTITAN\s*V\b/i, 7.0],
+  // Pascal (6.0-6.1) - pre-Ampere
+  [/\bP100\b/i, 6.0],
+  [/\bP40\b/i, 6.1],
+  [/\bP4\b/i, 6.1],
+  [/\bGTX\s*10\d\d/i, 6.1],
+  // Maxwell (5.2) - pre-Ampere
+  [/\bM40\b/i, 5.2],
+  [/\bM60\b/i, 5.2],
+  // Kepler (3.5-3.7) - pre-Ampere
+  [/\bK80\b/i, 3.7],
+  [/\bK40\b/i, 3.5],
+]
+
+/**
+ * Get estimated CUDA compute capability from GPU name.
+ * Returns null if the GPU is not recognized.
+ */
+export function getGpuComputeCapability(gpuName: string): number | null {
+  for (const [pattern, cc] of GPU_COMPUTE_CAPABILITIES) {
+    if (pattern.test(gpuName)) {
+      return cc
+    }
+  }
+  return null
+}
+
+/**
+ * Check if a GPU needs an attention backend override because FlashInfer
+ * doesn't have kernel images for its compute capability.
+ * Returns true only for GPUs positively identified as pre-Ampere (CC < 8.0).
+ * Unknown GPUs return false (no override) to avoid false positives.
+ */
+export function needsAttentionBackendOverride(gpuName: string): boolean {
+  const cc = getGpuComputeCapability(gpuName)
+  return cc !== null && cc < MIN_FLASHINFER_COMPUTE_CAPABILITY
+}
+
 // Cached GPU info (singleton)
 let cachedGpuInfo: GpuInfo[] | null = null
 let initializationPromise: Promise<GpuInfo[]> | null = null

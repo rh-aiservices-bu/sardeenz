@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+## [0.7.1] - 2026-06-09
+
+### Bug Fixes
+
+- **OAuth state in cluster mode**: Moved OAuth state storage from in-memory Map to PostgreSQL, fixing login failures when OAuth callbacks land on a different pod than the one that initiated the flow
+- **Pre-Ampere GPU support**: Auto-detect GPUs with compute capability < 8.0 (T4, V100, P100, etc.) and override the attention backend to TRITON_ATTN via the `--attention-backend` CLI argument, since FlashInfer kernels are not available on these architectures
+- **Leader-redirect OAuth hostname**: Preserve the external hostname when leader-redirect forwards OAuth login requests, preventing redirect URI mismatches
+- **Leader-redirect URL fragments**: Prevent leader-redirect from following redirects and dropping URL hash fragments
+- **Dashboard background colors**: Fixed background color inconsistencies in the frontend
+
 ## [0.7.0] - 2026-05-19
 
 ### School of Sardeenz — Multi-Pod Cluster Orchestration

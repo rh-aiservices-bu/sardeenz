@@ -71,6 +71,7 @@ export const LoadModelResponseSchema = Type.Object({
   port: Type.Integer(),
   loaded_at: Type.String({ format: 'date-time' }),
   instance_id: Type.String({ format: 'uuid' }),
+  warnings: Type.Optional(Type.Array(Type.String())),
 })
 
 export const UnloadModelResponseSchema = Type.Object({

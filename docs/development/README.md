@@ -6,7 +6,7 @@ This guide covers setting up a local development environment for contributing to
 
 - **Node.js 22.x** with npm 10.x+
 - **Python 3.12** + [uv](https://docs.astral.sh/uv/) (for vLLM)
-- **NVIDIA GPU** with CUDA 12.x and 8GB+ VRAM (16GB+ recommended for multiple models)
+- **NVIDIA GPU** with CUDA 13.x and 8GB+ VRAM (16GB+ recommended for multiple models)
 
 ## Quick Start
 

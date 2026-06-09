@@ -47,7 +47,7 @@ interface LoadModelDialogProps {
   /** Callback when dialog should close */
   onClose: () => void
   /** Callback to load a model. Must return the instance_id for SSE subscription */
-  onLoad: (request: LoadModelRequest) => Promise<{ instance_id: string }>
+  onLoad: (request: LoadModelRequest) => Promise<{ instance_id: string; warnings?: string[] }>
   /** Called after successful model load */
   onSuccess?: () => void
   /** Whether the cluster is in multi-pod mode */
@@ -114,6 +114,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
   const [phase, setPhase] = useState<DialogPhase>('form')
   const [instanceId, setInstanceId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [loadWarnings, setLoadWarnings] = useState<string[]>([])
 
   // SSE connection for live logs and progress - only active during loading phase
   const { isConnected, logs, progress, progressMessage, reconnect } = useInstanceEvents({
@@ -302,6 +303,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
       }
 
       let resultInstanceId: string
+      let warnings: string[] = []
 
       if (isClusterMode && selectedPodId) {
         // Cluster mode: use cluster load API
@@ -315,11 +317,15 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
           enableSleepMode: request.enable_sleep_mode,
         })
         resultInstanceId = clusterResult.instanceId
+        warnings = clusterResult.warnings ?? []
       } else {
         // Single-pod mode: use local load
         const result = await onLoad(request)
         resultInstanceId = result.instance_id
+        warnings = result.warnings ?? []
       }
+
+      setLoadWarnings(warnings)
 
       // Start listening for events from this instance
       setInstanceId(resultInstanceId)
@@ -355,6 +361,7 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
     setLocalModelsBasePath('')
     setEnableSleepMode(true)
     setSelectedPodId(undefined)
+    setLoadWarnings([])
     onClose()
   }, [onClose])
 
@@ -888,6 +895,19 @@ export function LoadModelDialog({ isOpen, onClose, onLoad, onSuccess, isClusterM
 
         {(phase === 'loading' || phase === 'failed') && (
           <>
+            {loadWarnings.length > 0 && (
+              <Alert
+                variant="info"
+                isInline
+                title="Attention backend override"
+                style={{ marginBottom: 'var(--pf-t--global--spacer--md)' }}
+              >
+                {loadWarnings.map((w, i) => (
+                  <p key={i}>{w}</p>
+                ))}
+              </Alert>
+            )}
+
             <Progress
               aria-label="Model loading progress"
               value={phase === 'failed' ? 100 : (progress ?? undefined)}
