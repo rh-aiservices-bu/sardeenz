@@ -378,6 +378,13 @@ python -m vllm.entrypoints.openai.api_server \
 - `ENABLE_KVCACHED=true` - Enable kvcached memory sharing
 - `KVCACHED_AUTOPATCH=1` - Auto-patch vLLM for kvcached
 - `CUDA_VISIBLE_DEVICES=0` - GPU device assignment
+**Attention Backend Auto-Detection:**
+
+vLLM's default attention backend (FlashInfer) requires CUDA compute capability 8.0 or higher (Ampere architecture and newer). On pre-Ampere GPUs such as the T4 (compute capability 7.5) or V100 (7.0), FlashInfer kernels are not available and model loading will fail.
+
+The backend automatically detects GPU compute capability from NVML device names at launch time. When a target GPU is identified as pre-Ampere, `--attention-backend TRITON_ATTN` is appended to the vLLM CLI arguments, and a warning is surfaced in the load response and displayed in the dashboard's loading dialog.
+
+This override is skipped if the user has already specified `--attention-backend` in extra args.
 
 **Lifecycle States:**
 

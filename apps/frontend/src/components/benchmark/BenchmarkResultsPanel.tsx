@@ -26,6 +26,7 @@ import {
 import { ExportIcon, RedoIcon } from '@patternfly/react-icons'
 import { ResponsiveBar } from '@nivo/bar'
 import { apiClient, extractErrorMessage, type BenchmarkSummary } from '../../services/api'
+import { getNivoTooltipTheme } from '../../chartTheme'
 
 interface BenchmarkResultsPanelProps {
   benchmarkId: string
@@ -339,6 +340,7 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
                     padding={0.3}
                     groupMode="grouped"
                     colors={{ scheme: 'nivo' }}
+                    theme={getNivoTooltipTheme()}
                     axisBottom={{
                       tickSize: 5,
                       tickPadding: 5,
@@ -386,6 +388,7 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
                     padding={0.3}
                     groupMode="grouped"
                     colors={{ scheme: 'nivo' }}
+                    theme={getNivoTooltipTheme()}
                     axisBottom={{
                       tickSize: 5,
                       tickPadding: 5,
@@ -433,6 +436,7 @@ export function BenchmarkResultsPanel({ benchmarkId, onRerun }: BenchmarkResults
                       margin={{ top: 20, right: 60, bottom: 50, left: 60 }}
                       padding={0.3}
                       colors={{ scheme: 'nivo' }}
+                      theme={getNivoTooltipTheme()}
                       valueScale={{ type: 'linear', max: 100 }}
                       axisBottom={{
                         tickSize: 5,

@@ -3,6 +3,7 @@ import { Type, type Static } from '@sinclair/typebox'
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
 import { config } from '../config.js'
+import { oauthStateStore } from '../stores/oauth-state-store.js'
 
 /**
  * Timing-safe string comparison to prevent timing attacks
@@ -68,23 +69,6 @@ const ErrorResponseSchema = Type.Object({
   }),
 })
 
-// In-memory state storage for OAuth CSRF protection
-// Maps state -> { callbackUrl, createdAt }
-const oauthStateStore = new Map<string, { callbackUrl: string; createdAt: number }>()
-const STATE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-
-// Clean up expired states periodically
-function cleanupExpiredStates(): void {
-  const now = Date.now()
-  for (const [state, data] of oauthStateStore.entries()) {
-    if (now - data.createdAt > STATE_TTL_MS) {
-      oauthStateStore.delete(state)
-    }
-  }
-}
-
-// Run cleanup every minute
-setInterval(cleanupExpiredStates, 60 * 1000)
 
 /**
  * Get the ServiceAccount token for making K8s API calls
@@ -201,6 +185,16 @@ interface OpenShiftUserInfo {
 }
 
 export default async function authRoutes(fastify: FastifyInstance) {
+  // Periodically clean up expired OAuth states from PostgreSQL
+  const cleanupInterval = setInterval(() => {
+    oauthStateStore.cleanup().catch((err) => {
+      fastify.log.warn(err, 'Failed to clean up expired OAuth states')
+    })
+  }, 60 * 1000)
+
+  fastify.addHook('onClose', () => {
+    clearInterval(cleanupInterval)
+  })
   /**
    * GET /api/auth/info
    * Returns authentication configuration for the frontend
@@ -256,15 +250,17 @@ export default async function authRoutes(fastify: FastifyInstance) {
       const state = randomBytes(32).toString('hex')
 
       // Determine callback URL based on request origin
+      // Use request.host (proxy-aware via trustProxy) instead of raw Host header,
+      // so forwarded requests from follower pods resolve the correct external hostname
       const origin =
         request.headers.origin ||
-        (request.headers.host ? `${request.protocol}://${request.headers.host}` : null)
+        (request.host ? `${request.protocol}://${request.host}` : null)
       const callbackUrl = origin
         ? `${origin}/api/auth/callback`
         : `${config.apiBaseUrl}/api/auth/callback`
 
-      // Store state for validation
-      oauthStateStore.set(state, { callbackUrl, createdAt: Date.now() })
+      // Store state in PostgreSQL for cross-pod validation
+      await oauthStateStore.save(state, callbackUrl)
 
       // Build authorization URL
       const params = new URLSearchParams({
@@ -424,17 +420,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
         )
       }
 
-      // Validate state (CSRF protection)
-      const storedState = oauthStateStore.get(state)
+      // Validate and consume state atomically (CSRF protection)
+      const storedState = await oauthStateStore.consume(state)
       if (!storedState) {
         fastify.log.warn({ state }, 'Invalid or expired OAuth state')
         return reply.redirect(
           `${config.frontendUrl}/?auth_error=${encodeURIComponent('Invalid or expired state. Please try logging in again.')}`
         )
       }
-
-      // Remove used state
-      oauthStateStore.delete(state)
 
       const callbackUrl = storedState.callbackUrl
 

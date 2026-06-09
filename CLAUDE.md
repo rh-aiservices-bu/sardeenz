@@ -42,7 +42,7 @@ npm run build -w packages/utils
 npm run dev
 ```
 
-**Prerequisites:** Node.js 22.x, Python 3.12 + uv, NVIDIA GPU with CUDA 12.x, 8GB+ VRAM (16GB+ recommended)
+**Prerequisites:** Node.js 22.x, Python 3.12 + uv, NVIDIA GPU with CUDA 13.x, 8GB+ VRAM (16GB+ recommended)
 
 **GPU Setup:** On first run, the backend auto-creates a Python venv with vLLM/kvcached. See [`docs/dev-setup.md`](./docs/dev-setup.md) for details.
 

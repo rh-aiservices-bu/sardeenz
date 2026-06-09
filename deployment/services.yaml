@@ -29,6 +29,10 @@ metadata:
     app.kubernetes.io/part-of: sardeenz
 spec:
   type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 300
   selector:
     app: sardeenz
   ports:

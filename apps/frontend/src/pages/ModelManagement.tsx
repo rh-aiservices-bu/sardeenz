@@ -218,7 +218,7 @@ function ModelManagement() {
 
   const handleLoadModel = async (request: LoadModelRequest) => {
     const result = await apiClient.loadModel(request)
-    return { instance_id: result.instance_id }
+    return { instance_id: result.instance_id, warnings: result.warnings }
   }
 
   const handleLoadSuccess = () => {

@@ -22,6 +22,7 @@ export interface LoadModelResponse {
   port: number
   loaded_at: string
   instance_id: string
+  warnings?: string[]
 }
 
 export interface UnloadModelResponse {

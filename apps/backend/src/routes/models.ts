@@ -110,6 +110,7 @@ export default async function modelsRoutes(fastify: FastifyInstance) {
           port: instance.port,
           loaded_at: instance.loadedAt.toISOString(),
           instance_id: instance.id,
+          ...(instance.warnings?.length ? { warnings: instance.warnings } : {}),
         }
       } catch (err) {
         // This only catches spawn failures, not loading failures

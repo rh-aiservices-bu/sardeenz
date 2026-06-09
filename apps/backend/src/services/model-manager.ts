@@ -18,7 +18,7 @@ import { NotFoundError, InternalError } from '../utils/errors.js'
 import { buildErrorMessage } from '../utils/error-parser.js'
 import { parseMemoryMetrics, extractEngineCorePid } from '../utils/memory-parser.js'
 import { LoadProgressTracker } from '../utils/load-progress-tracker.js'
-import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
+import { getNvidiaSmiInfo, getCachedGpuInfo, needsAttentionBackendOverride } from '../utils/gpu-info.js'
 import { simGpuTracker } from '../utils/sim-gpu-tracker.js'
 import { estimateModelMemory } from '../utils/model-memory-estimator.js'
 import type { Logger } from '@sardeenz/utils'
@@ -269,6 +269,32 @@ export class ModelManager extends EventEmitter {
         }
 
         allArgs = [...baseArgs, ...sanitizedExtraArgs]
+
+        // Detect if GPUs need attention backend override (pre-Ampere GPUs like T4)
+        // FlashInfer kernels require compute capability >= 8.0
+        let needsAttentionOverride = false
+        const gpuInfoList = getCachedGpuInfo()
+        if (
+          gpuInfoList &&
+          !hasArg(sanitizedExtraArgs, '--attention-backend')
+        ) {
+          const targetGpuNames = targetGpuIds
+            .map((id) => gpuInfoList.find((g) => g.index === id))
+            .filter((g) => g !== undefined)
+
+          needsAttentionOverride = targetGpuNames.some((g) => needsAttentionBackendOverride(g.name))
+          if (needsAttentionOverride) {
+            const gpuName = targetGpuNames[0]?.name ?? 'unknown'
+            this.logger.warn(
+              { gpuName, targetGpuIds },
+              'GPU does not support FlashInfer (compute capability < 8.0), overriding attention backend to TRITON_ATTN'
+            )
+            allArgs.push('--attention-backend', 'TRITON_ATTN')
+            instance.warnings = [
+              `${gpuName} does not support the FlashInfer attention backend — using TRITON_ATTN instead.`,
+            ]
+          }
+        }
 
         const kvcachedIpcName = enableKvcached ? buildIpcSegmentName(targetGpuIds) : undefined
         const cudaVisibleDevices = config.virtualGpuCount > 0 ? '0' : targetGpuIds.join(',')

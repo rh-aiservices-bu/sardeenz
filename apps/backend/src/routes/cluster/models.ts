@@ -68,6 +68,7 @@ export default async function clusterModelRoutes(fastify: FastifyInstance) {
             instanceId: Type.String(),
             podId: Type.String(),
             status: Type.String(),
+            warnings: Type.Optional(Type.Array(Type.String())),
           }),
           400: ErrorSchema,
           404: ErrorSchema,
@@ -102,7 +103,12 @@ export default async function clusterModelRoutes(fastify: FastifyInstance) {
             servedModelName,
             enableSleepMode,
           })
-          return { instanceId: instance.id, podId, status: instance.status }
+          return {
+            instanceId: instance.id,
+            podId,
+            status: instance.status,
+            ...(instance.warnings?.length ? { warnings: instance.warnings } : {}),
+          }
         } catch (err) {
           fastify.log.error({ err, modelPath }, 'Local cluster load failed')
           return reply.code(500).send({ error: (err as Error).message })
@@ -129,13 +135,18 @@ export default async function clusterModelRoutes(fastify: FastifyInstance) {
           signal: AbortSignal.timeout(10_000),
         })
 
-        const result = await response.json() as { instanceId?: string; status?: string; error?: string }
+        const result = await response.json() as { instanceId?: string; status?: string; warnings?: string[]; error?: string }
 
         if (!response.ok) {
           return reply.code(response.status).send({ error: result.error ?? 'Remote load failed' })
         }
 
-        return { instanceId: result.instanceId, podId, status: result.status }
+        return {
+          instanceId: result.instanceId,
+          podId,
+          status: result.status,
+          ...(result.warnings?.length ? { warnings: result.warnings } : {}),
+        }
       } catch (err) {
         fastify.log.error({ err, podId, modelPath }, 'Failed to forward load to remote pod')
         return reply.code(502).send({ error: `Failed to reach pod ${podId}` })

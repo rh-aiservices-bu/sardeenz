@@ -32,7 +32,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 | ---------------------------- | ------- | ------------------------ |
 | **Podman**                   | 4.x+    | Container runtime        |
 | **NVIDIA Container Toolkit** | 1.14.x+ | GPU access in containers |
-| **CUDA**                     | 12.x    | GPU compute              |
+| **CUDA**                     | 13.x    | GPU compute              |
 | **OpenShift** (optional)     | 4.12+   | Production orchestration |
 | **kubectl** (optional)       | 1.28+   | Kubernetes CLI           |
 
@@ -59,100 +59,105 @@ sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 **Verify GPU Access:**
 
 ```bash
-podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all nvidia/cuda:13.0.0-base-ubi9 nvidia-smi
 ```
 
 ## Container Build
 
-### Dockerfile Structure
+### Image Overview
 
-The unified container image includes:
+The unified container image is built from `docker/Containerfile` as a multi-stage build:
 
-- **Base:** `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` (CUDA 12.x + Python 3.12 + vLLM)
-- **Node.js 22.x** (added layer)
-- **Backend** (Fastify TypeScript app)
-- **Frontend** (React + PatternFly built static assets)
+| Stage | Base | Purpose |
+|-------|------|---------|
+| **0: vllm-base** | `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` | CUDA 13.x + Python 3.12 + vLLM |
+| **1: kvcached-builder** | vllm-base + CUDA devel | Builds kvcached wheel from source |
+| **2: runtime-deps** | vllm-base + Node.js 22 | Production `npm ci --omit=dev` |
+| **3: builder** | runtime-deps + devDeps | Compiles TypeScript backend + Vite frontend |
+| **4: runtime** | runtime-deps + kvcached wheel | Final image with compiled dist only |
 
-### Build the Container
+The final image exposes port **3000** and runs `node apps/backend/dist/server.js` via `docker/entrypoint.sh`. Fastify serves both the API and the frontend static assets — no NGINX.
 
-**From project root:**
+**Registry:** `quay.io/rh-aiservices-bu/sardeenz`
+
+### Build and Push
 
 ```bash
-# Build and tag using Makefile (recommended)
-make build VERSION=x.y.z
-make push VERSION=x.y.z
+# Build and tag (recommended — uses Makefile)
+make build VERSION=0.8.0
+make push VERSION=0.8.0
 
-# Or manually with podman:
-podman build -f docker/Containerfile -t quay.io/rh-aiservices-bu/sardeenz:x.y.z .
-podman push quay.io/rh-aiservices-bu/sardeenz:x.y.z
+# Or both in one step
+make build-push VERSION=0.8.0
+
+# Or manually with podman
+podman build -f docker/Containerfile -t quay.io/rh-aiservices-bu/sardeenz:0.8.0 .
+podman push quay.io/rh-aiservices-bu/sardeenz:0.8.0
 ```
 
-**Build with custom vLLM version:**
+Run `make help` for a full list of targets and options.
+
+**Build with a different kvcached version:**
 
 ```bash
 podman build \
-  --build-arg VLLM_BASE_IMAGE=quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4 \
+  --build-arg KVCACHED_VERSION=v0.1.6 \
   -f docker/Containerfile \
-  -t sardeenz:custom .
+  -t quay.io/rh-aiservices-bu/sardeenz:custom .
 ```
 
-### Multi-Stage Build Example
+### Release Workflow
 
-_Note: This is a conceptual Dockerfile structure. Actual implementation may vary._
+Sardeenz uses a single version in `package.json` at the project root (sub-packages are `private` and don't carry their own version). The release process is:
 
-```dockerfile
-# Stage 1: Build frontend
-FROM node:22-alpine AS frontend-builder
-WORKDIR /app
-COPY package*.json ./
-COPY apps/frontend/package*.json apps/frontend/
-RUN npm ci
-COPY apps/frontend apps/frontend
-COPY packages packages
-RUN npm run build -w apps/frontend
+**1. Update the version in `package.json`:**
 
-# Stage 2: Build backend
-FROM node:22-alpine AS backend-builder
-WORKDIR /app
-COPY package*.json ./
-COPY apps/backend/package*.json apps/backend/
-RUN npm ci --production
-COPY apps/backend apps/backend
-COPY packages packages
-RUN npm run build -w apps/backend
+```bash
+# Minor bump (default — e.g., 0.7.0 → 0.8.0)
+npm version minor --no-git-tag-version
 
-# Stage 3: Final image
-FROM quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4
-
-# Install Node.js 22
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g npm@latest
-
-# Install kvcached
-RUN pip install kvcached
-
-# Copy built artifacts
-WORKDIR /app
-COPY --from=backend-builder /app/apps/backend/dist ./backend
-COPY --from=backend-builder /app/node_modules ./node_modules
-COPY --from=frontend-builder /app/apps/frontend/dist ./frontend
-
-# Expose port (unified API - Controller + Proxy + Frontend)
-EXPOSE 3000
-
-# Set environment variables
-ENV NODE_ENV=production
-ENV ENABLE_KVCACHED=true
-ENV KVCACHED_AUTOPATCH=1
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
-
-# Start command
-CMD ["node", "backend/index.js"]
+# Or patch bump for hotfixes (e.g., 0.7.0 → 0.7.1)
+npm version patch --no-git-tag-version
 ```
+
+**2. Update `CHANGELOG.md`:**
+
+Add a new section at the top of the file, following the existing format:
+
+```markdown
+## [0.8.0] - 2026-06-05
+
+### Section Title
+
+- **Feature name**: Description of what was added or changed
+  - Sub-bullets for implementation details
+```
+
+If you use Claude Code, the `/generate-changelog` skill generates changelog entries automatically from the commits between `dev` and `main`.
+
+**3. Commit, merge to main, build, and push:**
+
+```bash
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "release: v0.8.0"
+# Merge to main via PR, then:
+make build-push VERSION=0.8.0
+```
+
+**4. Update the deployment:**
+
+Update the image tag in `deployment/statefulset.yaml` (or use `oc set image`) and re-apply:
+
+```bash
+oc set image statefulset/sardeenz sardeenz=quay.io/rh-aiservices-bu/sardeenz:0.8.0
+```
+
+### Version Conventions
+
+- **Minor bumps** (0.7.0 → 0.8.0) are the default for all releases
+- **Patch bumps** (0.7.0 → 0.7.1) are for hotfixes only
+- The container image tag matches the version in `package.json`
+- There is no automated CI pipeline for image builds — builds are triggered manually via `make build-push`
 
 ## Local Development
 

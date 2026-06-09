@@ -136,6 +136,39 @@ Intelligent GPU selection for model loading:
 - kvcached is automatically disabled for tensor parallel models
 - GPUs passed to vLLM via `CUDA_VISIBLE_DEVICES` environment variable
 
+### GPU Compute Capability Detection (`src/utils/gpu-info.ts`)
+
+Auto-detects GPU architecture to handle attention backend compatibility:
+
+- **Detection**: Maps NVML device names to CUDA compute capabilities via regex patterns
+- **Override trigger**: GPUs with compute capability < 8.0 (pre-Ampere) cannot run FlashInfer kernels
+- **Automatic fallback**: Appends `--attention-backend TRITON_ATTN` to the vLLM CLI arguments
+- **User feedback**: Populates `ModelInstance.warnings[]`, surfaced in the load response and dashboard UI
+
+**Key Functions:**
+
+- `getGpuComputeCapability(gpuName)` — Returns estimated compute capability from GPU name, or `null` if unrecognized
+- `needsAttentionBackendOverride(gpuName)` — Returns `true` only for GPUs positively identified as pre-Ampere (CC < 8.0); unknown GPUs return `false` to avoid false positives
+
+**Supported GPU Families:**
+
+| Architecture | Compute Capability | Examples | Needs Override |
+| --- | --- | --- | --- |
+| Blackwell | 10.0 | B100, B200 | No |
+| Hopper | 9.0 | H100, H200 | No |
+| Ada Lovelace | 8.9 | L4, L40/L40S, RTX 4090 | No |
+| Ampere | 8.0–8.6 | A100, A10G, RTX 3090 | No |
+| Turing | 7.5 | T4, RTX 2080 | Yes |
+| Volta | 7.0 | V100 | Yes |
+| Pascal | 6.0–6.1 | P100, P40, GTX 1080 | Yes |
+
+**Integration in `ModelManager.launchModel()`:**
+
+1. Reads cached GPU info from NVML (populated at startup)
+2. Checks target GPUs — skipped if user set `--attention-backend` in extra args
+3. If any target GPU is pre-Ampere, appends `--attention-backend TRITON_ATTN` to the vLLM CLI args and populates `instance.warnings`
+4. Warnings are returned in the load response (both single-pod and cluster paths) and displayed as an info banner in the loading dialog
+
 ### BenchmarkRunner (`src/services/benchmark-runner.ts`)
 
 Executes benchmark runs with real-time progress via SSE:
