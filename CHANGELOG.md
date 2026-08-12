@@ -2,8 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
 ## [0.8.0] - 2026-08-12
 
 ### Inference Engine
@@ -25,7 +23,7 @@ All notable changes to this project will be documented in this file.
 - **`values.schema.json`** validates configuration at install time, and `helm test` verifies a release against `/api/health/ready`
 - **Makefile targets**: `helm-lint`, `helm-template`, `helm-package`, `helm-push`, and `helm-package-push`, with the chart version sourced from `package.json` to stay in lockstep with the application
 - Fixed a latent OpenShift Route bug carried over from the manifests: `targetPort` pointed at a nonexistent `backend` port and is now `http`
-- The Kustomize manifests under `deployment/` are **deprecated** and will be removed in a future release
+- The raw Kustomize manifests under `deployment/` have been **removed** — Helm is now the only supported deployment method. See [`docs/deployment.md`](docs/deployment.md)
 
 ### Breaking Changes
 

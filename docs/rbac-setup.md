@@ -14,15 +14,16 @@ This approach allows you to manage access via standard OpenShift tooling without
 
 ## What's Included in the Deployment
 
-The deployment manifests in `deployment/` already include:
+When you install the Helm chart with `auth.mode=oauth`, it renders all of the
+RBAC resources sardeenz needs to authorize OAuth users:
 
-| Resource                               | File                  | Description                                     |
-| -------------------------------------- | --------------------- | ----------------------------------------------- |
-| **ServiceAccount**                     | `serviceaccount.yaml` | The `sardeenz` ServiceAccount used by the pod   |
-| **sardeenz-admin Role**                | `rbac.yaml`           | Marker role for full admin access               |
-| **sardeenz-admin-readonly Role**       | `rbac.yaml`           | Marker role for read-only access                |
-| **sardeenz-auth-reviewer Role**        | `rbac.yaml`           | Allows ServiceAccount to check user permissions |
-| **sardeenz-auth-reviewer RoleBinding** | `rbac.yaml`           | Binds ServiceAccount to auth-reviewer role      |
+| Resource                               | Description                                     |
+| -------------------------------------- | ----------------------------------------------- |
+| **ServiceAccount**                     | The `sardeenz` ServiceAccount used by the pod   |
+| **sardeenz-admin Role**                | Marker role for full admin access               |
+| **sardeenz-admin-readonly Role**       | Marker role for read-only access                |
+| **sardeenz-auth-reviewer Role**        | Allows ServiceAccount to check user permissions |
+| **sardeenz-auth-reviewer RoleBinding** | Binds ServiceAccount to auth-reviewer role      |
 
 **What you need to create:** RoleBindings to grant users/groups access to sardeenz (see [Step 2](#step-2-create-rolebindings)).
 
@@ -30,11 +31,11 @@ The deployment manifests in `deployment/` already include:
 
 - OpenShift cluster with OAuth configured
 - `oc` CLI with namespace admin permissions (no cluster-admin required)
-- sardeenz deployed with `AUTH_MODE=oauth` (using the manifests in `deployment/`)
+- sardeenz deployed with `auth.mode=oauth` (via the Helm chart)
 
 ## Step 1: Create the Roles
 
-> **Note:** If you deployed sardeenz using the manifests in `deployment/`, these Roles are already created by `rbac.yaml`. Skip to [Step 2](#step-2-create-rolebindings).
+> **Note:** If you deployed sardeenz via the Helm chart with `auth.mode=oauth`, these Roles are already created for you. Skip to [Step 2](#step-2-create-rolebindings).
 
 Create the sardeenz Roles in your deployment namespace. These Roles define "marker" permissions that sardeenz checks via LocalSubjectAccessReview.
 
@@ -178,7 +179,7 @@ oc adm policy add-role-to-group sardeenz-admin-readonly team-b -n sardeenz
 
 ## Step 3: ServiceAccount Permissions
 
-> **Note:** If you deployed sardeenz using the manifests in `deployment/`, the ServiceAccount (`serviceaccount.yaml`) and auth-reviewer permissions (`rbac.yaml`) are already created. Skip to [Development Mode Setup](#development-mode-setup) if running locally.
+> **Note:** If you deployed sardeenz via the Helm chart with `auth.mode=oauth`, the ServiceAccount and auth-reviewer permissions are already created. Skip to [Development Mode Setup](#development-mode-setup) if running locally.
 
 sardeenz uses a ServiceAccount to query the LocalSubjectAccessReview API (namespace-scoped). The ServiceAccount needs permission to create LocalSubjectAccessReviews in the sardeenz namespace.
 

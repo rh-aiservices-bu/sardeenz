@@ -339,18 +339,19 @@ EOF
 
 ### Step 2: Create RBAC Resources on OpenShift
 
-Create the namespace and apply the RBAC manifests from the deployment folder:
+For a full deployment these resources are rendered by the Helm chart
+(`auth.mode=oauth`). For local development the backend runs outside the cluster,
+so create them directly. Create the namespace, then apply the ServiceAccount and
+marker Roles using the inline manifests in the
+[RBAC Setup Guide](./rbac-setup.md) (Step 1 for the Roles, "Create the
+ServiceAccount" for the ServiceAccount and auth-reviewer permissions):
 
 ```bash
 # Create namespace (if it doesn't exist)
 oc new-project sardeenz
-
-# Apply ServiceAccount and RBAC resources
-oc apply -f deployment/serviceaccount.yaml -n sardeenz
-oc apply -f deployment/rbac.yaml -n sardeenz
 ```
 
-This creates:
+Together these create:
 
 - The `sardeenz` ServiceAccount
 - The `sardeenz-admin` and `sardeenz-admin-readonly` marker Roles

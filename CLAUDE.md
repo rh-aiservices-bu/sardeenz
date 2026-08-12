@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Unified Proxy**: Single endpoint for all inference requests with OpenAI-compatible API (<50ms routing overhead target)
 - **Admin Dashboard**: React + PatternFly 6 web interface for model management, monitoring, cluster overview, and benchmarking
 - **Inference Sim Backend**: GPU-free simulation backend (`inference-sim`) for development without NVIDIA hardware — simulates model loading, memory tracking, and inference responses
-- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes, with Kubernetes manifests (`deployment/`)
+- **Container Deployment**: Unified single-process container (Fastify serves API + frontend) for OpenShift/Kubernetes, deployed via the Helm chart (`deploy/helm/sardeenz/`)
 - **Authentication**: Dual-auth model separating admin (JWT) from inference (optional API key)
   - Admin: Three modes (`none`, `simple`, `oauth`) via `AUTH_MODE` for dashboard/controller API
   - Inference: Optional `INFERENCE_API_KEY` for OpenAI-compatible endpoints (`/v1/*`)

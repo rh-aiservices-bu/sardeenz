@@ -92,9 +92,9 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 
 - GPU-enabled OpenShift cluster setup
 - PostgreSQL database (deployed alongside the application)
-- Model storage: HuggingFace cache PVC or local/mounted models (see [deployment/README.md](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration))
+- Model storage: HuggingFace cache PVC or local/mounted models (see the [Helm chart README](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deploy/helm/sardeenz/README.md))
 - OAuth 2.0 integration with Kubernetes RBAC (see [rbac-setup.md](./rbac-setup.md))
-- Kubernetes manifests for single/multi-pod StatefulSet (see [deployment/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deployment/))
+- Helm chart for single/multi-pod StatefulSet (see [deploy/helm/sardeenz/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/helm/sardeenz/))
 
 ### 📊 Data Scientists / ML Engineers
 
@@ -158,7 +158,7 @@ Welcome to the Sardeenz documentation! This directory contains comprehensive gui
 | [deployment.md](./deployment.md)                   | Container build, Docker Compose, OpenShift deployment, multi-pod cluster deployment, configuration, health checks, monitoring, troubleshooting |
 | [rbac-setup.md](./rbac-setup.md)                   | Kubernetes-native RBAC setup for OAuth mode, Role/RoleBinding configuration, ServiceAccount permissions                                |
 | [kvcached/](./kvcached/README.md)                           | kvcached installation, configuration, memory segment management                                                                        |
-| [deployment/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deployment/) | Kubernetes manifests: StatefulSet, PostgreSQL, Services, RBAC, ConfigMap, Secret |
+| [deploy/helm/sardeenz/](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/helm/sardeenz/) | Helm chart: StatefulSet, PostgreSQL, Services, RBAC, ConfigMap, Secret, Route/Ingress |
 
 ### Development Guides
 
@@ -326,7 +326,7 @@ Yes, an App Data PVC (1Gi) is required for the SQLite database that stores bench
 - Mount pre-downloaded models via `LOCAL_MODELS_PATH` (optional)
 - Or use both sources simultaneously
 
-See [deployment/README.md Storage Configuration](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deployment/README.md#storage-configuration) for details.
+See the [Helm chart README](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deploy/helm/sardeenz/README.md) for storage configuration details.
 
 </details>
 
