@@ -45,12 +45,12 @@ data:
   # =============================================================================
   # vLLM Instance Configuration
   # =============================================================================
-  VLLM_BASE_PORT: "12346"
-  VLLM_MAX_INSTANCES: "10"
+  SARDEENZ_VLLM_BASE_PORT: "12346"
+  SARDEENZ_VLLM_MAX_INSTANCES: "10"
 
   # Model startup timeout in ms (default 30 min)
   # Increase for slow network connections or very large models
-  VLLM_STARTUP_TIMEOUT: "1800000"
+  SARDEENZ_VLLM_STARTUP_TIMEOUT: "1800000"
 
   # =============================================================================
   # Optional Features

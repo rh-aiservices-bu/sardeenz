@@ -488,7 +488,7 @@ export class ModelManager extends EventEmitter {
     }
 
     try {
-      // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
+      // Wait for model to be ready (configurable via SARDEENZ_VLLM_STARTUP_TIMEOUT)
       await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
 
       // Emit final progress event for ready state

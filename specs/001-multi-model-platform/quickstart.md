@@ -231,8 +231,8 @@ JWT_SECRET=change-me-in-production
 API_BASE_URL=http://localhost:3000
 
 # vLLM Configuration
-VLLM_BASE_PORT=12346
-VLLM_MAX_INSTANCES=10
+SARDEENZ_VLLM_BASE_PORT=12346
+SARDEENZ_VLLM_MAX_INSTANCES=10
 
 # kvcached Configuration
 ENABLE_KVCACHED=true

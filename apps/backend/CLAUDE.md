@@ -110,8 +110,8 @@ See `apps/backend/.env.example` for a complete reference.
 | Variable               | Default                   | Description                                                                                  |
 | ---------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
 | `PORT`                 | 3000                      | Backend server port                                                                          |
-| `VLLM_BASE_PORT`       | 12346                     | Base port for vLLM instances (auto-offset per pod in cluster mode)                           |
-| `VLLM_STARTUP_TIMEOUT` | 1800000                   | Model startup timeout in ms (30 min default)                                                 |
+| `SARDEENZ_VLLM_BASE_PORT`       | 12346            | Base port for vLLM instances (auto-offset per pod in cluster mode)                           |
+| `SARDEENZ_VLLM_STARTUP_TIMEOUT` | 1800000          | Model startup timeout in ms (30 min default)                                                 |
 | `ENABLE_KVCACHED`      | true                      | Enable kvcached GPU sharing                                                                  |
 | `KVCACHED_AUTOPATCH`   | 1                         | Auto-patch vLLM for kvcached                                                                 |
 | `LOG_LEVEL`            | info                      | Pino log level                                                                               |

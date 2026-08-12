@@ -203,9 +203,9 @@ oc get route sardeenz -n sardeenz -o jsonpath='{.spec.host}'
 | `API_BASE_URL`         | -            | Base URL for OAuth callbacks (your route URL)                                                                                                                  |
 | `ENABLE_KVCACHED`      | `true`       | Enable kvcached GPU memory sharing                                                                                                                             |
 | `KVCACHED_AUTOPATCH`   | `1`          | Auto-patch vLLM for kvcached                                                                                                                                   |
-| `VLLM_BASE_PORT`       | `12346`      | Starting port for vLLM instances                                                                                                                               |
-| `VLLM_MAX_INSTANCES`   | `10`         | Maximum concurrent model instances                                                                                                                             |
-| `VLLM_STARTUP_TIMEOUT` | `1800000`    | Model startup timeout in ms (30 min default)                                                                                                                   |
+| `SARDEENZ_VLLM_BASE_PORT`       | `12346`      | Starting port for vLLM instances                                                                                                                      |
+| `SARDEENZ_VLLM_MAX_INSTANCES`   | `10`         | Maximum concurrent model instances                                                                                                                    |
+| `SARDEENZ_VLLM_STARTUP_TIMEOUT` | `1800000`    | Model startup timeout in ms (30 min default)                                                                                                          |
 | `LOCAL_MODELS_PATH`    | -            | Path to pre-downloaded models. Set this when using local/mounted models instead of HuggingFace downloads. See [Storage Configuration](#storage-configuration). |
 | `DEBUG_STREAMING`      | `false`      | Enable SSE streaming debug logs                                                                                                                                |
 
@@ -651,8 +651,8 @@ oc logs -f statefulset/sardeenz
 **Common causes:**
 
 - vLLM taking too long to start → Increase `startupProbe.failureThreshold`
-- Out of GPU memory → Reduce model size or adjust `VLLM_MAX_INSTANCES`
-- Port conflicts → Check `VLLM_BASE_PORT` configuration
+- Out of GPU memory → Reduce model size or adjust `SARDEENZ_VLLM_MAX_INSTANCES`
+- Port conflicts → Check `SARDEENZ_VLLM_BASE_PORT` configuration
 
 ### Model Loading Failures
 
@@ -681,7 +681,7 @@ oc adm top pod -l app=sardeenz
 - Increase CPU/memory limits in `statefulset.yaml`
 - Enable kvcached for better GPU memory sharing
 - Use faster storage class for PVC
-- Adjust `VLLM_MAX_INSTANCES` based on available GPU memory
+- Adjust `SARDEENZ_VLLM_MAX_INSTANCES` based on available GPU memory
 
 ## Upgrading
 
