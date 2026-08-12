@@ -1,0 +1,172 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "sardeenz.fullname" . }}
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  serviceName: {{ include "sardeenz.headlessServiceName" . }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "sardeenz.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sardeenz.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "sardeenz.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gpu.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gpu.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.gpu.spreadAcrossNodes }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: {{ include "sardeenz.name" . }}
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: sardeenz
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.port }}
+              protocol: TCP
+          env:
+            # Server
+            - name: NODE_ENV
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: NODE_ENV } }
+            - name: PORT
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: PORT } }
+            - name: HOST
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: HOST } }
+            - name: LOG_LEVEL
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: LOG_LEVEL } }
+            # Authentication
+            - name: AUTH_MODE
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: AUTH_MODE } }
+            - name: ADMIN_USERNAME
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: ADMIN_USERNAME } }
+            - name: JWT_EXPIRATION_HOURS
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: JWT_EXPIRATION_HOURS } }
+            - name: API_BASE_URL
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: API_BASE_URL, optional: true } }
+            - name: ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: admin-password, optional: true } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: jwt-secret, optional: true } }
+            # OAuth
+            - name: OAUTH_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: client-id, optional: true } }
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: client-secret, optional: true } }
+            - name: OAUTH_ISSUER_URL
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: issuer-url, optional: true } }
+            - name: K8S_API_URL
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: k8s-api-url, optional: true } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            # Inference
+            - name: INFERENCE_API_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: inference-api-key, optional: true } }
+            # Cluster
+            - name: CLUSTER_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: cluster-secret, optional: true } }
+            - name: CLUSTER_EXPECTED_PODS
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: CLUSTER_EXPECTED_PODS } }
+            # Database
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: database-url } }
+            # kvcached
+            - name: ENABLE_KVCACHED
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: ENABLE_KVCACHED } }
+            - name: KVCACHED_AUTOPATCH
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: KVCACHED_AUTOPATCH } }
+            # vLLM
+            - name: SARDEENZ_VLLM_BASE_PORT
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: SARDEENZ_VLLM_BASE_PORT } }
+            - name: SARDEENZ_VLLM_MAX_INSTANCES
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: SARDEENZ_VLLM_MAX_INSTANCES } }
+            - name: SARDEENZ_VLLM_STARTUP_TIMEOUT
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: SARDEENZ_VLLM_STARTUP_TIMEOUT } }
+            # Optional features
+            - name: LOCAL_MODELS_PATH
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: LOCAL_MODELS_PATH, optional: true } }
+            - name: DEBUG_STREAMING
+              valueFrom: { configMapKeyRef: { name: {{ include "sardeenz.configMapName" . }}, key: DEBUG_STREAMING, optional: true } }
+            # HuggingFace
+            - name: HF_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: hf-token, optional: true } }
+            # Container paths
+            - name: HF_HOME
+              value: "/opt/app-root/models"
+            - name: HOME
+              value: "/opt/app-root/src"
+            - name: XDG_CACHE_HOME
+              value: "/opt/app-root/src/.cache"
+            - name: FLASHINFER_WORKSPACE_DIR
+              value: "/opt/app-root/src/.cache/flashinfer"
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+              nvidia.com/gpu: {{ .Values.gpu.count }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}
+              nvidia.com/gpu: {{ .Values.gpu.count }}
+          # Startup probe — long grace period for large model downloads.
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            failureThreshold: 120
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: huggingface-cache
+              mountPath: /opt/app-root/models
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: huggingface-cache
+          persistentVolumeClaim:
+            claimName: {{ include "sardeenz.fullname" . }}-model-cache

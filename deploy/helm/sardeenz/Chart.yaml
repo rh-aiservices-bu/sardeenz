@@ -1,0 +1,24 @@
+apiVersion: v2
+# Chart is named `sardeenz-chart` so that `helm push` lands the OCI artifact at
+# quay.io/rh-aiservices-bu/sardeenz-chart (separate from the image repo). The
+# rendered Kubernetes resources are still named `sardeenz` via nameOverride.
+name: sardeenz-chart
+description: Multi-model LLM management platform — dynamic loading, serving, and cluster orchestration on top of vLLM + kvcached
+type: application
+home: https://github.com/rh-aiservices-bu/sardeenz
+sources:
+  - https://github.com/rh-aiservices-bu/sardeenz
+keywords:
+  - llm
+  - vllm
+  - kvcached
+  - inference
+  - openshift
+  - gpu
+maintainers:
+  - name: Red Hat AI Services BU
+    url: https://github.com/rh-aiservices-bu
+# Chart version is kept in lockstep with the application version.
+# Bump both together at release time.
+version: 0.7.1
+appVersion: "0.7.1"

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-test-health
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: health
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          url="http://{{ include "sardeenz.fullname" . }}:{{ .Values.service.port }}/api/health/ready"
+          echo "Checking $url"
+          curl -sf --max-time 10 "$url"

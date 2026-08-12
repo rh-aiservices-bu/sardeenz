@@ -1,0 +1,89 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sardeenz.postgresqlName" . }}
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ include "sardeenz.postgresqlName" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "sardeenz.postgresqlName" . }}
+        app.kubernetes.io/name: {{ include "sardeenz.postgresqlName" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image | quote }}
+          ports:
+            - containerPort: 5432
+              name: postgresql
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: db-username } }
+            - name: POSTGRESQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "sardeenz.secretName" . }}, key: db-password } }
+            - name: POSTGRESQL_DATABASE
+              value: {{ .Values.postgresql.database | quote }}
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/pgsql/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.database.username | quote }}]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.database.username | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: {{ include "sardeenz.postgresqlName" . }}-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sardeenz.postgresqlName" . }}-data
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size | quote }}
+  {{- with .Values.postgresql.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sardeenz.postgresqlName" . }}
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "sardeenz.postgresqlName" . }}
+  ports:
+    - port: 5432
+      targetPort: postgresql
+      name: postgresql
+{{- end }}

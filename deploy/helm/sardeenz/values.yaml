@@ -1,0 +1,222 @@
+# =============================================================================
+# sardeenz Helm chart values
+# =============================================================================
+# Every value below has a sensible default for a single-pod, no-auth install on
+# an OpenShift cluster with an NVIDIA GPU. Override per environment.
+
+# -- Number of application pods. Drives BOTH the StatefulSet replica count AND
+# the CLUSTER_EXPECTED_PODS env var, so scaling is a single-value change.
+# Set > 1 for a multi-pod cluster (requires cluster.secret / existingSecret).
+replicaCount: 1
+
+image:
+  repository: quay.io/rh-aiservices-bu/sardeenz
+  # -- Image tag. Defaults to the chart appVersion when left empty.
+  tag: ""
+  pullPolicy: Always
+
+# -- Optional image pull secrets (list of {name: <secret>}).
+imagePullSecrets: []
+
+# -- Base name used in resource names. Defaults to "sardeenz" (not the chart
+# name "sardeenz-chart") so resources render as <release>-sardeenz.
+nameOverride: "sardeenz"
+# -- Override the full release-qualified name used in resource names.
+fullnameOverride: ""
+
+# =============================================================================
+# Application server configuration -> rendered into the ConfigMap
+# =============================================================================
+config:
+  nodeEnv: production
+  port: 3000
+  host: "0.0.0.0"
+  logLevel: info
+  # -- Path to local pre-downloaded models (empty to disable).
+  localModelsPath: ""
+  # -- Verbose SSE streaming debug logs.
+  debugStreaming: false
+
+# =============================================================================
+# Authentication
+# =============================================================================
+auth:
+  # -- Admin auth mode: none | simple | oauth
+  mode: none
+  # -- Admin username (simple mode).
+  adminUsername: admin
+  jwtExpirationHours: 8
+  # -- Public base URL for OAuth callbacks, e.g. https://sardeenz.apps.example.com
+  apiBaseUrl: ""
+
+  # Sensitive auth values. These are written to the chart-managed Secret only
+  # when secrets.create=true AND secrets.existingSecret is empty.
+  # -- Admin password (simple mode).
+  adminPassword: ""
+  # -- JWT signing secret (simple/oauth). Generate: openssl rand -base64 32
+  jwtSecret: ""
+  oauth:
+    clientId: ""
+    clientSecret: ""
+    issuerUrl: ""
+    # -- Kubernetes API URL for OpenShift OAuth user-info (e.g. https://api.cluster:6443)
+    k8sApiUrl: ""
+
+# -- Inference API key for /v1/* and /api/direct/* (empty = unauthenticated).
+inferenceApiKey: ""
+
+# =============================================================================
+# Cluster coordination (multi-pod)
+# =============================================================================
+cluster:
+  # -- HMAC secret for inter-pod auth. Required when replicaCount > 1.
+  # Generate: openssl rand -hex 32. Ignored when using existingSecret.
+  secret: ""
+
+# =============================================================================
+# Secrets management
+# =============================================================================
+secrets:
+  # -- Create the chart-managed Secret from the values above.
+  create: true
+  # -- Reference a pre-created Secret instead (recommended for production).
+  # When set, no Secret is templated and these keys must exist in it:
+  # jwt-secret, admin-password, client-id, client-secret, issuer-url,
+  # k8s-api-url, inference-api-key, hf-token, cluster-secret,
+  # db-username, db-password, database-url
+  existingSecret: ""
+
+# =============================================================================
+# HuggingFace
+# =============================================================================
+huggingface:
+  # -- HF token for gated models. Ignored when using existingSecret.
+  token: ""
+
+# =============================================================================
+# Database
+# =============================================================================
+database:
+  # -- Connection string. Defaults to the bundled PostgreSQL service when empty
+  # and postgresql.enabled=true. Ignored when using existingSecret.
+  url: ""
+  username: sardeenz
+  password: ""
+
+# Bundled PostgreSQL (single-replica, for quick starts / dev).
+postgresql:
+  # -- Deploy the bundled PostgreSQL. Disable to use an external database
+  # (then set database.url or provide it via existingSecret).
+  enabled: true
+  image: registry.redhat.io/rhel9/postgresql-16:latest
+  database: sardeenz
+  persistence:
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# vLLM instance management
+# =============================================================================
+vllm:
+  basePort: 12346
+  maxInstances: 10
+  # -- Model startup timeout in ms (default 30 min).
+  startupTimeout: 1800000
+
+# =============================================================================
+# kvcached GPU memory sharing
+# =============================================================================
+kvcached:
+  enabled: true
+  autopatch: true
+
+# =============================================================================
+# GPU scheduling
+# =============================================================================
+gpu:
+  # -- GPU count requested/limited per pod.
+  count: 1
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  # -- Spread pods across nodes (soft anti-affinity). Set false to disable.
+  spreadAcrossNodes: true
+
+# =============================================================================
+# Application resources (GPU is added automatically from gpu.count)
+# =============================================================================
+resources:
+  requests:
+    cpu: "2"
+    memory: 8Gi
+  limits:
+    cpu: "8"
+    memory: 32Gi
+
+# =============================================================================
+# Model cache persistence (shared across pods -> ReadWriteMany)
+# =============================================================================
+persistence:
+  # -- Storage for the HuggingFace model cache. Sized for several models.
+  size: 100Gi
+  accessMode: ReadWriteMany
+  storageClassName: ""
+
+# =============================================================================
+# Networking
+# =============================================================================
+service:
+  type: ClusterIP
+  port: 3000
+  # -- Sticky sessions keep a client pinned to one pod (recommended).
+  sessionAffinity: ClientIP
+  sessionAffinityTimeoutSeconds: 300
+
+# OpenShift Route (mutually exclusive with ingress in practice).
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  annotations:
+    # 5 min timeout for long-running inference + SSE streaming.
+    haproxy.router.openshift.io/timeout: 300s
+    haproxy.router.openshift.io/timeout-tunnel: 300s
+
+# Vanilla Kubernetes Ingress.
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls: []
+
+# =============================================================================
+# ServiceAccount & RBAC
+# =============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  # -- Create RBAC resources. OAuth auth-reviewer role is created only when
+  # auth.mode=oauth; the cluster-coordination role only when replicaCount > 1.
+  create: true
+
+# =============================================================================
+# Probes & scheduling extras
+# =============================================================================
+terminationGracePeriodSeconds: 30
+podAnnotations: {}

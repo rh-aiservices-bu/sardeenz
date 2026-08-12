@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-model-cache
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      # Adjust to model sizes — 7B≈14GB, 13B≈26GB, 70B≈140GB.
+      storage: {{ .Values.persistence.size | quote }}
+  {{- with .Values.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
