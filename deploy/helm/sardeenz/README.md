@@ -15,7 +15,7 @@ The chart is published as an OCI artifact alongside the container image:
 # Single-pod, no auth, bundled PostgreSQL — a working quick start
 helm install sardeenz \
   oci://quay.io/rh-aiservices-bu/sardeenz-chart \
-  --version 0.7.1 \
+  --version 0.8.0 \
   --namespace sardeenz --create-namespace
 ```
 
@@ -27,7 +27,7 @@ helm install sardeenz \
 ### Simple username/password auth
 
 ```bash
-helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.7.1 \
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.8.0 \
   -n sardeenz --create-namespace \
   --set auth.mode=simple \
   --set auth.adminPassword='<password>' \
@@ -37,7 +37,7 @@ helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.
 ### OpenShift OAuth
 
 ```bash
-helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.7.1 \
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.8.0 \
   -n sardeenz --create-namespace \
   --set auth.mode=oauth \
   --set auth.oauth.clientId=<id> \
@@ -54,7 +54,7 @@ OAuth also renders the auth-reviewer RBAC. Bind users to the `sardeenz-admin` /
 ### Multi-pod cluster
 
 ```bash
-helm upgrade --install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.7.1 \
+helm upgrade --install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.8.0 \
   -n sardeenz \
   --set replicaCount=3 \
   --set cluster.secret="$(openssl rand -hex 32)"
@@ -76,7 +76,7 @@ oc create secret generic sardeenz-secrets -n sardeenz \
   --from-literal=db-password="$(openssl rand -base64 16)" \
   --from-literal=database-url='postgresql://sardeenz:<password>@sardeenz-postgresql:5432/sardeenz'
 
-helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.7.1 \
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.8.0 \
   -n sardeenz --set secrets.existingSecret=sardeenz-secrets
 ```
 
