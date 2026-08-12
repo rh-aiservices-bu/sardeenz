@@ -201,21 +201,21 @@ spec:
             # =================================================================
             # vLLM Configuration (from ConfigMap)
             # =================================================================
-            - name: VLLM_BASE_PORT
+            - name: SARDEENZ_VLLM_BASE_PORT
               valueFrom:
                 configMapKeyRef:
                   name: sardeenz-config
-                  key: VLLM_BASE_PORT
-            - name: VLLM_MAX_INSTANCES
+                  key: SARDEENZ_VLLM_BASE_PORT
+            - name: SARDEENZ_VLLM_MAX_INSTANCES
               valueFrom:
                 configMapKeyRef:
                   name: sardeenz-config
-                  key: VLLM_MAX_INSTANCES
-            - name: VLLM_STARTUP_TIMEOUT
+                  key: SARDEENZ_VLLM_MAX_INSTANCES
+            - name: SARDEENZ_VLLM_STARTUP_TIMEOUT
               valueFrom:
                 configMapKeyRef:
                   name: sardeenz-config
-                  key: VLLM_STARTUP_TIMEOUT
+                  key: SARDEENZ_VLLM_STARTUP_TIMEOUT
 
             # =================================================================
             # Optional Features (from ConfigMap)

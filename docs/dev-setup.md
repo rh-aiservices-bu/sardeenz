@@ -298,7 +298,7 @@ This launches multiple backend instances on sequential ports (3001, 3002, ...) p
 | 1   | 3002     | 12446–12545     |
 | 2   | 3003     | 12546–12645     |
 
-This is automatic when `CLUSTER_PEERS` is set and `VLLM_BASE_PORT` is not explicitly configured. Set `VLLM_BASE_PORT` to override.
+This is automatic when `CLUSTER_PEERS` is set and `SARDEENZ_VLLM_BASE_PORT` is not explicitly configured. Set `SARDEENZ_VLLM_BASE_PORT` to override.
 
 ### Frontend-Only Development
 

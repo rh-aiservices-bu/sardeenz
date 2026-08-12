@@ -2,6 +2,20 @@
 
 This guide covers container building and deployment to OpenShift/Kubernetes.
 
+> ## ⚠️ Breaking change — environment variables renamed
+>
+> **If you are upgrading from v0.7.x or earlier, you must update your configuration before deploying.**
+>
+> Three environment variables have been renamed to use the `SARDEENZ_` prefix (they were previously prefixed with `VLLM_`, which collided with vLLM's own namespace and produced spurious warnings). The **old names are no longer read** — if you leave them set, Sardeenz silently falls back to defaults.
+>
+> | Old name (remove) | New name (use) |
+> | --- | --- |
+> | `VLLM_BASE_PORT` | `SARDEENZ_VLLM_BASE_PORT` |
+> | `VLLM_MAX_INSTANCES` | `SARDEENZ_VLLM_MAX_INSTANCES` |
+> | `VLLM_STARTUP_TIMEOUT` | `SARDEENZ_VLLM_STARTUP_TIMEOUT` |
+>
+> Update these in your ConfigMap / `.env` / `docker run -e` flags. The manifests in [`deployment/`](../deployment/) already use the new names.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
