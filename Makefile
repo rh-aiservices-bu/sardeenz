@@ -32,6 +32,9 @@ SIM_GPU_MEMORY ?= 24
 SIM_STARTUP ?= 3s
 BASE_PORT ?= 3001
 
+# Show help when `make` is run with no target
+.DEFAULT_GOAL := help
+
 .PHONY: build push help dev\:cluster\:sim \
 	helm-lint helm-template helm-package helm-push helm-package-push
 

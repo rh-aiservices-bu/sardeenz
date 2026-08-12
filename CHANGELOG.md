@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [0.8.0] - 2026-08-12
 
+### Inference Engine
+
+- **Upgraded vLLM to 0.21.0** via the `quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8` base image (from `0.19.1_rhaiv.4`). The image remains UBI9 + CUDA 13.0, so the container's CUDA build-dependency pins are unchanged. Bumps `torch` to 2.11.0 and the bundled NVIDIA runtime to the CUDA 13 (`cu13`) wheels.
+
 ### Helm Chart Deployment
 
 - **Helm chart** replaces the raw Kustomize manifests as the supported deployment path (`deploy/helm/sardeenz/`). The chart is published as an OCI artifact, so it can be installed directly from the registry without cloning the repo:

@@ -85,7 +85,7 @@ The unified container image is built from `docker/Containerfile` as a multi-stag
 
 | Stage | Base | Purpose |
 |-------|------|---------|
-| **0: vllm-base** | `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` | CUDA 13.x + Python 3.12 + vLLM |
+| **0: vllm-base** | `quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8` | CUDA 13.x + Python 3.12 + vLLM |
 | **1: kvcached-builder** | vllm-base + CUDA devel | Builds kvcached wheel from source |
 | **2: runtime-deps** | vllm-base + Node.js 22 | Production `npm ci --omit=dev` |
 | **3: builder** | runtime-deps + devDeps | Compiles TypeScript backend + Vite frontend |

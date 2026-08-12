@@ -6,7 +6,7 @@
 # =============================================================================
 # Stage 0: vLLM Base
 # =============================================================================
-FROM quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4 AS vllm-base
+FROM quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8 AS vllm-base
 
 USER 0
 
