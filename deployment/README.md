@@ -1,5 +1,20 @@
 # Kubernetes/OpenShift Deployment Guide
 
+> ## ⚠️ Deprecated — use the Helm chart
+>
+> These raw Kustomize manifests are **deprecated** and will be removed in a future
+> release. The supported deployment path is now the Helm chart, which can be
+> installed directly from the registry without cloning this repo:
+>
+> ```bash
+> helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+>   --version <app-version> --namespace sardeenz --create-namespace
+> ```
+>
+> See [`deploy/helm/sardeenz/README.md`](../deploy/helm/sardeenz/README.md) and
+> [`docs/deployment.md`](../docs/deployment.md). The manifests below remain only
+> as a reference for the raw Kubernetes objects.
+
 This directory contains Kubernetes manifests for deploying Sardeenz to OpenShift or vanilla Kubernetes with GPU support.
 
 ## Prerequisites

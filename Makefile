@@ -11,6 +11,20 @@ VERSION ?= latest
 # Full image tag
 IMAGE_TAG := $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(VERSION)
 
+# Helm chart configuration
+CHART_DIR := deploy/helm/sardeenz
+# Chart name from Chart.yaml — also the packaged .tgz prefix and OCI repo name.
+CHART_NAME := sardeenz-chart
+# OCI push target (the org). `helm push` appends the chart name (sardeenz-chart),
+# so the artifact lands at quay.io/rh-aiservices-bu/sardeenz-chart:<version>.
+CHART_OCI_REPO := oci://$(IMAGE_REGISTRY)
+# Directory packaged .tgz artifacts are written to
+CHART_PACKAGE_DIR := dist/charts
+# Chart/app version — sourced from package.json so the chart stays in lockstep
+# with the application (override with `make helm-package VERSION=x.y.z`).
+APP_VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null || echo 0.0.0)
+CHART_VERSION ?= $(APP_VERSION)
+
 # Cluster simulator defaults (override with make dev\:cluster\:sim PODS=3 GPUS=4)
 PODS ?= 2
 GPUS ?= 2
@@ -18,7 +32,8 @@ SIM_GPU_MEMORY ?= 24
 SIM_STARTUP ?= 3s
 BASE_PORT ?= 3001
 
-.PHONY: build push help dev\:cluster\:sim
+.PHONY: build push help dev\:cluster\:sim \
+	helm-lint helm-template helm-package helm-push helm-package-push
 
 ## build: Build the container image (usage: make build VERSION=x.y.z)
 build:
@@ -35,6 +50,33 @@ push:
 
 ## build-push: Build and push in one step
 build-push: build push
+
+## helm-lint: Lint the Helm chart
+helm-lint:
+	helm lint $(CHART_DIR)
+
+## helm-template: Render the chart to stdout (usage: make helm-template [ARGS="--set ..."])
+helm-template:
+	helm template sardeenz $(CHART_DIR) $(ARGS)
+
+## helm-package: Package the chart as <name>-<version>.tgz (version from package.json)
+helm-package: helm-lint
+	@mkdir -p $(CHART_PACKAGE_DIR)
+	helm package $(CHART_DIR) \
+		--version $(CHART_VERSION) \
+		--app-version $(CHART_VERSION) \
+		--destination $(CHART_PACKAGE_DIR)
+	@echo "Packaged: $(CHART_PACKAGE_DIR)/$(CHART_NAME)-$(CHART_VERSION).tgz"
+
+## helm-push: Push the packaged chart to the OCI registry (run helm-package first)
+##   Lands at quay.io/rh-aiservices-bu/sardeenz-chart:<version>
+##   Requires: helm registry login quay.io
+helm-push:
+	helm push $(CHART_PACKAGE_DIR)/$(CHART_NAME)-$(CHART_VERSION).tgz $(CHART_OCI_REPO)
+	@echo "Pushed: $(IMAGE_REGISTRY)/$(CHART_NAME):$(CHART_VERSION)"
+
+## helm-package-push: Package and push the chart in one step
+helm-package-push: helm-package helm-push
 
 ## dev:cluster:sim: Launch a simulated multi-pod cluster (GPU-free)
 ##   Usage: make dev:cluster:sim [PODS=2] [GPUS=2] [SIM_GPU_MEMORY=24] [BASE_PORT=3001]
@@ -70,6 +112,13 @@ help:
 	@echo "  make build VERSION=x.y.z       Build container image"
 	@echo "  make push VERSION=x.y.z        Push to quay.io"
 	@echo "  make build-push VERSION=x.y.z  Build and push"
+	@echo ""
+	@echo "Helm chart (version from package.json: $(APP_VERSION)):"
+	@echo "  make helm-lint                 Lint the chart"
+	@echo "  make helm-template [ARGS=...]  Render manifests to stdout"
+	@echo "  make helm-package              Package chart -> $(CHART_PACKAGE_DIR)/"
+	@echo "  make helm-push                 Push chart to $(IMAGE_REGISTRY)/$(CHART_NAME)"
+	@echo "  make helm-package-push         Package and push"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev:cluster:sim           Launch 2-pod simulated cluster (GPU-free)"

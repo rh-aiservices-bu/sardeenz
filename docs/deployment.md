@@ -22,6 +22,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 - [Container Build](#container-build)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
+  - [Deploy with Helm (recommended)](#deploy-with-helm-recommended)
 - [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment)
 - [Authentication and RBAC](#authentication-and-rbac)
 - [Configuration](#configuration)
@@ -246,6 +247,36 @@ podman run -d \
 2. **Namespace** with GPU quota allocated
 3. **Image registry access** (e.g., Quay.io)
 4. **Persistent storage** - PostgreSQL for database; Model Cache PVC optional (only if downloading from HuggingFace)
+
+### Deploy with Helm (recommended)
+
+The supported way to deploy sardeenz is the Helm chart, published as an OCI
+artifact so no repo clone is required:
+
+```bash
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+  --version <app-version> \
+  --namespace sardeenz --create-namespace
+```
+
+This installs the full stack (StatefulSet, ConfigMap/Secret, model-cache PVC,
+Services, OpenShift Route, conditional RBAC, and a bundled PostgreSQL). Common
+setups — simple/OAuth auth, multi-pod clusters, external databases, `existingSecret`
+for production, and Kubernetes Ingress instead of a Route — are documented in the
+chart README:
+
+- **[`deploy/helm/sardeenz/README.md`](../deploy/helm/sardeenz/README.md)** — install recipes and the full values reference
+- **[`deploy/helm/sardeenz/values.yaml`](../deploy/helm/sardeenz/values.yaml)** — every configurable value, documented inline
+
+Verify a release with `helm test sardeenz -n sardeenz`.
+
+> The raw Kustomize manifests under [`deployment/`](../../deployment/) are
+> **deprecated** in favor of the chart and will be removed in a future release.
+
+### Deploy with raw manifests (deprecated)
+
+The manual `Deployment`/`Service` YAML below is kept for reference only. Prefer
+the Helm chart above for new deployments.
 
 ### Deploy with GPU
 

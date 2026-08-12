@@ -1,0 +1,31 @@
+sardeenz {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Pods:      {{ .Values.replicaCount }} replica(s)
+Auth mode: {{ .Values.auth.mode }}
+Database:  {{ if .Values.postgresql.enabled }}bundled PostgreSQL{{ else }}external{{ end }}
+
+Access the dashboard:
+{{- if .Values.route.enabled }}
+  OpenShift Route:
+    oc get route {{ include "sardeenz.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.host}'
+{{- else if .Values.ingress.enabled }}
+  Ingress host: {{ .Values.ingress.host | default "<set ingress.host>" }}
+{{- else }}
+  Port-forward:
+    kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "sardeenz.fullname" . }} 3000:{{ .Values.service.port }}
+    open http://localhost:3000
+{{- end }}
+
+{{- if and (ne .Values.auth.mode "none") (not .Values.secrets.existingSecret) (not .Values.auth.jwtSecret) }}
+
+WARNING: auth.mode={{ .Values.auth.mode }} but no jwtSecret was provided.
+         Set auth.jwtSecret (openssl rand -base64 32) or use secrets.existingSecret.
+{{- end }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.secrets.existingSecret) (not .Values.cluster.secret) }}
+
+WARNING: replicaCount > 1 but no cluster.secret was provided.
+         Multi-pod coordination requires cluster.secret (openssl rand -hex 32).
+{{- end }}
+
+Verify the release:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
