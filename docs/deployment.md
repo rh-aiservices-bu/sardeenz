@@ -346,12 +346,13 @@ full multi-pod values reference.
 oc get pods -l app=sardeenz -w
 
 # Check cluster status via the leader
+# (Route host is auto-generated as sardeenz-<namespace>.apps...; see `oc get route sardeenz`)
 curl -H "Authorization: Bearer $TOKEN" \
-  http://sardeenz.apps.your-cluster.com/api/cluster
+  https://sardeenz-<namespace>.apps.your-cluster.com/api/cluster
 
 # List all pods and their GPUs
 curl -H "Authorization: Bearer $TOKEN" \
-  http://sardeenz.apps.your-cluster.com/api/cluster/pods
+  https://sardeenz-<namespace>.apps.your-cluster.com/api/cluster/pods
 ```
 
 ### Cluster Environment Variables
@@ -436,7 +437,9 @@ metadata:
   name: sardeenz
 grantMethod: auto
 redirectURIs:
-  - https://sardeenz.apps.your-cluster.com/api/auth/callback
+  # OpenShift auto-generates the Route host as <route-name>-<namespace>.<apps-domain>
+  # when route.host is unset. Confirm the exact value with: oc get route sardeenz -n <namespace>
+  - https://sardeenz-<namespace>.apps.your-cluster.com/api/auth/callback
 secret: your-oauth-client-secret
 ```
 
