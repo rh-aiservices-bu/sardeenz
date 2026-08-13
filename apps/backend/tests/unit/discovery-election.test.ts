@@ -18,6 +18,7 @@ vi.mock('../../src/config.js', () => ({
     namespace: 'test',
     clusterExpectedPods: 2,
   },
+  isClusterMode: () => true,
 }))
 
 function mockLogger() {

@@ -9,7 +9,7 @@ import { HeartbeatService } from './heartbeat.js'
 import type { HeartbeatDataProvider } from './heartbeat.js'
 import { peerStore } from '../stores/peer-store.js'
 import { clusterRoutingStore } from '../stores/cluster-routing-store.js'
-import { config } from '../config.js'
+import { config, isClusterMode } from '../config.js'
 import { modelStore } from '../stores/model-store.js'
 import { getNvidiaSmiInfo } from '../utils/gpu-info.js'
 
@@ -38,7 +38,7 @@ export class ClusterManager implements HeartbeatDataProvider {
     } else {
       this.podId = hostname()
     }
-    this._isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
+    this._isClusterMode = isClusterMode()
 
     // Set local pod ID on routing store
     clusterRoutingStore.setLocalPodId(this.podId)

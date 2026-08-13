@@ -11,7 +11,7 @@ import { getPool } from '../db/index.js'
 import type { MemoryProfile, UpdateMemoryProfileInput } from '@sardeenz/types'
 import { peerStore } from './peer-store.js'
 import { signRequest } from '../services/cluster-auth.js'
-import { config } from '../config.js'
+import { config, isClusterMode } from '../config.js'
 
 // Row type for PostgreSQL (snake_case)
 interface MemoryProfileRow {
@@ -312,7 +312,7 @@ class MemoryProfileStore {
    */
   pushProfileToPeers(profile: MemoryProfile): void {
     // Only push in cluster mode
-    if (!process.env.KUBERNETES_SERVICE_HOST && !config.clusterPeers) return
+    if (!isClusterMode()) return
 
     const peers = peerStore.getHealthyPeers()
     const localPodId = hostname()

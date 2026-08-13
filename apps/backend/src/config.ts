@@ -238,10 +238,24 @@ function validateAuthConfig(): void {
 
 validateAuthConfig()
 
+/**
+ * Whether the app should run in multi-pod cluster mode.
+ *
+ * Cluster coordination (peer discovery, leader election, heartbeat) is enabled
+ * only when more than one pod is expected (CLUSTER_EXPECTED_PODS > 1) or static
+ * peers are configured for local dev (CLUSTER_PEERS). Merely running inside
+ * Kubernetes is NOT sufficient: KUBERNETES_SERVICE_HOST is injected into every
+ * pod, so a single-replica in-cluster deploy runs in zero-overhead single-pod
+ * mode and needs no cluster RBAC (pod list/watch, leases) or cluster secret.
+ */
+export function isClusterMode(): boolean {
+  return config.clusterExpectedPods > 1 || !!config.clusterPeers
+}
+
 // Validate cluster configuration
 function validateClusterConfig(): void {
-  const isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
-  if (isClusterMode && config.clusterSecret) {
+  const isCluster = isClusterMode()
+  if (isCluster && config.clusterSecret) {
     const MIN_SECRET_LENGTH = 16
     if (config.clusterSecret.length < MIN_SECRET_LENGTH) {
       throw new Error(
@@ -250,13 +264,13 @@ function validateClusterConfig(): void {
       )
     }
   }
-  if (isClusterMode && !config.clusterSecret) {
+  if (isCluster && !config.clusterSecret) {
     throw new Error(
       'CLUSTER_SECRET is required in cluster mode. Inter-pod communication cannot be secured without it. ' +
         'Generate a secure value with: openssl rand -hex 32'
     )
   }
-  if (isClusterMode && config.authMode === 'none') {
+  if (isCluster && config.authMode === 'none') {
     console.warn(
       'WARNING: Cluster mode with AUTH_MODE=none. The cluster admin API (/api/cluster/*) is unauthenticated. ' +
         'Set AUTH_MODE to "simple" or "oauth" for production deployments.'
