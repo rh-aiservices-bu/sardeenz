@@ -46,7 +46,9 @@ auth:
   # -- Admin username (simple mode).
   adminUsername: admin
   jwtExpirationHours: 8
-  # -- Public base URL for OAuth callbacks, e.g. https://sardeenz.apps.example.com
+  # -- Public base URL for OAuth callbacks. Must match the Route host, which
+  # OpenShift auto-generates as <release>-<namespace>.<apps-domain> when
+  # route.host is unset, e.g. https://sardeenz-<namespace>.apps.example.com
   apiBaseUrl: ""
 
   # Sensitive auth values. These are written to the chart-managed Secret only

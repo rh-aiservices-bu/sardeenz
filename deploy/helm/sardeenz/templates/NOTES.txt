@@ -26,6 +26,14 @@ WARNING: auth.mode={{ .Values.auth.mode }} but no jwtSecret was provided.
 WARNING: replicaCount > 1 but no cluster.secret was provided.
          Multi-pod coordination requires cluster.secret (openssl rand -hex 32).
 {{- end }}
+{{- if and (eq .Values.auth.mode "oauth") (not .Values.auth.apiBaseUrl) }}
+
+WARNING: auth.mode=oauth but no auth.apiBaseUrl was provided; OAuth callbacks
+         will fail. Set it to the public Route host (auto-generated as
+         {{ include "sardeenz.fullname" . }}-{{ .Release.Namespace }}.<apps-domain>):
+           oc get route {{ include "sardeenz.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='https://{.spec.host}{"\n"}'
+         and ensure it matches the redirectURIs on your OAuthClient.
+{{- end }}
 
 Verify the release:
   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

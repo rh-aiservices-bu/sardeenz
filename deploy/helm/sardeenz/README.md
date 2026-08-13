@@ -45,8 +45,14 @@ helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart --version 0.
   --set auth.oauth.issuerUrl=https://oauth-openshift.apps.<cluster> \
   --set auth.oauth.k8sApiUrl=https://api.<cluster>:6443 \
   --set auth.jwtSecret="$(openssl rand -base64 32)" \
-  --set auth.apiBaseUrl=https://sardeenz.apps.<cluster>
+  --set auth.apiBaseUrl=https://sardeenz-<namespace>.apps.<cluster>
 ```
+
+`apiBaseUrl` must match the Route host, which OpenShift auto-generates as
+`<release>-<namespace>.<apps-domain>` when `route.host` is unset (e.g.
+`sardeenz-sardeenz.apps.<cluster>` for `-n sardeenz`). Confirm with
+`oc get route sardeenz -n <namespace>`, and make sure it matches the
+`redirectURIs` on your OAuthClient.
 
 OAuth also renders the auth-reviewer RBAC. Bind users to the `sardeenz-admin` /
 `sardeenz-admin-readonly` roles separately — see `docs/rbac-setup.md`.
