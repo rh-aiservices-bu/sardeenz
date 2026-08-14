@@ -14,7 +14,7 @@ This guide covers container building and deployment to OpenShift/Kubernetes.
 > | `VLLM_MAX_INSTANCES` | `SARDEENZ_VLLM_MAX_INSTANCES` |
 > | `VLLM_STARTUP_TIMEOUT` | `SARDEENZ_VLLM_STARTUP_TIMEOUT` |
 >
-> Update these in your Helm values / `.env` / `docker run -e` flags. The Helm chart in [`deploy/helm/sardeenz/`](../deploy/helm/sardeenz/) already uses the new names.
+> Update these in your Helm values / `.env` / `docker run -e` flags. The Helm chart in [`deploy/helm/sardeenz/`](https://github.com/rh-aiservices-bu/sardeenz/tree/main/deploy/helm/sardeenz/) already uses the new names.
 
 ## Table of Contents
 
@@ -266,8 +266,8 @@ setups — simple/OAuth auth, multi-pod clusters, external databases, `existingS
 for production, and Kubernetes Ingress instead of a Route — are documented in the
 chart README:
 
-- **[`deploy/helm/sardeenz/README.md`](../deploy/helm/sardeenz/README.md)** — install recipes and the full values reference
-- **[`deploy/helm/sardeenz/values.yaml`](../deploy/helm/sardeenz/values.yaml)** — every configurable value, documented inline
+- **[`deploy/helm/sardeenz/README.md`](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deploy/helm/sardeenz/README.md)** — install recipes and the full values reference
+- **[`deploy/helm/sardeenz/values.yaml`](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deploy/helm/sardeenz/values.yaml)** — every configurable value, documented inline
 
 Verify a release with `helm test sardeenz -n sardeenz`.
 
@@ -336,7 +336,7 @@ helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
 StatefulSet replica count and the `CLUSTER_EXPECTED_PODS` env var. For production,
 supply the cluster secret via a pre-created Secret with `secrets.existingSecret`
 instead of `--set` so it never lives in your shell history or values files — see
-the [chart README](../deploy/helm/sardeenz/README.md) for that recipe and the
+the [chart README](https://github.com/rh-aiservices-bu/sardeenz/blob/main/deploy/helm/sardeenz/README.md) for that recipe and the
 full multi-pod values reference.
 
 **3. Verify the cluster:**
