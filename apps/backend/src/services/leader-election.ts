@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import type { Logger } from '@sardeenz/utils'
 import { peerStore } from '../stores/peer-store.js'
-import { config } from '../config.js'
+import { config, isClusterMode } from '../config.js'
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -386,6 +386,13 @@ class SingleInstanceElection implements LeaderElection {
 // ---------------------------------------------------------------------------
 
 export function createLeaderElection(logger: Logger, podId?: string): LeaderElection {
+  // Single-pod mode: always leader, no K8s Lease acquisition (which would need
+  // the cluster RBAC that is only provisioned for multi-pod deployments).
+  if (!isClusterMode()) {
+    logger.info('Single-instance mode, always leader')
+    return new SingleInstanceElection()
+  }
+
   // Priority 1: Kubernetes environment
   if (process.env.KUBERNETES_SERVICE_HOST) {
     logger.info('Using Kubernetes Lease leader election')

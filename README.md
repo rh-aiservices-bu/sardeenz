@@ -18,6 +18,18 @@ Sardeenz is a multi-model management application that enables dynamic loading an
 
 ## Quick Start
 
+> ### ⚠️ Breaking change — environment variables renamed
+>
+> **Upgrading from v0.7.x or earlier?** Three env vars were renamed from the `VLLM_` prefix to `SARDEENZ_` (the old names collided with vLLM's own namespace). The old names are **no longer read** — update them before deploying or Sardeenz falls back to defaults:
+>
+> | Old name (remove) | New name (use) |
+> | --- | --- |
+> | `VLLM_BASE_PORT` | `SARDEENZ_VLLM_BASE_PORT` |
+> | `VLLM_MAX_INSTANCES` | `SARDEENZ_VLLM_MAX_INSTANCES` |
+> | `VLLM_STARTUP_TIMEOUT` | `SARDEENZ_VLLM_STARTUP_TIMEOUT` |
+>
+> See the [Deployment Guide](./docs/deployment.md) for details.
+
 Pre-built container images are available at `quay.io/rh-aiservices-bu/sardeenz`.
 
 **Run locally with Docker:**
@@ -26,7 +38,7 @@ Pre-built container images are available at `quay.io/rh-aiservices-bu/sardeenz`.
 podman run --gpus all -p 3000:3000 quay.io/rh-aiservices-bu/sardeenz:latest
 ```
 
-**Deploy on OpenShift/Kubernetes:** See [deployment/](./deployment/) for manifests and configuration.
+**Deploy on OpenShift/Kubernetes:** Install the Helm chart — see [deploy/helm/sardeenz/](./deploy/helm/sardeenz/) and the [deployment guide](./docs/deployment.md).
 
 See the [Deployment Guide](./docs/deployment.md) for full configuration options, authentication setup, and production deployment.
 

@@ -2,7 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.8.0] - 2026-08-12
+
+### Inference Engine
+
+- **Upgraded vLLM to 0.21.0** via the `quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8` base image (from `0.19.1_rhaiv.4`). The image remains UBI9 + CUDA 13.0, so the container's CUDA build-dependency pins are unchanged. Bumps `torch` to 2.11.0 and the bundled NVIDIA runtime to the CUDA 13 (`cu13`) wheels.
+- **Pinned kvcached to a main-branch commit** (`094481f3`) for vLLM 0.21 compatibility. kvcached 0.1.5 (the latest PyPI release) predates vLLM 0.21's changed `_reshape_kv_cache_tensors` signature, so model loads failed with `'list' object has no attribute 'kv_cache_groups'`. The pinned commit carries the "adapt kvcached KV-cache reshape patch up to vLLM 0.25" fix (compatible up to vLLM 0.24+). Both the dev venv (`apps/backend/pyproject.toml`) and the container build (`docker/Containerfile`) now source kvcached from this commit; the container clone switched to a shallow fetch of the ref since `git clone --branch` does not accept commit SHAs.
+
+### Helm Chart Deployment
+
+- **Helm chart** replaces the raw Kustomize manifests as the supported deployment path (`deploy/helm/sardeenz/`). The chart is published as an OCI artifact, so it can be installed directly from the registry without cloning the repo:
+  ```bash
+  helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+    --version 0.8.0 --namespace sardeenz --create-namespace
+  ```
+- **Full stack in one release**: templates for the application StatefulSet (GPU-scheduled), ConfigMap, Secret, model-cache PVC, Services (headless + ClusterIP), OpenShift Route, conditional RBAC, and an optional bundled PostgreSQL
+- **Kubernetes Ingress** support as an alternative to the OpenShift Route (`ingress.enabled`)
+- **Single source of truth for scaling**: `replicaCount` drives both the StatefulSet replicas and `CLUSTER_EXPECTED_PODS`
+- **Conditional RBAC**: OAuth auth-reviewer roles render only when `auth.mode=oauth`; cluster-coordination roles only when `replicaCount > 1`
+- **Production-friendly secrets**: `secrets.existingSecret` references a pre-created Secret so credentials never live in values; the bundled database password is auto-generated and preserved across upgrades
+- **`values.schema.json`** validates configuration at install time, and `helm test` verifies a release against `/api/health/ready`
+- **Makefile targets**: `helm-lint`, `helm-template`, `helm-package`, `helm-push`, and `helm-package-push`, with the chart version sourced from `package.json` to stay in lockstep with the application
+- Fixed a latent OpenShift Route bug carried over from the manifests: `targetPort` pointed at a nonexistent `backend` port and is now `http`
+- The raw Kustomize manifests under `deployment/` have been **removed** — Helm is now the only supported deployment method. See [`docs/deployment.md`](docs/deployment.md)
+- Fixed models failing to load with "Model failed to start within 1ms" (instant SIGKILL). Helm parses `values.yaml` numbers as float64 and rendered large integers in scientific notation (e.g. `startupTimeout: 1800000` became `"1.8e+06"` in the ConfigMap), which the backend's `parseInt` silently truncated to `1`. Integer env vars are now coerced with `int64` before quoting, and the backend's `getEnvInt` uses `Number()` with integer validation so any numeric form parses correctly and malformed values fail loudly at startup. Fixing a running deployment needs only `helm upgrade` + pod restart — no image rebuild.
+
+### Breaking Changes
+
+- **Deployment mechanism changed to Helm**: existing Kustomize-based deployments should migrate to the chart. See [`deploy/helm/sardeenz/README.md`](deploy/helm/sardeenz/README.md) and [`docs/deployment.md`](docs/deployment.md)
+- **vLLM environment variables renamed** to the `SARDEENZ_VLLM_*` prefix to avoid colliding with vLLM's own namespace. The old names are no longer read — update your configuration before upgrading:
+
+  | Old name (remove) | New name (use) |
+  | --- | --- |
+  | `VLLM_BASE_PORT` | `SARDEENZ_VLLM_BASE_PORT` |
+  | `VLLM_MAX_INSTANCES` | `SARDEENZ_VLLM_MAX_INSTANCES` |
+  | `VLLM_STARTUP_TIMEOUT` | `SARDEENZ_VLLM_STARTUP_TIMEOUT` |
 
 ## [0.7.1] - 2026-06-09
 

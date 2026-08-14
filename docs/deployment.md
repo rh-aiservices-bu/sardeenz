@@ -2,12 +2,27 @@
 
 This guide covers container building and deployment to OpenShift/Kubernetes.
 
+> ## ⚠️ Breaking change — environment variables renamed
+>
+> **If you are upgrading from v0.7.x or earlier, you must update your configuration before deploying.**
+>
+> Three environment variables have been renamed to use the `SARDEENZ_` prefix (they were previously prefixed with `VLLM_`, which collided with vLLM's own namespace and produced spurious warnings). The **old names are no longer read** — if you leave them set, Sardeenz silently falls back to defaults.
+>
+> | Old name (remove) | New name (use) |
+> | --- | --- |
+> | `VLLM_BASE_PORT` | `SARDEENZ_VLLM_BASE_PORT` |
+> | `VLLM_MAX_INSTANCES` | `SARDEENZ_VLLM_MAX_INSTANCES` |
+> | `VLLM_STARTUP_TIMEOUT` | `SARDEENZ_VLLM_STARTUP_TIMEOUT` |
+>
+> Update these in your Helm values / `.env` / `docker run -e` flags. The Helm chart in [`deploy/helm/sardeenz/`](../deploy/helm/sardeenz/) already uses the new names.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Container Build](#container-build)
 - [Local Development](#local-development)
 - [OpenShift Deployment](#openshift-deployment)
+  - [Deploy with Helm](#deploy-with-helm)
 - [Multi-Pod Cluster Deployment](#multi-pod-cluster-deployment)
 - [Authentication and RBAC](#authentication-and-rbac)
 - [Configuration](#configuration)
@@ -70,7 +85,7 @@ The unified container image is built from `docker/Containerfile` as a multi-stag
 
 | Stage | Base | Purpose |
 |-------|------|---------|
-| **0: vllm-base** | `quay.io/vllm/vllm-cuda:0.19.1_rhaiv.4` | CUDA 13.x + Python 3.12 + vLLM |
+| **0: vllm-base** | `quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8` | CUDA 13.x + Python 3.12 + vLLM |
 | **1: kvcached-builder** | vllm-base + CUDA devel | Builds kvcached wheel from source |
 | **2: runtime-deps** | vllm-base + Node.js 22 | Production `npm ci --omit=dev` |
 | **3: builder** | runtime-deps + devDeps | Compiles TypeScript backend + Vite frontend |
@@ -146,10 +161,11 @@ make build-push VERSION=0.8.0
 
 **4. Update the deployment:**
 
-Update the image tag in `deployment/statefulset.yaml` (or use `oc set image`) and re-apply:
+Upgrade the Helm release to the new chart/app version:
 
 ```bash
-oc set image statefulset/sardeenz sardeenz=quay.io/rh-aiservices-bu/sardeenz:0.8.0
+helm upgrade sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+  --version 0.8.0 --namespace sardeenz --reuse-values
 ```
 
 ### Version Conventions
@@ -233,231 +249,32 @@ podman run -d \
 3. **Image registry access** (e.g., Quay.io)
 4. **Persistent storage** - PostgreSQL for database; Model Cache PVC optional (only if downloading from HuggingFace)
 
-### Deploy with GPU
+### Deploy with Helm
 
-**1. Create Namespace:**
-
-```bash
-oc new-project sardeenz
-```
-
-**2. Create Deployment:**
-
-**`deployment.yaml`:**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sardeenz
-  namespace: sardeenz
-  labels:
-    app: sardeenz
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sardeenz
-  template:
-    metadata:
-      labels:
-        app: sardeenz
-    spec:
-      containers:
-        - name: sardeenz
-          image: quay.io/your-org/sardeenz:latest
-          ports:
-            - containerPort: 3000
-              name: http
-              protocol: TCP
-          env:
-            - name: NODE_ENV
-              value: 'production'
-            - name: ENABLE_KVCACHED
-              value: 'true'
-            - name: KVCACHED_AUTOPATCH
-              value: '1'
-            - name: HF_HOME
-              value: '/opt/app-root/models'
-            - name: SARDEENZ_DB_PATH
-              value: '/opt/app-root/src/data/sardeenz.db'
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hf-token
-                  key: token
-                  optional: true
-            - name: LOG_LEVEL
-              value: 'info'
-            - name: OAUTH_ISSUER_URL
-              valueFrom:
-                secretKeyRef:
-                  name: oauth-config
-                  key: issuer-url
-            - name: OAUTH_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth-config
-                  key: client-id
-            - name: OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth-config
-                  key: client-secret
-          resources:
-            requests:
-              memory: '16Gi'
-              cpu: '4'
-              nvidia.com/gpu: '1'
-            limits:
-              memory: '32Gi'
-              cpu: '8'
-              nvidia.com/gpu: '1'
-          volumeMounts:
-            - name: model-cache
-              mountPath: /opt/app-root/models
-            - name: app-data
-              mountPath: /opt/app-root/src
-            - name: kvcached-ipc
-              mountPath: /tmp/kvcached
-          livenessProbe:
-            httpGet:
-              path: /api/health/live
-              port: 3000
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /api/health/ready
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-      volumes:
-        - name: model-cache
-          persistentVolumeClaim:
-            claimName: model-cache-pvc
-        - name: app-data
-          persistentVolumeClaim:
-            claimName: sardeenz-app-data
-        - name: kvcached-ipc
-          emptyDir:
-            medium: Memory
-      securityContext:
-        fsGroup: 0
-        runAsNonRoot: true
-      nodeSelector:
-        nvidia.com/gpu.present: 'true'
-      tolerations:
-        - key: nvidia.com/gpu
-          operator: Exists
-          effect: NoSchedule
-```
-
-**3. Create Service:**
-
-**`service.yaml`:**
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: sardeenz
-  namespace: sardeenz
-spec:
-  selector:
-    app: sardeenz
-  ports:
-    - name: http
-      port: 3000
-      targetPort: 3000
-      protocol: TCP
-  type: ClusterIP
-```
-
-**4. Create Route:**
-
-**`route.yaml`:**
-
-```yaml
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: sardeenz
-  namespace: sardeenz
-spec:
-  host: sardeenz.apps.your-cluster.com
-  to:
-    kind: Service
-    name: sardeenz
-  port:
-    targetPort: http
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
-```
-
-**5. Create PersistentVolumeClaims:**
-
-The deployment uses a PostgreSQL database for persistence (benchmarks, memory profiles, model configurations) and an optional PVC for model caching:
-
-- **PostgreSQL** (`sardeenz-postgresql`): **Required.** Small PostgreSQL pod deployed alongside the application. See `deployment/postgresql.yaml`.
-- **Model Cache PVC** (`sardeenz-model-cache`): **Optional.** Stores downloaded HuggingFace models (ReadWriteMany for multi-pod access). Only needed if downloading models at runtime.
-
-**Model Cache PVC (`pvc.yaml`):**
-
-Models are downloaded from HuggingFace Hub on first load and cached to the PVC. The `HF_HOME` environment variable controls where models are stored.
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sardeenz-model-cache
-  namespace: sardeenz
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 100Gi
-```
-
-> **Note:** Use `ReadWriteMany` so all pods in a multi-pod deployment can share the model cache. Typical model sizes: 7B params ≈ 14GB, 13B ≈ 26GB, 70B ≈ 140GB.
-
-**6. Create Secrets:**
+The Helm chart is the only supported way to deploy sardeenz. It is published as an
+OCI artifact, so no repo clone is required:
 
 ```bash
-# HuggingFace token (optional, for gated models like Llama, Mistral)
-oc create secret generic hf-token \
-  --from-literal=token=hf_your_token_here \
-  -n sardeenz
-
-# OAuth configuration (optional)
-oc create secret generic oauth-config \
-  --from-literal=issuer-url=https://your-keycloak.com/auth/realms/vllm \
-  --from-literal=client-id=sardeenz \
-  --from-literal=client-secret=your-secret-here \
-  -n sardeenz
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+  --version <app-version> \
+  --namespace sardeenz --create-namespace
 ```
 
-**7. Deploy:**
+This installs the full stack (StatefulSet, ConfigMap/Secret, model-cache PVC,
+Services, OpenShift Route, conditional RBAC, and a bundled PostgreSQL). Common
+setups — simple/OAuth auth, multi-pod clusters, external databases, `existingSecret`
+for production, and Kubernetes Ingress instead of a Route — are documented in the
+chart README:
 
-```bash
-oc apply -f deployment/postgresql.yaml       # Required: PostgreSQL database
-oc apply -f deployment/pvc.yaml              # Optional: model cache
-oc apply -f deployment/statefulset.yaml
-oc apply -f deployment/services.yaml
-oc apply -f deployment/route.yaml
+- **[`deploy/helm/sardeenz/README.md`](../deploy/helm/sardeenz/README.md)** — install recipes and the full values reference
+- **[`deploy/helm/sardeenz/values.yaml`](../deploy/helm/sardeenz/values.yaml)** — every configurable value, documented inline
 
-# Check deployment status
-oc get pods -n sardeenz -w
+Verify a release with `helm test sardeenz -n sardeenz`.
 
-# View logs
-oc logs -f deployment/sardeenz -n sardeenz
-```
+> **Kustomize has been removed.** The raw Kustomize manifests that previously
+> lived under `deployment/` were removed in v0.8.0. Helm is now the only
+> supported deployment method — see the chart README linked above for every
+> configuration option.
 
 ### Scaling Considerations
 
@@ -492,96 +309,50 @@ Sardeenz supports multi-pod cluster deployments where multiple pods coordinate t
 
 ### Deploy the Cluster
 
-The Kubernetes manifests are in `deployment/`. Apply them in order:
+A multi-pod cluster is the same Helm release as a single pod, with
+`replicaCount` set above `1` and a shared cluster secret provided. The chart
+renders everything the cluster needs — the StatefulSet (with `Parallel` pod
+management and pod anti-affinity), the headless + ClusterIP Services, the
+ConfigMap, and the cluster-coordination RBAC (pod discovery + leader-election
+Leases), which is included automatically whenever `replicaCount > 1`.
 
-**1. Create the namespace and RBAC:**
-
-```bash
-oc new-project sardeenz
-
-# ServiceAccount, Role (pod discovery + leader election), and RoleBinding
-oc apply -f deployment/rbac.yaml
-```
-
-The RBAC configuration grants:
-- Pod discovery: `get`, `list`, `watch` on pods
-- Leader election: `get`, `create`, `update`, `list`, `watch` on leases
-
-**2. Create the cluster secret:**
+**1. Generate a cluster secret** (HMAC for inter-pod auth, min 16 chars):
 
 ```bash
-# Generate a secure secret (minimum 16 characters)
 CLUSTER_SECRET=$(openssl rand -hex 32)
-
-# Create the secret
-oc create secret generic sardeenz-cluster-secret \
-  --from-literal=CLUSTER_SECRET=$CLUSTER_SECRET \
-  -n sardeenz
 ```
 
-Or apply the template and edit it:
+**2. Install (or upgrade) the release with the cluster values:**
 
 ```bash
-oc apply -f deployment/secret.yaml
-# Edit to replace the placeholder value
-oc edit secret sardeenz-cluster-secret -n sardeenz
+helm install sardeenz oci://quay.io/rh-aiservices-bu/sardeenz-chart \
+  --version <app-version> \
+  --namespace sardeenz --create-namespace \
+  --set replicaCount=3 \
+  --set cluster.secret=$CLUSTER_SECRET
 ```
 
-**3. Create the ConfigMap (optional overrides):**
+`replicaCount` is the single source of truth for cluster size: it drives both the
+StatefulSet replica count and the `CLUSTER_EXPECTED_PODS` env var. For production,
+supply the cluster secret via a pre-created Secret with `secrets.existingSecret`
+instead of `--set` so it never lives in your shell history or values files — see
+the [chart README](../deploy/helm/sardeenz/README.md) for that recipe and the
+full multi-pod values reference.
 
-```bash
-oc apply -f deployment/configmap.yaml
-```
-
-Default values in the ConfigMap:
-
-| Key               | Default  | Description              |
-| ----------------- | -------- | ------------------------ |
-| `AUTH_MODE`        | `simple` | Authentication mode      |
-| `LOG_LEVEL`        | `info`   | Log verbosity            |
-| `ENABLE_KVCACHED`  | `true`   | Enable GPU memory sharing |
-
-**4. Create the Services:**
-
-```bash
-oc apply -f deployment/services.yaml
-```
-
-This creates two services:
-
-| Service              | Type      | Purpose                                          |
-| -------------------- | --------- | ------------------------------------------------ |
-| `sardeenz-headless`  | Headless  | Pod discovery and direct pod-to-pod addressing   |
-| `sardeenz`           | ClusterIP | External access (load-balanced across all pods)  |
-
-**5. Deploy the StatefulSet:**
-
-```bash
-oc apply -f deployment/statefulset.yaml
-```
-
-Key StatefulSet settings:
-
-| Setting                       | Value      | Description                                     |
-| ----------------------------- | ---------- | ----------------------------------------------- |
-| `replicas`                    | 3          | Number of pods (up to 8 supported)              |
-| `podManagementPolicy`         | `Parallel` | All pods start simultaneously                   |
-| `terminationGracePeriodSeconds` | 30       | Time for graceful model unloading               |
-| Pod anti-affinity             | Preferred  | Spreads pods across nodes for GPU distribution  |
-
-**6. Verify the cluster:**
+**3. Verify the cluster:**
 
 ```bash
 # Watch pods come up
 oc get pods -l app=sardeenz -w
 
 # Check cluster status via the leader
+# (Route host is auto-generated as sardeenz-<namespace>.apps...; see `oc get route sardeenz`)
 curl -H "Authorization: Bearer $TOKEN" \
-  http://sardeenz.apps.your-cluster.com/api/cluster
+  https://sardeenz-<namespace>.apps.your-cluster.com/api/cluster
 
 # List all pods and their GPUs
 curl -H "Authorization: Bearer $TOKEN" \
-  http://sardeenz.apps.your-cluster.com/api/cluster/pods
+  https://sardeenz-<namespace>.apps.your-cluster.com/api/cluster/pods
 ```
 
 ### Cluster Environment Variables
@@ -666,7 +437,9 @@ metadata:
   name: sardeenz
 grantMethod: auto
 redirectURIs:
-  - https://sardeenz.apps.your-cluster.com/api/auth/callback
+  # OpenShift auto-generates the Route host as <route-name>-<namespace>.<apps-domain>
+  # when route.host is unset. Confirm the exact value with: oc get route sardeenz -n <namespace>
+  - https://sardeenz-<namespace>.apps.your-cluster.com/api/auth/callback
 secret: your-oauth-client-secret
 ```
 
@@ -1006,13 +779,13 @@ oc adm policy add-role-to-group sardeenz-admin-readonly team-name -n sardeenz
 Enable debug logging:
 
 ```bash
-oc set env deployment/sardeenz LOG_LEVEL=debug
+oc set env statefulset/sardeenz LOG_LEVEL=debug
 ```
 
 View detailed logs:
 
 ```bash
-oc logs -f deployment/sardeenz | jq .
+oc logs -f statefulset/sardeenz | jq .
 ```
 
 ---

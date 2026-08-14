@@ -1,7 +1,7 @@
 import * as k8s from '@kubernetes/client-node'
 import { readFileSync } from 'node:fs'
 import type { Logger } from '@sardeenz/utils'
-import { config } from '../config.js'
+import { config, isClusterMode } from '../config.js'
 import { buildSignedHeaders } from './cluster-auth.js'
 
 export interface DiscoveredPeer {
@@ -259,6 +259,13 @@ class NoOpPeerDiscovery implements PeerDiscovery {
 // ---------------------------------------------------------------------------
 
 export function createPeerDiscovery(logger: Logger): PeerDiscovery {
+  // Single-pod mode: no peer discovery, so no pod list/watch (which would need
+  // the cluster RBAC that is only provisioned for multi-pod deployments).
+  if (!isClusterMode()) {
+    logger.info('No cluster configuration, running in single-instance mode')
+    return new NoOpPeerDiscovery()
+  }
+
   // Priority 1: Kubernetes environment detected
   if (process.env.KUBERNETES_SERVICE_HOST) {
     logger.info('Kubernetes environment detected, using K8s peer discovery')

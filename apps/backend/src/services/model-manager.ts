@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import { hostname } from 'node:os'
 import type { ModelInstance, ModelStatus, ClusterEvent } from '@sardeenz/types'
 import { modelStore } from '../stores/model-store.js'
-import { config, isInferenceSimMode } from '../config.js'
+import { config, isInferenceSimMode, isClusterMode } from '../config.js'
 import {
   getNextPort,
   killProcessImmediate,
@@ -106,8 +106,7 @@ export class ModelManager extends EventEmitter {
    * Only sends when in cluster mode (CLUSTER_PEERS or K8s env detected).
    */
   private broadcastClusterEvent(event: ClusterEvent): void {
-    const isClusterMode = !!(process.env.KUBERNETES_SERVICE_HOST || config.clusterPeers)
-    if (!isClusterMode) return
+    if (!isClusterMode()) return
 
     const localPodId = hostname()
     const peers = peerStore.getAllPeers().filter((p) => p.podId !== localPodId)
@@ -488,7 +487,7 @@ export class ModelManager extends EventEmitter {
     }
 
     try {
-      // Wait for model to be ready (configurable via VLLM_STARTUP_TIMEOUT)
+      // Wait for model to be ready (configurable via SARDEENZ_VLLM_STARTUP_TIMEOUT)
       await this.waitForReady(port, modelPath, config.vllmStartupTimeout)
 
       // Emit final progress event for ready state

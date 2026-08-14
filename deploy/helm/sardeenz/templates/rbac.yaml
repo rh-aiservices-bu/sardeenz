@@ -1,0 +1,92 @@
+{{- if .Values.rbac.create }}
+{{- if eq .Values.auth.mode "oauth" }}
+# -----------------------------------------------------------------------------
+# OAuth authorization RBAC (rendered only when auth.mode=oauth)
+# -----------------------------------------------------------------------------
+# Marker role: full admin access (checked via LocalSubjectAccessReview).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-admin
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
+    resources: ["admin"]
+    verbs: ["get"]
+---
+# Marker role: read-only access.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-admin-readonly
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["sardeenz.rh-aiservices-bu.io"]
+    resources: ["admin-readonly"]
+    verbs: ["get"]
+---
+# Allows the ServiceAccount to create LocalSubjectAccessReviews for permission checks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-auth-reviewer
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["localsubjectaccessreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-auth-reviewer
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "sardeenz.fullname" . }}-auth-reviewer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sardeenz.serviceAccountName" . }}
+{{- end }}
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- if eq .Values.auth.mode "oauth" }}
+---
+{{- end }}
+# -----------------------------------------------------------------------------
+# Cluster-coordination RBAC (rendered only when replicaCount > 1)
+# -----------------------------------------------------------------------------
+# Pod discovery (list/watch pods) and leader election (leases).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-cluster
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sardeenz.fullname" . }}-cluster
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "sardeenz.fullname" . }}-cluster
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sardeenz.serviceAccountName" . }}
+{{- end }}
+{{- end }}

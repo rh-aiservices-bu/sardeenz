@@ -1,0 +1,33 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/rh-aiservices-bu/sardeenz",
+  "public_key": "pk_Nr3fkjgsylRpAjebpCPSp",
+  "projectTitle": "sardeenz",
+  "description": "Multi-model management platform for dynamic loading, management, and serving of multiple LLMs through a unified, OpenAI-compatible interface. Built on vLLM and kvcached for efficient multi-model hosting on a single GPU or across a multi-pod Kubernetes cluster.",
+  "folders": [
+    "docs",
+    "packages/contracts"
+  ],
+  "excludeFolders": [
+    "node_modules",
+    "dist",
+    "site",
+    ".venv",
+    "apps/backend/dist",
+    "apps/frontend/dist",
+    "docs/plans",
+    "specs",
+    ".specify"
+  ],
+  "excludeFiles": [
+    "CHANGELOG.md",
+    "package-lock.json",
+    "docs/architecture-visualizer.html"
+  ],
+  "rules": [
+    "sardeenz serves an OpenAI-compatible API via vLLM; prefer the /v1/* endpoints for inference examples.",
+    "Admin auth (dashboard/controller API) uses AUTH_MODE (none | simple | oauth); inference auth is a separate optional INFERENCE_API_KEY for /v1/* endpoints.",
+    "Deployment is via the Helm chart at deploy/helm/sardeenz/ — Kustomize manifests have been removed.",
+    "Use the inference-sim backend for GPU-free local development."
+  ]
+}

@@ -1,0 +1,37 @@
+# Headless Service — StatefulSet pod DNS (sardeenz-0.<headless>, ...).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sardeenz.headlessServiceName" . }}
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "sardeenz.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      name: http
+---
+# ClusterIP Service — external access, load-balanced across pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sardeenz.fullname" . }}
+  labels:
+    {{- include "sardeenz.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if eq .Values.service.sessionAffinity "ClientIP" }}
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.service.sessionAffinityTimeoutSeconds }}
+  {{- end }}
+  selector:
+    {{- include "sardeenz.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP

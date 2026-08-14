@@ -32,8 +32,8 @@ services:
       - LOG_LEVEL=info
       - ENABLE_KVCACHED=true
       - KVCACHED_AUTOPATCH=1
-      - VLLM_BASE_PORT=12346
-      - VLLM_MAX_INSTANCES=10
+      - SARDEENZ_VLLM_BASE_PORT=12346
+      - SARDEENZ_VLLM_MAX_INSTANCES=10
       - DATABASE_URL=postgresql://sardeenz:sardeenz@postgresql:5432/sardeenz
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface

@@ -99,9 +99,9 @@ Sardeenz is a multi-model management platform designed to:
 
 | Component            | Technology    | Version | Purpose                        |
 | -------------------- | ------------- | ------- | ------------------------------ |
-| **Inference Engine** | vLLM          | 0.19.1  | OpenAI-compatible LLM serving  |
+| **Inference Engine** | vLLM          | 0.21.0  | OpenAI-compatible LLM serving  |
 | **Memory Sharing**   | kvcached      | 0.1.5   | GPU memory IPC for multi-model |
-| **Container Base**   | CUDA          | 12.x    | NVIDIA GPU support             |
+| **Container Base**   | CUDA          | 13.x    | NVIDIA GPU support             |
 | **Python Runtime**   | Python        | 3.12    | vLLM dependencies              |
 | **Orchestration**    | OpenShift/K8s | 4.x+    | Container deployment platform  |
 
@@ -297,7 +297,7 @@ Sardeenz supports multi-pod deployment where multiple instances coordinate to di
 | `CLUSTER_SECRET` | `''` | Shared HMAC-SHA256 secret for inter-pod authentication |
 | `CLUSTER_EXPECTED_PODS` | `0` | Expected cluster size (for quorum calculation before all pods visible) |
 | `NAMESPACE` | `'sardeenz'` | Kubernetes namespace for peer discovery and lease |
-| `VLLM_BASE_PORT` | `12346` | Base port for vLLM instances (auto-offset per pod in cluster mode) |
+| `SARDEENZ_VLLM_BASE_PORT` | `12346` | Base port for vLLM instances (auto-offset per pod in cluster mode) |
 
 ### Core Cluster Services
 
