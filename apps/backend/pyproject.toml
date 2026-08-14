@@ -6,8 +6,11 @@ requires-python = ">=3.12,<3.13"
 
 # Base dependencies - installed in ALL environments (dev + Docker)
 # Docker base image (quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8) already includes vLLM
+# kvcached pinned to a main-branch commit: 0.1.5 (latest PyPI release) predates
+# vLLM 0.21's changed _reshape_kv_cache_tensors signature. This commit carries the
+# "adapt kvcached KV-cache reshape patch up to vLLM 0.25" fix (compatible up to 0.24+).
 dependencies = [
-    "kvcached==0.1.5",
+    "kvcached @ git+https://github.com/ovg-project/kvcached.git@094481f3f77c53ad2edc13369b84eb42bbf082a1",
     "nvitop==1.7.0",
 ]
 

@@ -995,13 +995,12 @@ wheels = [
 [[package]]
 name = "kvcached"
 version = "0.1.5"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ovg-project/kvcached.git?rev=094481f3f77c53ad2edc13369b84eb42bbf082a1#094481f3f77c53ad2edc13369b84eb42bbf082a1" }
 dependencies = [
     { name = "numpy" },
     { name = "posix-ipc" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/18/e557dc2727afa59911af4d3c1b1712fffbd22fc43f6de832bd7c60c1a042/kvcached-0.1.5.tar.gz", hash = "sha256:1c82029fff197b5fa8a16b1e3dde9584844a446d996cf1fcefbeb0474b443614", size = 88195, upload-time = "2026-04-07T15:26:55.939Z" }
 
 [[package]]
 name = "lark"
@@ -2259,7 +2258,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kvcached", specifier = "==0.1.5" },
+    { name = "kvcached", git = "https://github.com/ovg-project/kvcached.git?rev=094481f3f77c53ad2edc13369b84eb42bbf082a1" },
     { name = "nvitop", specifier = "==1.7.0" },
 ]
 
