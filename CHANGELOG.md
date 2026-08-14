@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Inference Engine
 
 - **Upgraded vLLM to 0.21.0** via the `quay.io/vllm/vllm-cuda:0.21.0_rhaiv.8` base image (from `0.19.1_rhaiv.4`). The image remains UBI9 + CUDA 13.0, so the container's CUDA build-dependency pins are unchanged. Bumps `torch` to 2.11.0 and the bundled NVIDIA runtime to the CUDA 13 (`cu13`) wheels.
+- **Pinned kvcached to a main-branch commit** (`094481f3`) for vLLM 0.21 compatibility. kvcached 0.1.5 (the latest PyPI release) predates vLLM 0.21's changed `_reshape_kv_cache_tensors` signature, so model loads failed with `'list' object has no attribute 'kv_cache_groups'`. The pinned commit carries the "adapt kvcached KV-cache reshape patch up to vLLM 0.25" fix (compatible up to vLLM 0.24+). Both the dev venv (`apps/backend/pyproject.toml`) and the container build (`docker/Containerfile`) now source kvcached from this commit; the container clone switched to a shallow fetch of the ref since `git clone --branch` does not accept commit SHAs.
 
 ### Helm Chart Deployment
 
