@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - **Makefile targets**: `helm-lint`, `helm-template`, `helm-package`, `helm-push`, and `helm-package-push`, with the chart version sourced from `package.json` to stay in lockstep with the application
 - Fixed a latent OpenShift Route bug carried over from the manifests: `targetPort` pointed at a nonexistent `backend` port and is now `http`
 - The raw Kustomize manifests under `deployment/` have been **removed** — Helm is now the only supported deployment method. See [`docs/deployment.md`](docs/deployment.md)
+- Fixed models failing to load with "Model failed to start within 1ms" (instant SIGKILL). Helm parses `values.yaml` numbers as float64 and rendered large integers in scientific notation (e.g. `startupTimeout: 1800000` became `"1.8e+06"` in the ConfigMap), which the backend's `parseInt` silently truncated to `1`. Integer env vars are now coerced with `int64` before quoting, and the backend's `getEnvInt` uses `Number()` with integer validation so any numeric form parses correctly and malformed values fail loudly at startup. Fixing a running deployment needs only `helm upgrade` + pod restart — no image rebuild.
 
 ### Breaking Changes
 

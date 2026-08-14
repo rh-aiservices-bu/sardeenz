@@ -7,14 +7,14 @@ metadata:
 data:
   # Server
   NODE_ENV: {{ .Values.config.nodeEnv | quote }}
-  PORT: {{ .Values.config.port | quote }}
+  PORT: {{ .Values.config.port | int64 | quote }}
   HOST: {{ .Values.config.host | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
 
   # Authentication
   AUTH_MODE: {{ .Values.auth.mode | quote }}
   ADMIN_USERNAME: {{ .Values.auth.adminUsername | quote }}
-  JWT_EXPIRATION_HOURS: {{ .Values.auth.jwtExpirationHours | quote }}
+  JWT_EXPIRATION_HOURS: {{ .Values.auth.jwtExpirationHours | int64 | quote }}
   API_BASE_URL: {{ .Values.auth.apiBaseUrl | quote }}
 
   # kvcached
@@ -22,13 +22,15 @@ data:
   KVCACHED_AUTOPATCH: {{ ternary "1" "0" .Values.kvcached.autopatch | quote }}
 
   # vLLM
-  SARDEENZ_VLLM_BASE_PORT: {{ .Values.vllm.basePort | quote }}
-  SARDEENZ_VLLM_MAX_INSTANCES: {{ .Values.vllm.maxInstances | quote }}
-  SARDEENZ_VLLM_STARTUP_TIMEOUT: {{ .Values.vllm.startupTimeout | quote }}
+  # int64 coercion prevents Helm from rendering large integers in scientific
+  # notation (e.g. 1800000 -> "1.8e+06"), which the backend's parseInt truncates.
+  SARDEENZ_VLLM_BASE_PORT: {{ .Values.vllm.basePort | int64 | quote }}
+  SARDEENZ_VLLM_MAX_INSTANCES: {{ .Values.vllm.maxInstances | int64 | quote }}
+  SARDEENZ_VLLM_STARTUP_TIMEOUT: {{ .Values.vllm.startupTimeout | int64 | quote }}
 
   # Optional features
   LOCAL_MODELS_PATH: {{ .Values.config.localModelsPath | quote }}
   DEBUG_STREAMING: {{ .Values.config.debugStreaming | quote }}
 
   # Cluster — kept in lockstep with replicaCount.
-  CLUSTER_EXPECTED_PODS: {{ .Values.replicaCount | quote }}
+  CLUSTER_EXPECTED_PODS: {{ .Values.replicaCount | int64 | quote }}

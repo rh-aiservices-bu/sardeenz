@@ -86,8 +86,12 @@ function getEnvInt(key: string, defaultValue?: number): number {
     }
     throw new Error(`Missing required environment variable: ${key}`)
   }
-  const parsed = parseInt(value, 10)
-  if (isNaN(parsed)) {
+  // Use Number() rather than parseInt() so numeric forms like "1.8e+06"
+  // (e.g. from Helm rendering 1800000 in scientific notation) parse correctly
+  // instead of being silently truncated to 1. Reject anything that is not a
+  // finite integer so misconfiguration fails loudly at startup.
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
     throw new Error(`Invalid integer value for ${key}: ${value}`)
   }
   return parsed
